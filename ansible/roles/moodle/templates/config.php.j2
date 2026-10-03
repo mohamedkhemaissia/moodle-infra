@@ -1,0 +1,35 @@
+<?php
+unset($CFG);
+global $CFG;
+$CFG = new stdClass();
+
+$CFG->dbtype = 'pgsql';
+$CFG->dblibrary = 'native';
+$CFG->dbhost = 'postgres';
+$CFG->dbname = 'moodle';
+$CFG->dbuser = 'moodle';
+$CFG->prefix = 'mdl_';
+
+$moodle_db_password = file_get_contents('/run/secrets/moodle_db_password');
+
+if ($moodle_db_password === false || trim($moodle_db_password) === '') {
+    throw new RuntimeException('Secret PostgreSQL inaccessible ou vide.');
+}
+
+$CFG->dbpass = trim($moodle_db_password);
+unset($moodle_db_password);
+
+$CFG->dboptions = [
+    'dbpersist' => false,
+    'dbsocket' => false,
+    'dbport' => 5432,
+    'dbschema' => 'public',
+];
+
+$CFG->wwwroot = '{{ moodle_wwwroot }}';
+$CFG->dataroot = '/var/moodledata';
+$CFG->directorypermissions = 02770;
+$CFG->admin = 'admin';
+$CFG->routerconfigured = true;
+
+require_once(__DIR__ . '/lib/setup.php');

@@ -1,0 +1,52 @@
+---
+- name: Configurer les permissions du volume moodledata
+  ansible.builtin.command:
+    expand_argument_vars: false
+    argv:
+      - docker
+      - run
+      - --rm
+      - --network
+      - none
+      - --user
+      - "0:0"
+      - --mount
+      - "type=volume,src={{ moodle_compose_project }}_moodledata,dst=/var/moodledata"
+      - "{{ moodle_php_image }}"
+      - sh
+      - -ec
+      - |
+        if [ "$(stat -c '%u:%g:%a' /var/moodledata)" != "33:33:2770" ]; then
+          chown 33:33 /var/moodledata
+          chmod 2770 /var/moodledata
+          printf '%s\n' 'MOODLEDATA_PERMISSIONS_CHANGED'
+        fi
+  register: moodle_data_permissions
+  changed_when: "'MOODLEDATA_PERMISSIONS_CHANGED' in moodle_data_permissions.stdout"
+
+- name: Verifier l ecriture dans moodledata avec l utilisateur PHP
+  ansible.builtin.command:
+    expand_argument_vars: false
+    argv:
+      - docker
+      - run
+      - --rm
+      - --network
+      - none
+      - --user
+      - "33:33"
+      - --mount
+      - "type=volume,src={{ moodle_compose_project }}_moodledata,dst=/var/moodledata"
+      - "{{ moodle_php_image }}"
+      - sh
+      - -ec
+      - |
+        moodle_probe="$(mktemp /var/moodledata/.pfe-write-XXXXXX)"
+        rm "$moodle_probe"
+        printf '%s\n' 'moodledata : ecriture OK'
+  register: moodle_data_check
+  changed_when: false
+
+- name: Afficher la verification de moodledata
+  ansible.builtin.debug:
+    var: moodle_data_check.stdout_lines

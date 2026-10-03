@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+umask 027
+
+exec >> "/var/log/moodle/{{ moodle_compose_project }}-cron.log" 2>&1
+
+exec /usr/bin/flock -n -E 0 "/run/lock/{{ moodle_compose_project }}-cron.lock" \
+  /usr/bin/docker compose \
+  -p "{{ moodle_compose_project }}" \
+  -f "{{ moodle_base_dir }}/compose.yml" \
+  exec -T --user 33:33 php \
+  php /var/www/moodle/admin/cli/cron.php --keep-alive=0

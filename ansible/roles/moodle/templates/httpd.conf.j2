@@ -1,0 +1,58 @@
+ServerRoot "/usr/local/apache2"
+ServerName {{ moodle_hostname }}
+Listen 443
+
+LoadModule mpm_event_module modules/mod_mpm_event.so
+LoadModule unixd_module modules/mod_unixd.so
+LoadModule authz_core_module modules/mod_authz_core.so
+LoadModule mime_module modules/mod_mime.so
+LoadModule log_config_module modules/mod_log_config.so
+LoadModule dir_module modules/mod_dir.so
+LoadModule proxy_module modules/mod_proxy.so
+LoadModule proxy_fcgi_module modules/mod_proxy_fcgi.so
+LoadModule socache_shmcb_module modules/mod_socache_shmcb.so
+LoadModule ssl_module modules/mod_ssl.so
+
+User www-data
+Group www-data
+
+ServerTokens Prod
+ServerSignature Off
+TraceEnable Off
+ProxyRequests Off
+
+TypesConfig conf/mime.types
+DirectoryIndex index.php
+
+ErrorLog /proc/self/fd/2
+LogFormat "%h %l %u %t \"%r\" %>s %b" combined
+CustomLog /proc/self/fd/1 combined
+
+<Directory />
+    AllowOverride None
+    Require all denied
+</Directory>
+
+SSLProtocol -all +TLSv1.2 +TLSv1.3
+SSLSessionCache "shmcb:/usr/local/apache2/logs/ssl_scache(512000)"
+
+<VirtualHost *:443>
+    ServerName {{ moodle_hostname }}
+    DocumentRoot "/var/www/moodle/public"
+
+    SSLEngine on
+    SSLCertificateFile "/usr/local/apache2/conf/tls/server.crt"
+    SSLCertificateKeyFile "/usr/local/apache2/conf/tls/server.key"
+
+    <Directory "/var/www/moodle/public">
+        Options -Indexes +FollowSymLinks
+        AllowOverride None
+        Require all granted
+        AcceptPathInfo On
+        FallbackResource /r.php
+    </Directory>
+
+    <FilesMatch "\.php$">
+        SetHandler "proxy:fcgi://php:9000"
+    </FilesMatch>
+</VirtualHost>

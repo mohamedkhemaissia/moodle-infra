@@ -1,0 +1,25 @@
+---
+- name: Creer les repertoires de preparation Moodle
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ moodle_base_dir }}"
+    - "{{ moodle_base_dir }}/archives"
+
+- name: Telecharger et verifier le code officiel Moodle
+  ansible.builtin.get_url:
+    url: "{{ moodle_archive_url }}"
+    dest: "{{ moodle_base_dir }}/archives/moodle-{{ moodle_version }}.tgz"
+    checksum: "sha256:{{ moodle_archive_sha256 }}"
+    owner: root
+    group: root
+    mode: '0644'
+    timeout: 300
+  register: moodle_archive_download
+  until: moodle_archive_download is succeeded
+  retries: 3
+  delay: 5

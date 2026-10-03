@@ -1,0 +1,10 @@
+---
+- name: Deployer le pilote Moodle
+  hosts: moodle
+  become: true
+  gather_facts: true
+  roles:
+    - linux
+    - runtime
+    - moodle
+    - operations

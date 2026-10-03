@@ -1,0 +1,26 @@
+---
+- name: Creer le reseau public Moodle
+  community.docker.docker_network:
+    name: "{{ moodle_compose_project }}_public"
+    driver: bridge
+    internal: false
+    appends: true
+    state: present
+
+- name: Creer le reseau prive Moodle
+  community.docker.docker_network:
+    name: "{{ moodle_compose_project }}_private"
+    driver: bridge
+    internal: true
+    appends: true
+    state: present
+
+- name: Creer les volumes persistants Moodle
+  community.docker.docker_volume:
+    name: "{{ item }}"
+    driver: local
+    state: present
+    recreate: never
+  loop:
+    - "{{ moodle_compose_project }}_postgres_data"
+    - "{{ moodle_compose_project }}_moodledata"

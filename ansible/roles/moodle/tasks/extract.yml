@@ -1,0 +1,17 @@
+---
+- name: Creer le repertoire de cette version Moodle
+  ansible.builtin.file:
+    path: "{{ moodle_base_dir }}/releases/{{ moodle_version }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Extraire le code officiel Moodle
+  ansible.builtin.unarchive:
+    src: "{{ moodle_base_dir }}/archives/moodle-{{ moodle_version }}.tgz"
+    dest: "{{ moodle_base_dir }}/releases/{{ moodle_version }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: 'u=rwX,g=rX,o=rX'

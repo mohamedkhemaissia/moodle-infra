@@ -1,0 +1,13 @@
+---
+- name: Installer et verifier la configuration Moodle
+  ansible.builtin.template:
+    src: config.php.j2
+    dest: "{{ moodle_code_dir }}/config.php"
+    owner: root
+    group: root
+    mode: '0644'
+    validate: >-
+      docker run --rm --network none
+      --mount type=bind,src=%s,dst=/tmp/moodle-config.php,readonly
+      {{ moodle_php_image }}
+      php -l /tmp/moodle-config.php

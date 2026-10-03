@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+export MOODLE_DB_PASSWORD="$(cat /run/secrets/moodle_db_password)"
+
+psql -X -v ON_ERROR_STOP=1 \
+  --username "$POSTGRES_USER" \
+  --dbname "$POSTGRES_DB" <<'SQL'
+\getenv moodle_password MOODLE_DB_PASSWORD
+BEGIN;
+CREATE ROLE moodle LOGIN
+  NOSUPERUSER NOCREATEDB NOCREATEROLE
+  NOREPLICATION NOBYPASSRLS
+  PASSWORD :'moodle_password';
+ALTER DATABASE moodle OWNER TO moodle;
+ALTER SCHEMA public OWNER TO moodle;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+COMMIT;
+SQL
+
+unset MOODLE_DB_PASSWORD

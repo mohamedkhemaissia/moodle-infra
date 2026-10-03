@@ -1,0 +1,61 @@
+---
+- name: Installer les outils de planification et de journalisation
+  ansible.builtin.apt:
+    name:
+      - cron
+      - logrotate
+      - util-linux
+    state: present
+
+- name: Creer le repertoire des journaux Moodle
+  ansible.builtin.file:
+    path: /var/log/moodle
+    state: directory
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Installer et verifier le script du cron Moodle
+  ansible.builtin.template:
+    src: moodle-cron.sh.j2
+    dest: "/usr/local/sbin/{{ moodle_compose_project }}-cron"
+    owner: root
+    group: root
+    mode: '0750'
+    validate: /bin/sh -n %s
+
+- name: Configurer la rotation des journaux Moodle
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/moodle-pfe
+    owner: root
+    group: root
+    mode: '0644'
+    validate: /usr/sbin/logrotate --debug %s
+    content: |
+      /var/log/moodle/*.log {
+          daily
+          rotate 7
+          compress
+          delaycompress
+          missingok
+          notifempty
+          create 0640 root root
+      }
+
+- name: Planifier le cron Moodle chaque minute
+  ansible.builtin.cron:
+    name: Moodle PHP CLI
+    cron_file: "{{ moodle_compose_project }}"
+    user: root
+    minute: "*"
+    job: "/usr/local/sbin/{{ moodle_compose_project }}-cron"
+    state: present
+
+- name: Activer la planification et la rotation des journaux
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - cron
+    - logrotate.timer

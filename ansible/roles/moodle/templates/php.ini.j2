@@ -1,0 +1,19 @@
+memory_limit = {{ moodle_php_memory_limit }}
+max_input_vars = 5000
+max_execution_time = 300
+max_input_time = 300
+upload_max_filesize = 64M
+post_max_size = 64M
+date.timezone = Africa/Tunis
+
+expose_php = Off
+display_errors = Off
+log_errors = On
+error_log = /proc/self/fd/2
+
+opcache.enable = 1
+opcache.memory_consumption = 128
+opcache.interned_strings_buffer = 16
+opcache.max_accelerated_files = 50000
+opcache.validate_timestamps = 1
+opcache.revalidate_freq = 2

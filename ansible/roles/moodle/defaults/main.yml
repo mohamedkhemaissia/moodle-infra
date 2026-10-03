@@ -1,0 +1,24 @@
+---
+moodle_base_dir: /opt/moodle
+moodle_version: '5.2.3'
+
+moodle_archive_url: "https://packaging.moodle.org/stable502/moodle-{{ moodle_version }}.tgz"
+moodle_archive_sha256: '918c4bed6639056d1a3fcca37747ad95c4ec988024d2ef6b662897bcee55a581'
+
+moodle_apache_image: 'httpd:2.4.68@sha256:03f858efb82c25cb0f9962946615cdcdaf26927cb971722149b563197cfd0fdd'
+
+moodle_php_base_image: 'php:8.3.35-fpm-bookworm@sha256:536a1188a926efe7e6f927b7ca01f3a043c63d0a527567c6d4d3bf9fbd637866'
+
+moodle_postgres_image: 'postgres:16.15-bookworm@sha256:efedf3595f1d6f415c08568ba171029bf54052e754cc9f030e3f2412b21f3d67'
+
+moodle_composer_image: 'composer:2.10.3@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac'
+
+moodle_code_dir: "{{ moodle_base_dir }}/releases/{{ moodle_version }}/moodle"
+
+moodle_compose_project: moodle-pilote
+
+moodle_hostname: moodle-pfe.test
+moodle_https_port: 8443
+moodle_wwwroot: "https://{{ moodle_hostname }}:{{ moodle_https_port }}"
+moodle_php_memory_limit: 256M
+moodle_fpm_max_children: 5

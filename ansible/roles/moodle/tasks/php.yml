@@ -1,0 +1,35 @@
+---
+- name: Creer le repertoire de configuration PHP
+  ansible.builtin.file:
+    path: "{{ moodle_base_dir }}/config/php"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Installer les configurations PHP
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ moodle_base_dir }}/config/php/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - src: php.ini.j2
+      dest: moodle.ini
+    - src: php-fpm.conf.j2
+      dest: zz-moodle.conf
+
+- name: Verifier la configuration PHP-FPM
+  ansible.builtin.command:
+    cmd: >-
+      docker run --rm --network none
+      --mount "type=bind,src={{ moodle_base_dir }}/config/php/moodle.ini,dst=/usr/local/etc/php/conf.d/zz-moodle.ini,readonly"
+      --mount "type=bind,src={{ moodle_base_dir }}/config/php/zz-moodle.conf,dst=/usr/local/etc/php-fpm.d/zz-moodle.conf,readonly"
+      {{ moodle_php_image }} php-fpm -t
+  register: moodle_fpm_check
+  changed_when: false
+
+- name: Afficher la verification PHP-FPM
+  ansible.builtin.debug:
+    var: moodle_fpm_check.stderr_lines

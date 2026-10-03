@@ -1,0 +1,74 @@
+---
+- name: Lire l empreinte du verrou Composer
+  ansible.builtin.stat:
+    path: "{{ moodle_code_dir }}/composer.lock"
+    checksum_algorithm: sha256
+  register: moodle_composer_lock
+
+- name: Verifier la presence du verrou officiel
+  ansible.builtin.assert:
+    that:
+      - moodle_composer_lock.stat.isreg | default(false)
+    fail_msg: "Le fichier composer.lock officiel est absent."
+
+- name: Verifier la presence de l autoloader
+  ansible.builtin.stat:
+    path: "{{ moodle_code_dir }}/vendor/autoload.php"
+  register: moodle_autoload
+
+- name: Definir le temoin d installation des dependances
+  ansible.builtin.set_fact:
+    moodle_composer_marker: ".pfe-composer-{{ moodle_composer_lock.stat.checksum }}-{{ moodle_php_dockerfile.checksum[:12] }}"
+
+- name: Installer les dependances de production Moodle
+  ansible.builtin.command:
+    creates: "{{ (moodle_code_dir ~ '/vendor/' ~ moodle_composer_marker) if moodle_autoload.stat.exists else omit }}"
+    argv:
+      - docker
+      - run
+      - --rm
+      - --user
+      - "0:0"
+      - --env
+      - COMPOSER_ALLOW_SUPERUSER=1
+      - --mount
+      - "type=bind,src={{ moodle_code_dir }},dst=/var/www/moodle"
+      - --workdir
+      - /var/www/moodle
+      - "{{ moodle_php_image }}"
+      - sh
+      - -ec
+      - |
+        umask 022
+        composer install --no-dev --classmap-authoritative --prefer-dist --no-interaction --no-progress
+        composer check-platform-reqs --no-dev
+        php -r 'require "vendor/autoload.php";'
+        touch "vendor/{{ moodle_composer_marker }}"
+
+- name: Verifier les dependances avec l utilisateur web
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - --user
+      - "33:33"
+      - --env
+      - COMPOSER_HOME=/tmp/composer
+      - --mount
+      - "type=bind,src={{ moodle_code_dir }},dst=/var/www/moodle,readonly"
+      - --workdir
+      - /var/www/moodle
+      - "{{ moodle_php_image }}"
+      - sh
+      - -ec
+      - |
+        composer check-platform-reqs --no-dev
+        php -r 'require "vendor/autoload.php"; echo "Autoload Moodle : OK\n";'
+  register: moodle_dependencies_check
+  changed_when: false
+
+- name: Afficher la verification des dependances
+  ansible.builtin.debug:
+    var: moodle_dependencies_check.stdout_lines
+

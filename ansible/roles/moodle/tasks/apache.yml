@@ -1,0 +1,42 @@
+---
+- name: Creer le repertoire de configuration Apache
+  ansible.builtin.file:
+    path: "{{ moodle_base_dir }}/config/apache"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Installer la configuration Apache
+  ansible.builtin.template:
+    src: httpd.conf.j2
+    dest: "{{ moodle_base_dir }}/config/apache/httpd.conf"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Verifier la configuration Apache
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - --network
+      - none
+      - --mount
+      - "type=bind,src={{ moodle_base_dir }}/config/apache/httpd.conf,dst=/usr/local/apache2/conf/httpd.conf,readonly"
+      - --mount
+      - "type=bind,src={{ moodle_code_dir }},dst=/var/www/moodle,readonly"
+      - --mount
+      - "type=bind,src={{ moodle_base_dir }}/tls/{{ moodle_hostname }}.crt,dst=/usr/local/apache2/conf/tls/server.crt,readonly"
+      - --mount
+      - "type=bind,src={{ moodle_base_dir }}/tls/{{ moodle_hostname }}.key,dst=/usr/local/apache2/conf/tls/server.key,readonly"
+      - "{{ moodle_apache_image }}"
+      - httpd
+      - -t
+  register: moodle_apache_check
+  changed_when: false
+
+- name: Afficher la verification Apache
+  ansible.builtin.debug:
+    var: moodle_apache_check.stderr_lines

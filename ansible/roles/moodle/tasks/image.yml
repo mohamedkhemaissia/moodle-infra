@@ -1,0 +1,31 @@
+---
+- name: Creer le repertoire de construction PHP
+  ansible.builtin.file:
+    path: "{{ moodle_base_dir }}/build/php"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Generer le Dockerfile PHP
+  ansible.builtin.template:
+    src: Dockerfile.php.j2
+    dest: "{{ moodle_base_dir }}/build/php/Dockerfile"
+    owner: root
+    group: root
+    mode: '0644'
+  register: moodle_php_dockerfile
+
+- name: Definir le nom de l image PHP
+  ansible.builtin.set_fact:
+    moodle_php_image: "moodle-pfe/php:moodle-{{ moodle_version }}-{{ moodle_php_dockerfile.checksum[:12] }}"
+
+- name: Construire l image PHP pour Moodle
+  community.docker.docker_image_build:
+    name: "{{ moodle_php_image }}"
+    path: "{{ moodle_base_dir }}/build/php"
+    rebuild: never
+
+- name: Afficher la reference de l image PHP
+  ansible.builtin.debug:
+    var: moodle_php_image

@@ -1,0 +1,99 @@
+services:
+  php:
+    image: "{{ moodle_php_image }}"
+    restart: unless-stopped
+    stop_grace_period: 60s
+    working_dir: /var/www/moodle
+    command:
+      - sh
+      - -ec
+      - |
+        update-ca-certificates
+        exec php-fpm -F
+    depends_on:
+      postgres:
+        condition: service_healthy
+    secrets:
+      - moodle_db_password
+    volumes:
+      - "{{ moodle_code_dir }}:/var/www/moodle:ro"
+      - moodledata:/var/moodledata
+      - "{{ moodle_base_dir }}/config/php/moodle.ini:/usr/local/etc/php/conf.d/zz-moodle.ini:ro"
+      - "{{ moodle_base_dir }}/config/php/zz-moodle.conf:/usr/local/etc/php-fpm.d/zz-moodle.conf:ro"
+      - "{{ moodle_base_dir }}/tls/lab-ca.crt:/usr/local/share/ca-certificates/moodle-pfe-lab.crt:ro"
+    extra_hosts:
+      - "{{ moodle_hostname }}:host-gateway"
+    networks:
+      public:
+        gw_priority: 1
+      private: {}
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  apache:
+    image: "{{ moodle_apache_image }}"
+    restart: unless-stopped
+    stop_grace_period: 60s
+    depends_on:
+      php:
+        condition: service_healthy
+        restart: true
+    ports:
+      - "{{ moodle_https_port }}:443"
+    volumes:
+      - "{{ moodle_code_dir }}:/var/www/moodle:ro"
+      - "{{ moodle_base_dir }}/config/apache/httpd.conf:/usr/local/apache2/conf/httpd.conf:ro"
+      - "{{ moodle_base_dir }}/tls/{{ moodle_hostname }}.crt:/usr/local/apache2/conf/tls/server.crt:ro"
+      - "{{ moodle_base_dir }}/tls/{{ moodle_hostname }}.key:/usr/local/apache2/conf/tls/server.key:ro"
+    networks:
+      - public
+
+  postgres:
+    image: "{{ moodle_postgres_image }}"
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: moodle
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    secrets:
+      - postgres_admin_password
+      - moodle_db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - "{{ moodle_base_dir }}/config/postgres/10-moodle.sh:/docker-entrypoint-initdb.d/10-moodle.sh:ro"
+    networks:
+      - private
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "moodle"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+secrets:
+  postgres_admin_password:
+    file: "{{ moodle_base_dir }}/secrets/postgres_admin_password"
+  moodle_db_password:
+    file: "{{ moodle_base_dir }}/secrets/moodle_db_password"
+
+networks:
+  public:
+    external: true
+    name: "{{ moodle_compose_project }}_public"
+  private:
+    external: true
+    name: "{{ moodle_compose_project }}_private"
+
+volumes:
+  postgres_data:
+    external: true
+    name: "{{ moodle_compose_project }}_postgres_data"
+  moodledata:
+    external: true
+    name: "{{ moodle_compose_project }}_moodledata"

@@ -1,0 +1,40 @@
+---
+- name: Creer les repertoires de configuration PostgreSQL
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ moodle_base_dir }}/config"
+    - "{{ moodle_base_dir }}/config/postgres"
+
+- name: Installer le script d initialisation PostgreSQL
+  ansible.builtin.template:
+    src: postgres-init.sh.j2
+    dest: "{{ moodle_base_dir }}/config/postgres/10-moodle.sh"
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Generer et verifier la configuration Compose
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ moodle_base_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: '0644'
+    validate: "docker compose -p {{ moodle_compose_project }} -f %s config --quiet"
+
+- name: Demarrer les services du pilote Moodle
+  community.docker.docker_compose_v2:
+    project_src: "{{ moodle_base_dir }}"
+    project_name: "{{ moodle_compose_project }}"
+    files:
+      - compose.yml
+    state: present
+    build: never
+    pull: missing
+    wait: true
+    wait_timeout: 180

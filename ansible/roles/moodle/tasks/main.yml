@@ -1,0 +1,30 @@
+---
+- name: Recuperer le code Moodle
+  ansible.builtin.import_tasks: source.yml
+
+- name: Extraire le code Moodle
+  ansible.builtin.import_tasks: extract.yml
+
+- name: Preparer l image PHP
+  ansible.builtin.import_tasks: image.yml
+
+- name: Installer les bibliotheques Moodle
+  ansible.builtin.import_tasks: dependencies.yml
+- name: Preparer les reseaux et le stockage
+  ansible.builtin.import_tasks: infrastructure.yml
+- name: Preparer les secrets Moodle
+  ansible.builtin.import_tasks: secrets.yml
+- name: Preparer les certificats HTTPS
+  ansible.builtin.import_tasks: tls.yml
+- name: Preparer la configuration PHP
+  ansible.builtin.import_tasks: php.yml
+- name: Preparer la configuration Apache
+  ansible.builtin.import_tasks: apache.yml
+- name: Preparer le stockage des fichiers Moodle
+  ansible.builtin.import_tasks: data.yml
+- name: Preparer la configuration Moodle
+  ansible.builtin.import_tasks: configuration.yml
+- name: Deployer la base de donnees Moodle
+  ansible.builtin.import_tasks: database.yml
+- name: Installer Moodle
+  ansible.builtin.import_tasks: installation.yml

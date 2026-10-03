@@ -1,0 +1,78 @@
+---
+- name: Creer le repertoire protege des certificats
+  ansible.builtin.file:
+    path: "{{ moodle_base_dir }}/tls"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Creer l autorite de certification du laboratoire
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -newkey rsa:3072 -noenc -sha256
+      -days 730
+      -subj "/C=TN/O=Moodle PFE Lab/CN=Moodle PFE Lab CA"
+      -addext "basicConstraints=critical,CA:TRUE,pathlen:0"
+      -addext "keyUsage=critical,keyCertSign,cRLSign"
+      -addext "subjectKeyIdentifier=hash"
+      -keyout "{{ moodle_base_dir }}/tls/lab-ca.key"
+      -out "{{ moodle_base_dir }}/tls/lab-ca.crt"
+    creates: "{{ moodle_base_dir }}/tls/lab-ca.crt"
+
+- name: Proteger la cle privee de l autorite
+  ansible.builtin.file:
+    path: "{{ moodle_base_dir }}/tls/lab-ca.key"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Definir les permissions du certificat public
+  ansible.builtin.file:
+    path: "{{ moodle_base_dir }}/tls/lab-ca.crt"
+    owner: root
+    group: root
+    mode: '0644'
+- name: Creer le certificat HTTPS du serveur Moodle
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -newkey rsa:3072 -noenc -sha256
+      -days 365
+      -subj "/C=TN/O=Moodle PFE Lab/CN={{ moodle_hostname }}"
+      -CA "{{ moodle_base_dir }}/tls/lab-ca.crt"
+      -CAkey "{{ moodle_base_dir }}/tls/lab-ca.key"
+      -addext "basicConstraints=critical,CA:FALSE"
+      -addext "keyUsage=critical,digitalSignature,keyEncipherment"
+      -addext "extendedKeyUsage=serverAuth"
+      -addext "subjectAltName=DNS:{{ moodle_hostname }},IP:127.0.0.1"
+      -keyout "{{ moodle_base_dir }}/tls/{{ moodle_hostname }}.key"
+      -out "{{ moodle_base_dir }}/tls/{{ moodle_hostname }}.crt"
+    creates: "{{ moodle_base_dir }}/tls/{{ moodle_hostname }}.crt"
+- name: Proteger la cle privee du serveur
+  ansible.builtin.file:
+    path: "{{ moodle_base_dir }}/tls/{{ moodle_hostname }}.key"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Definir les permissions du certificat serveur
+  ansible.builtin.file:
+    path: "{{ moodle_base_dir }}/tls/{{ moodle_hostname }}.crt"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Verifier le certificat HTTPS et son nom
+  ansible.builtin.command:
+    cmd: >-
+      openssl verify
+      -CAfile "{{ moodle_base_dir }}/tls/lab-ca.crt"
+      -purpose sslserver
+      -verify_hostname "{{ moodle_hostname }}"
+      "{{ moodle_base_dir }}/tls/{{ moodle_hostname }}.crt"
+  register: moodle_tls_check
+  changed_when: false
+
+- name: Afficher la verification du certificat
+  ansible.builtin.debug:
+    var: moodle_tls_check.stdout

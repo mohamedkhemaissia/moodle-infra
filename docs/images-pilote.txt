@@ -1,0 +1,9 @@
+Name:      docker.io/library/httpd:2.4.68
+MediaType: application/vnd.oci.image.index.v1+json
+Digest:    sha256:03f858efb82c25cb0f9962946615cdcdaf26927cb971722149b563197cfd0fdd
+Name:      docker.io/library/php:8.3.35-fpm-bookworm
+MediaType: application/vnd.oci.image.index.v1+json
+Digest:    sha256:536a1188a926efe7e6f927b7ca01f3a043c63d0a527567c6d4d3bf9fbd637866
+Name:      docker.io/library/postgres:16.15-bookworm
+MediaType: application/vnd.oci.image.index.v1+json
+Digest:    sha256:efedf3595f1d6f415c08568ba171029bf54052e754cc9f030e3f2412b21f3d67

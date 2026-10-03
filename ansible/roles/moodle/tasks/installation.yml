@@ -1,0 +1,79 @@
+---
+- name: Compter les tables presentes dans PostgreSQL
+  ansible.builtin.command:
+    expand_argument_vars: false
+    cmd: >-
+      docker compose -p "{{ moodle_compose_project }}"
+      -f "{{ moodle_base_dir }}/compose.yml"
+      exec -T --user 33:33 php php -r
+      '$db = new PDO("pgsql:host=postgres;port=5432;dbname=moodle",
+      "moodle", trim(file_get_contents("/run/secrets/moodle_db_password")));
+      echo $db->query("SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = current_schema()")->fetchColumn();'
+  register: moodle_database_table_count
+  changed_when: false
+
+- name: Lire le secret du compte administrateur
+  ansible.builtin.slurp:
+    src: "{{ moodle_base_dir }}/secrets/moodle_admin_password"
+  register: moodle_admin_secret
+  no_log: true
+  when: (moodle_database_table_count.stdout | trim | int) == 0
+
+- name: Installer les tables et le compte administrateur Moodle
+  ansible.builtin.command:
+    expand_argument_vars: false
+    cmd: >-
+      docker compose -p "{{ moodle_compose_project }}"
+      -f "{{ moodle_base_dir }}/compose.yml"
+      exec -T --user 33:33 php php -r
+      '$password = trim(stream_get_contents(STDIN));
+      $_SERVER["argv"] = [
+      "/var/www/moodle/admin/cli/install_database.php",
+      "--lang=fr",
+      "--adminuser=admin",
+      "--adminpass=" . $password,
+      "--adminemail=mohamed.khemaissia@esprit.tn",
+      "--fullname=Pilote Moodle PFE",
+      "--shortname=Moodle PFE",
+      "--agree-license"
+      ];
+      $_SERVER["argc"] = count($_SERVER["argv"]);
+      require $_SERVER["argv"][0];'
+    stdin: "{{ moodle_admin_secret.content | b64decode }}"
+  register: moodle_install_result
+  no_log: true
+  failed_when: false
+  when: (moodle_database_table_count.stdout | trim | int) == 0
+
+- name: Verifier le resultat de l installation
+  ansible.builtin.assert:
+    that:
+      - moodle_install_result.rc == 0
+    fail_msg: >-
+      Installation Moodle echouee :
+      {{ ((moodle_install_result.stdout_lines + moodle_install_result.stderr_lines)[-30:]
+      | join('\n')) | regex_replace('Pfe!1-[0-9a-f]{64}', '[SECRET]') }}
+  when: (moodle_database_table_count.stdout | trim | int) == 0
+
+- name: Verifier Moodle et la presence du compte administrateur
+  ansible.builtin.command:
+    expand_argument_vars: false
+    cmd: >-
+      docker compose -p "{{ moodle_compose_project }}"
+      -f "{{ moodle_base_dir }}/compose.yml"
+      exec -T --user 33:33 php php -r
+      'define("CLI_SCRIPT", true);
+      require "/var/www/moodle/config.php";
+      if (empty($CFG->rolesactive) ||
+      !$DB->record_exists("user", ["username" => "admin", "deleted" => 0])) {
+      fwrite(STDERR, "Installation Moodle incomplete.\n");
+      exit(1);
+      }
+      echo "Version Moodle : " . $CFG->release . "\n";
+      echo "Installation Moodle : OK\n";'
+  register: moodle_install_check
+  changed_when: false
+
+- name: Afficher la verification de l installation Moodle
+  ansible.builtin.debug:
+    var: moodle_install_check.stdout_lines
