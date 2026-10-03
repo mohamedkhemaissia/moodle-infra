@@ -1,0 +1,32 @@
+2026-10-03T11:41:04+00:00
+Ubuntu 22.04.5 LTS
+5.15.0-198-generic
+2
+               total        used        free      shared  buff/cache   available
+Mem:           3,8Gi       389Mi       2,1Gi       1,0Mi       1,3Gi       3,2Gi
+Swap:          3,8Gi          0B       3,8Gi
+Filesystem                         Size  Used Avail Use% Mounted on
+/dev/mapper/ubuntu--vg-ubuntu--lv   38G  7,8G   28G  22% /
+git version 2.34.1
+uv 0.12.22 (x86_64-unknown-linux-gnu)
+Python 3.10.12
+ansible [core 2.21.4]
+  config file = /home/hamma/moodle-infra/ansible.cfg
+  configured module search path = ['/home/hamma/.ansible/plugins/modules', '/usr/share/ansible/plugins/modules']
+  ansible python module location = /home/hamma/.local/share/uv/tools/ansible-core/lib/python3.12/site-packages/ansible
+  ansible collection location = /home/hamma/.ansible/collections:/usr/share/ansible/collections
+  executable location = /home/hamma/.local/bin/ansible
+  python version = 3.12.15 (main, Oct  1 2026, 20:59:04) [Clang 22.1.3 ] (/home/hamma/.local/share/uv/tools/ansible-core/bin/python)
+  jinja version = 3.1.6
+  pyyaml version = 6.0.3 (with libyaml v0.2.5)
+containerd.io	2.3.6-1~ubuntu.22.04~jammy
+docker-buildx-plugin	0.37.1-1~ubuntu.22.04~jammy
+docker-ce	5:29.8.2-1~ubuntu.22.04~jammy
+docker-ce-cli	5:29.8.2-1~ubuntu.22.04~jammy
+docker-compose-plugin	2.40.3-1~ubuntu.22.04~jammy
+sysstat	12.5.2-2ubuntu0.2
+containerd.io
+docker-buildx-plugin
+docker-ce
+docker-ce-cli
+docker-compose-plugin
