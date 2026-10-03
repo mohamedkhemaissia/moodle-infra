@@ -1,0 +1,6 @@
+---
+- name: Preparer le depot Docker
+  ansible.builtin.import_tasks: repository.yml
+
+- name: Installer le runtime Docker
+  ansible.builtin.import_tasks: install.yml

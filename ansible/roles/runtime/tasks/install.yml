@@ -1,0 +1,33 @@
+---
+- name: Installer les versions fixees du runtime Docker
+  ansible.builtin.apt:
+    name:
+      - "docker-ce={{ docker_engine_version }}"
+      - "docker-ce-cli={{ docker_engine_version }}"
+      - "containerd.io={{ docker_containerd_version }}"
+      - "docker-buildx-plugin={{ docker_buildx_version }}"
+      - "docker-compose-plugin={{ docker_compose_version }}"
+    state: present
+    install_recommends: false
+    allow_change_held_packages: true
+    fail_on_autoremove: true
+
+- name: Activer et demarrer les services Docker
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - containerd
+    - docker
+
+- name: Bloquer les mises a jour automatiques du runtime
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - docker-ce
+    - docker-ce-cli
+    - containerd.io
+    - docker-buildx-plugin
+    - docker-compose-plugin

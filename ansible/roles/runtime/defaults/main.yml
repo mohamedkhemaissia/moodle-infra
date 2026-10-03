@@ -1,0 +1,5 @@
+---
+docker_engine_version: '5:29.8.2-1~ubuntu.22.04~jammy'
+docker_compose_version: '2.40.3-1~ubuntu.22.04~jammy'
+docker_containerd_version: '2.3.6-1~ubuntu.22.04~jammy'
+docker_buildx_version: '0.37.1-1~ubuntu.22.04~jammy'

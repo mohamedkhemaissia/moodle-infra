@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+secrets/
+*.key
+.vault-password*
+*.retry
+__pycache__/
+.venv/

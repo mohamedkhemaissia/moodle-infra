@@ -1,0 +1,8 @@
+---
+- name: Preparer le serveur Moodle
+  hosts: moodle
+  become: true
+  gather_facts: true
+  roles:
+    - linux
+    - runtime

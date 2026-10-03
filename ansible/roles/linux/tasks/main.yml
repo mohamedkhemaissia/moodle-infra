@@ -1,0 +1,19 @@
+---
+- name: Verifier Ubuntu 22.04
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_version'] == '22.04'
+    fail_msg: "Ce projet exige Ubuntu Server 22.04."
+
+- name: Installer les paquets Linux necessaires
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - git
+      - openssh-server
+      - sysstat
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
