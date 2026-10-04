@@ -1,0 +1,144 @@
+#!/bin/bash
+set -Eeuo pipefail
+umask 077
+
+BASE_DIR={{ moodle_base_dir | quote }}
+CODE_DIR={{ moodle_code_dir | quote }}
+INFRA_DIR={{ moodle_backup_infra_dir | quote }}
+PROJECT={{ moodle_compose_project | quote }}
+DATABASE={{ moodle_backup_database | quote }}
+BACKUP_DIR="$BASE_DIR/backups"
+STAGING_DIR="$BACKUP_DIR/staging"
+RESTIC={{ ('/usr/local/sbin/' ~ moodle_compose_project ~ '-restic') | quote }}
+DC=(/usr/bin/docker compose -p "$PROJECT" -f "$BASE_DIR/compose.yml")
+stage_dir=''
+result_json=''
+resume_needed=0
+
+log() { printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"; }
+resume_services() {
+  if "${DC[@]}" up -d --no-recreate --wait --wait-timeout {{ moodle_backup_start_timeout | int }} php apache; then
+    resume_needed=0
+    log 'Apache et PHP redemarres.'
+    return 0
+  fi
+  log 'ERREUR : le redemarrage des services a echoue.' >&2
+  return 1
+}
+finish() {
+  local rc=$?
+  trap - EXIT INT TERM
+  set +e
+  # Seules les copies temporaires creees par cette execution sont supprimees.
+  if [[ -n "$stage_dir" && "$stage_dir" == "$STAGING_DIR"/run-* ]]; then
+    rm -rf -- "$stage_dir" || rc=1
+  fi
+  if [[ -n "$result_json" ]]; then rm -f -- "$result_json" || rc=1; fi
+  # Liberer de l espace avant la reprise si une archive a rempli le disque.
+  if (( resume_needed )); then resume_services || rc=1; fi
+  if (( rc != 0 )); then log "ECHEC sauvegarde, code $rc." >&2; fi
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if (( EUID != 0 )); then log 'Lancer ce script avec sudo.' >&2; exit 1; fi
+exec 9>"/run/lock/$PROJECT-backup.lock"
+if ! flock -n 9; then log 'Une sauvegarde est deja en cours.' >&2; exit 1; fi
+
+for pfe_path in "$CODE_DIR" "$INFRA_DIR" "$BASE_DIR/config" "$BASE_DIR/tls" "$BASE_DIR/secrets" "$BASE_DIR/build" "$STAGING_DIR"; do
+  [[ -d "$pfe_path" ]] || { log "Repertoire absent : $pfe_path" >&2; exit 1; }
+done
+[[ -s "$BASE_DIR/compose.yml" && -s "$BASE_DIR/secrets/restic_password" && -s "$BASE_DIR/secrets/sftp_backup_key" ]] || exit 1
+pfe_free_kb=$(df -Pk "$STAGING_DIR" | awk 'NR==2 {print $4}')
+if (( pfe_free_kb < {{ moodle_backup_min_free_mb | int }} * 1024 )); then
+  log 'Espace libre insuffisant pour preparer la sauvegarde.' >&2; exit 1
+fi
+
+{% raw %}
+for pfe_service in postgres php apache; do
+  pfe_cid=$("${DC[@]}" ps --all --quiet "$pfe_service")
+  [[ -n "$pfe_cid" && "$pfe_cid" != *$'\n'* ]] || { log "Conteneur introuvable : $pfe_service" >&2; exit 1; }
+  [[ "$(/usr/bin/docker inspect --format '{{.State.Running}}' "$pfe_cid")" == true ]] || { log "Service arrete : $pfe_service" >&2; exit 1; }
+done
+pfe_driver=$(/usr/bin/docker volume inspect --format '{{.Driver}}' "${PROJECT}_moodledata")
+[[ "$pfe_driver" == local ]] || { log 'Le volume moodledata doit utiliser le pilote local.' >&2; exit 1; }
+DATA_DIR=$(/usr/bin/docker volume inspect --format '{{.Mountpoint}}' "${PROJECT}_moodledata")
+{% endraw %}
+[[ -d "$DATA_DIR" ]] || exit 1
+
+log 'Verifier le depot Windows avant de suspendre Moodle.'
+"$RESTIC" cat config >/dev/null
+
+# Le cron existant utilise exactement ce verrou : attendre sa fin, puis le bloquer.
+exec 8>"/run/lock/$PROJECT-cron.lock"
+if ! flock -w {{ moodle_backup_cron_wait_seconds | int }} 8; then
+  log 'Le cron ne s est pas termine dans le delai prevu.' >&2; exit 1
+fi
+stage_dir=$(mktemp -d "$STAGING_DIR/run-$(date -u '+%Y%m%dT%H%M%SZ').XXXXXX")
+result_json=$(mktemp "$BACKUP_DIR/restic-result.XXXXXX")
+resume_needed=1
+log 'Suspendre les ecritures : arret Apache, puis PHP.'
+"${DC[@]}" stop --timeout {{ moodle_backup_stop_timeout | int }} apache
+"${DC[@]}" stop --timeout {{ moodle_backup_stop_timeout | int }} php
+pfe_frozen_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+log 'Exporter PostgreSQL au format custom.'
+"${DC[@]}" exec -T --user postgres postgres sh -ec '
+  export PGPASSWORD="$(cat /run/secrets/postgres_admin_password)"
+  export PGCONNECT_TIMEOUT=10
+  exec pg_dump --host=127.0.0.1 --username=postgres --format=custom --dbname="$1"
+' sh "$DATABASE" > "$stage_dir/moodle.pgdump"
+[[ -s "$stage_dir/moodle.pgdump" ]] || exit 1
+"${DC[@]}" exec -T --user postgres postgres pg_restore --list < "$stage_dir/moodle.pgdump" >/dev/null
+
+log 'Copier moodledata, le code, la configuration et le depot Ansible.'
+tar --acls --xattrs --numeric-owner -C "$DATA_DIR" -cf "$stage_dir/moodledata.tar" .
+tar --acls --xattrs --numeric-owner -C "$CODE_DIR" -cf "$stage_dir/code.tar" .
+tar --acls --xattrs --numeric-owner -C "$BASE_DIR" -cf "$stage_dir/configuration.tar" compose.yml config tls secrets build
+tar --acls --xattrs --numeric-owner -C "$INFRA_DIR" -cf "$stage_dir/infrastructure.tar" .
+
+{
+  printf 'Format sauvegarde : moodle-pfe-v1\n'
+  printf 'Instant sans ecritures UTC : %s\nProjet Compose : %s\nBase : %s\n' "$pfe_frozen_at" "$PROJECT" "$DATABASE"
+  printf 'Moodle : %s\nCode : %s\nVolume moodledata : %s\n' {{ moodle_version | quote }} "$CODE_DIR" "${PROJECT}_moodledata"
+  printf 'URL source : https://%s:%s\n' {{ moodle_hostname | quote }} {{ (moodle_https_port | string) | quote }}
+  printf '\nImages du projet :\n'
+  "${DC[@]}" images
+  printf '\nVersions des outils :\n'
+  /usr/local/bin/restic version
+  /usr/bin/rclone version
+  /usr/bin/docker --version
+  /usr/bin/docker compose version
+  printf '\nCommit et etat du depot Ansible :\n'
+  /usr/bin/git -c safe.directory="$INFRA_DIR" -C "$INFRA_DIR" rev-parse HEAD
+  /usr/bin/git -c safe.directory="$INFRA_DIR" -C "$INFRA_DIR" status --short
+} > "$stage_dir/manifest.txt"
+(cd "$stage_dir" && sha256sum moodle.pgdump moodledata.tar code.tar configuration.tar infrastructure.tar manifest.txt > SHA256SUMS && sha256sum --check SHA256SUMS)
+
+# Les archives sont completes : la reprise precede tout transfert vers Windows.
+resume_services
+exec 8>&-
+log 'Envoyer les archives coherentes et chiffrees vers Windows.'
+"$RESTIC" --json backup "$stage_dir" --tag "$PROJECT-full" > "$result_json"
+"$RESTIC" check
+
+pfe_snapshot=$(/usr/bin/python3 - "$result_json" <<'PY'
+import json, re, sys
+snapshot = None
+with open(sys.argv[1], encoding='utf-8') as stream:
+    for line in stream:
+        record = json.loads(line)
+        if record.get('message_type') == 'summary':
+            snapshot = record.get('snapshot_id')
+if not isinstance(snapshot, str) or not re.fullmatch(r'[0-9a-f]{64}', snapshot):
+    raise SystemExit('Aucun identifiant valide de sauvegarde terminee.')
+print(snapshot)
+PY
+)
+{
+  printf 'snapshot=%s\nfrozen_at_utc=%s\ncompleted_at_utc=%s\n' "$pfe_snapshot" "$pfe_frozen_at" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+} > "$BACKUP_DIR/last-success.txt.tmp"
+mv -f -- "$BACKUP_DIR/last-success.txt.tmp" "$BACKUP_DIR/last-success.txt"
+log "SAUVEGARDE OK : snapshot $pfe_snapshot"

@@ -1,0 +1,11 @@
+---
+moodle_recovery_action: prepare
+moodle_recovery_source_project: "{{ moodle_compose_project }}"
+moodle_recovery_source_base: "{{ moodle_base_dir }}"
+moodle_recovery_project: moodle-restauration
+moodle_recovery_base: /opt/moodle-restauration
+moodle_recovery_snapshot: b0a4abbc1c50394312af6c92a333136c8b65760133b179aa2eda04c9d7e3f7e6
+moodle_recovery_wwwroot: "https://{{ moodle_hostname }}:{{ moodle_https_port }}"
+moodle_recovery_cron_wait: 600
+moodle_recovery_start_timeout: 180
+moodle_recovery_min_free_mb: 3072

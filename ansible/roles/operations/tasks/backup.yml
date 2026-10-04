@@ -1,0 +1,144 @@
+---
+- name: Installer les outils de sauvegarde locale
+  ansible.builtin.apt:
+    name: [bzip2, python3, tar, util-linux]
+    state: present
+
+- name: Creer les repertoires de sauvegarde et de configuration
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ moodle_base_dir }}/archives", mode: '0755'}
+    - {path: "{{ moodle_base_dir }}/config", mode: '0755'}
+    - {path: "{{ moodle_base_dir }}/backups", mode: '0700'}
+    - {path: "{{ moodle_base_dir }}/backups/staging", mode: '0700'}
+
+- name: Lire la version de Restic
+  ansible.builtin.command:
+    argv: [/usr/local/bin/restic, version]
+  register: moodle_backup_restic_before
+  changed_when: false
+  failed_when: false
+
+- name: Installer la version figee de Restic si necessaire
+  when: not (moodle_backup_restic_before.stdout | default('')).startswith('restic ' ~ moodle_backup_restic_version ~ ' ')
+  block:
+    - name: Telecharger Restic avec son empreinte verifiee
+      ansible.builtin.get_url:
+        url: "https://github.com/restic/restic/releases/download/v{{ moodle_backup_restic_version }}/restic_{{ moodle_backup_restic_version }}_linux_amd64.bz2"
+        dest: "{{ moodle_base_dir }}/archives/restic_{{ moodle_backup_restic_version }}_linux_amd64.bz2"
+        checksum: "sha256:{{ moodle_backup_restic_sha256 }}"
+        owner: root
+        group: root
+        mode: '0644'
+        timeout: 120
+      register: moodle_backup_restic_download
+      retries: 3
+      delay: 5
+      until: moodle_backup_restic_download is succeeded
+
+    - name: Installer le binaire Restic de facon atomique
+      ansible.builtin.shell: |
+        set -eu
+        pfe_restic_temp=$(mktemp /usr/local/bin/restic.XXXXXX)
+        trap 'rm -f -- "$pfe_restic_temp"' EXIT
+        /usr/bin/bzip2 -dc {{ (moodle_base_dir ~ '/archives/restic_' ~ moodle_backup_restic_version ~ '_linux_amd64.bz2') | quote }} > "$pfe_restic_temp"
+        chown root:root "$pfe_restic_temp"
+        chmod 0755 "$pfe_restic_temp"
+        mv -f -- "$pfe_restic_temp" /usr/local/bin/restic
+      args:
+        executable: /bin/sh
+
+- name: Lire la version de Rclone
+  ansible.builtin.command:
+    argv: [/usr/bin/rclone, version]
+  register: moodle_backup_rclone_before
+  changed_when: false
+  failed_when: false
+
+- name: Installer la version figee de Rclone si necessaire
+  when: (moodle_backup_rclone_before.stdout_lines | default([]) | first | default('')) != 'rclone v' ~ moodle_backup_rclone_version
+  block:
+    - name: Telecharger le paquet officiel Rclone et verifier son empreinte
+      ansible.builtin.get_url:
+        url: "https://github.com/rclone/rclone/releases/download/v{{ moodle_backup_rclone_version }}/rclone-v{{ moodle_backup_rclone_version }}-linux-amd64.deb"
+        dest: "{{ moodle_base_dir }}/archives/rclone-v{{ moodle_backup_rclone_version }}-linux-amd64.deb"
+        checksum: "sha256:{{ moodle_backup_rclone_sha256 }}"
+        owner: root
+        group: root
+        mode: '0644'
+        timeout: 120
+      register: moodle_backup_rclone_download
+      retries: 3
+      delay: 5
+      until: moodle_backup_rclone_download is succeeded
+
+    - name: Installer le paquet Rclone valide
+      ansible.builtin.apt:
+        deb: "{{ moodle_base_dir }}/archives/rclone-v{{ moodle_backup_rclone_version }}-linux-amd64.deb"
+
+- name: Verifier la presence des secrets et de la cle du serveur SFTP
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ moodle_base_dir }}/secrets/restic_password"
+    - "{{ moodle_base_dir }}/secrets/sftp_backup_key"
+    - "{{ moodle_base_dir }}/config/sftp_known_hosts"
+  register: moodle_backup_prerequisites
+
+- name: Exiger les fichiers de connexion existants et non vides
+  ansible.builtin.assert:
+    that:
+      - item.stat.isreg | default(false)
+      - (item.stat.size | default(0)) > 0
+    fail_msg: "Fichier absent ou vide : {{ item.item }}. Restaurer le fichier valide ; ne pas regenerer le mot de passe d un depot existant."
+    quiet: true
+  loop: "{{ moodle_backup_prerequisites.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Proteger les fichiers de connexion aux sauvegardes
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: '0600'
+  loop:
+    - "{{ moodle_base_dir }}/secrets/restic_password"
+    - "{{ moodle_base_dir }}/secrets/sftp_backup_key"
+    - "{{ moodle_base_dir }}/config/sftp_known_hosts"
+
+- name: Gerer la configuration Rclone du depot Windows
+  ansible.builtin.template:
+    src: backup-rclone.conf.j2
+    dest: "{{ moodle_base_dir }}/config/rclone.conf"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Installer et verifier les scripts de sauvegarde
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/usr/local/sbin/{{ moodle_compose_project }}-{{ item.suffix }}"
+    owner: root
+    group: root
+    mode: '0750'
+    validate: /bin/bash -n %s
+  loop:
+    - {src: moodle-restic.sh.j2, suffix: restic}
+    - {src: moodle-backup.sh.j2, suffix: backup}
+
+- name: Configurer la sauvegarde quotidienne
+  ansible.builtin.cron:
+    name: Moodle sauvegarde Restic
+    cron_file: "{{ moodle_compose_project }}-backup"
+    user: root
+    hour: "{{ moodle_backup_hour }}"
+    minute: "{{ moodle_backup_minute }}"
+    disabled: "{{ not (moodle_backup_schedule_enabled | bool) }}"
+    job: "/usr/local/sbin/{{ moodle_compose_project }}-backup >> /var/log/moodle/{{ moodle_compose_project }}-backup.log 2>&1"
+    state: present

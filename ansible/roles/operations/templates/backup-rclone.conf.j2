@@ -1,0 +1,10 @@
+[{{ moodle_backup_sftp_alias }}]
+type = sftp
+host = {{ moodle_backup_sftp_host }}
+user = {{ moodle_backup_sftp_user }}
+port = {{ moodle_backup_sftp_port }}
+key_file = {{ moodle_base_dir }}/secrets/sftp_backup_key
+known_hosts_file = {{ moodle_base_dir }}/config/sftp_known_hosts
+disable_hashcheck = true
+set_modtime = false
+shell_type = none

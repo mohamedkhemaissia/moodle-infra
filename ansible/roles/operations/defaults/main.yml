@@ -1,0 +1,20 @@
+---
+moodle_backup_restic_version: '0.19.1'
+moodle_backup_restic_sha256: f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c
+moodle_backup_rclone_version: '1.75.1'
+moodle_backup_rclone_sha256: 09c9f7606ed9e31eecc1eec26a89992cf2931a8d2d1a5f0ae2bb1c11630ffb15
+moodle_backup_sftp_alias: moodle-pfe-backup
+moodle_backup_sftp_host: 10.0.2.2
+moodle_backup_sftp_port: 22
+moodle_backup_sftp_user: pfe_backup
+moodle_backup_sftp_path: /repository
+moodle_backup_database: moodle
+moodle_backup_infra_dir: /home/hamma/moodle-infra
+moodle_backup_cron_wait_seconds: 600
+moodle_backup_stop_timeout: 60
+moodle_backup_start_timeout: 180
+moodle_backup_min_free_mb: 1024
+# Activer apres validation de la premiere sauvegarde complete et restauration.
+moodle_backup_schedule_enabled: false
+moodle_backup_hour: '2'
+moodle_backup_minute: '0'

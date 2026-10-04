@@ -1,0 +1,31 @@
+Validation reelle du 04/10/2026 - Moodle PFE
+
+Serveur : moodleprod, Ubuntu 22.04, projet moodle-pilote.
+Installation Ansible des sauvegardes : ok=75 changed=4 failed=0 unreachable=0.
+Depot Restic : cef6ec74 (prefixe), format 2, Windows SFTP via Rclone.
+Snapshot complet : b0a4abbc1c50394312af6c92a333136c8b65760133b179aa2eda04c9d7e3f7e6
+
+Debut de la sauvegarde UTC : 2026-10-04T13:13:16Z.
+Suspension Apache/PHP : 13:13:17Z.
+Export PostgreSQL : 13:13:20Z.
+Reprise Apache/PHP : 13:14:10Z.
+Fin de la sauvegarde : 13:14:34Z.
+Duree totale selon journal : 78 secondes.
+La phase d arret/reprise dure environ 53 secondes selon le journal ;
+elle ne constitue pas une mesure HTTP precise de l indisponibilite.
+
+Fichiers : moodle.pgdump, moodledata.tar, code.tar, configuration.tar,
+infrastructure.tar, manifest.txt, SHA256SUMS.
+Empreintes des archives et du manifeste : OK.
+Controle Restic --read-data : 2 snapshots, 10 packs relus, aucune erreur.
+Apres sauvegarde : Apache actif, PHP et PostgreSQL actifs et healthy.
+
+Premier controle d extraction, effectue sans demarrer de copie Moodle :
+Cible : /opt/moodle/restore-tests/b0a4abbc
+Source sauvegardee : /opt/moodle/backups/staging/run-20261004T131317Z.ZVC6n5
+Extraction : 12 fichiers/repertoires, 643.490 MiB, environ 8 secondes.
+Verification Restic : 7 fichiers verifies, environ 1 seconde.
+
+Ces resultats valident la sauvegarde et sa lecture. La remise en service
+complete du site restaure, les tests fonctionnels et les objectifs RTO/RPO
+restent a mesurer et a documenter.

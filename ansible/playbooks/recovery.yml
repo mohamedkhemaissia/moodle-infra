@@ -1,0 +1,9 @@
+---
+- name: Preparer les outils de restauration du pilote Moodle
+  hosts: moodle
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../roles/moodle/defaults/main.yml
+  roles:
+    - recovery

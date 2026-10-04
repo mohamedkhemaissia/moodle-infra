@@ -1,0 +1,9 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+exec /usr/local/bin/restic \
+  -r {{ ('rclone:' ~ moodle_backup_sftp_alias ~ ':' ~ moodle_backup_sftp_path) | quote }} \
+  --password-file {{ (moodle_base_dir ~ '/secrets/restic_password') | quote }} \
+  -o rclone.program=/usr/bin/rclone \
+  -o {{ ('rclone.args=serve restic --stdio --config ' ~ moodle_base_dir ~ '/config/rclone.conf') | quote }} \
+  "$@"

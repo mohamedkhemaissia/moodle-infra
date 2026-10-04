@@ -1,0 +1,27 @@
+Validation du transport de sauvegarde - 04/10/2026
+
+Serveur Ubuntu : moodleprod, Ubuntu 22.04, amd64.
+Restic : 0.19.1, depot au format 2.
+Rclone : 1.75.1.
+Transport : Restic utilise Rclone, qui se connecte au serveur SFTP Windows.
+Compte SFTP : pfe_backup ; cle Ed25519 ; verification de la cle du serveur.
+Destination Windows : C:\MoodleBackups\repository.
+Reference du depot : cef6ec746b (prefixe).
+
+Test realise :
+- Fichier : /tmp/moodle-pfe-restic-test.txt, 55 octets.
+- Reference du snapshot : 4e236d86 (prefixe).
+- Heure de sauvegarde observee : 2026-10-04 12:07:44 UTC.
+- Restauration avec --verify : 1 fichier verifie.
+- Comparaison avec cmp : fichier identique, OK.
+- Controle check --read-data : 1 snapshot, 2 packs, aucune erreur.
+
+Recuperation du mot de passe :
+- Copie Windows : C:\MoodleRecovery\restic_password, 65 octets.
+- Acces NTFS : compte personnel, Administrateurs et SYSTEM.
+- La copie temporaire /home/hamma/restic-password-export.txt a ete supprimee.
+- Aucun mot de passe ou contenu de cle privee n est inscrit dans ce document.
+
+Etat : transfert chiffre et restauration d un fichier de test valides.
+La sauvegarde complete de Moodle, les restaurations du site et les mesures
+RTO/RPO restent a realiser.

@@ -1,0 +1,181 @@
+#!/bin/bash
+set -Eeuo pipefail
+umask 077
+
+SOURCE_PROJECT={{ moodle_recovery_source_project | quote }}
+SOURCE_BASE={{ moodle_recovery_source_base | quote }}
+PROJECT={{ moodle_recovery_project | quote }}
+BASE={{ moodle_recovery_base | quote }}
+SNAPSHOT={{ moodle_recovery_snapshot | quote }}
+VERSION={{ moodle_version | quote }}
+HOSTNAME={{ moodle_hostname | quote }}
+PORT={{ (moodle_https_port | string) | quote }}
+WWWROOT={{ moodle_recovery_wwwroot | quote }}
+PAUSE="$SOURCE_BASE/backups/restoration-active"
+RESTIC="/usr/local/sbin/$SOURCE_PROJECT-restic"
+CONFIG_HELPER=/usr/local/libexec/moodle-pfe/recovery-config.py
+SOURCE_DC=(/usr/bin/docker compose -p "$SOURCE_PROJECT" -f "$SOURCE_BASE/compose.yml")
+DC=(/usr/bin/docker compose -p "$PROJECT" -f "$BASE/compose.json")
+mode=${1:-}
+source_stopped=0
+copy_stopped=0
+success=0
+started=$(date +%s)
+
+log() { printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"; }
+fail() { log "ERREUR : $*" >&2; exit 1; }
+http_ok() {
+  /usr/bin/curl --fail --silent --show-error --connect-timeout 5 --max-time 20 \
+    --cacert "$1/tls/lab-ca.crt" --resolve "$HOSTNAME:$PORT:127.0.0.1" \
+    --output /dev/null "$WWWROOT/"
+}
+start_source() {
+  "${SOURCE_DC[@]}" up -d --no-recreate --wait --wait-timeout {{ moodle_recovery_start_timeout | int }} postgres php apache && http_ok "$SOURCE_BASE"
+}
+start_copy() {
+  "${DC[@]}" up -d --no-recreate --wait --wait-timeout {{ moodle_recovery_start_timeout | int }} postgres php apache && http_ok "$BASE"
+}
+finish() {
+  local rc=$?
+  trap - EXIT INT TERM
+  set +e
+  if (( !success && source_stopped )); then
+    log 'Echec : arreter la copie et tenter la reprise du pilote.' >&2
+    if "${DC[@]}" stop --timeout 60 apache php postgres && start_source; then
+      rm -f -- "$PAUSE"
+      log 'Pilote relance ; cron du pilote reactive.'
+    else
+      log 'ERREUR : reprise du pilote incomplete ; conserver le marqueur de suspension.' >&2
+    fi
+  elif (( !success && copy_stopped )); then
+    log 'Retour incomplet : arreter le pilote et tenter de relancer la copie.' >&2
+    if "${SOURCE_DC[@]}" stop --timeout 60 apache php postgres && start_copy; then
+      log 'Copie relancee ; cron du pilote toujours suspendu.'
+    else
+      log 'ERREUR : reprise de la copie incomplete.' >&2
+    fi
+  fi
+  if (( rc != 0 )); then log "OPERATION EN ECHEC, code $rc." >&2; fi
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+(( EUID == 0 )) || fail 'Lancer cette commande avec sudo.'
+[[ "$mode" == restore || "$mode" == return ]] || fail 'Argument attendu : restore ou return.'
+[[ "$BASE" != "$SOURCE_BASE" && "$BASE" != "$SOURCE_BASE/"* && "$SOURCE_BASE" != "$BASE/"* ]] || fail 'Chemins insuffisamment separes.'
+[[ "$PROJECT" != "$SOURCE_PROJECT" ]] || fail 'Projets Compose identiques.'
+exec 9>/run/lock/moodle-pfe-recovery.lock
+flock -n 9 || fail 'Une operation de restauration est deja en cours.'
+exec 7>"/run/lock/$SOURCE_PROJECT-backup.lock"
+flock -n 7 || fail 'Une sauvegarde du pilote est deja en cours.'
+
+if [[ "$mode" == restore ]]; then
+  [[ ! -e "$BASE" ]] || fail "Repertoire de copie deja present : $BASE. Ne pas relancer une importation sur des volumes existants."
+  [[ ! -e "$PAUSE" ]] || fail 'Un test de restauration est deja actif.'
+  [[ "$(cat "/usr/local/sbin/$SOURCE_PROJECT-cron")" == *PFE_RESTORE_PAUSE* ]] || fail 'Le cron du pilote doit inclure sa suspension de restauration.'
+  for pfe_kind in volume network; do
+    for pfe_name in $(if [[ "$pfe_kind" == volume ]]; then printf '%s\n' postgres_data moodledata; else printf '%s\n' public private; fi); do
+      if /usr/bin/docker "$pfe_kind" inspect "${PROJECT}_$pfe_name" >/dev/null 2>&1; then
+        fail "Ressource de copie deja presente : ${PROJECT}_$pfe_name."
+      fi
+    done
+  done
+  [[ -z "$(/usr/bin/docker ps -aq --filter "label=com.docker.compose.project=$PROJECT")" ]] || fail 'Des conteneurs de copie existent deja.'
+  pfe_free_kb=$(df -Pk "$(dirname "$BASE")" | awk 'NR==2 {print $4}')
+  (( pfe_free_kb >= {{ moodle_recovery_min_free_mb | int }} * 1024 )) || fail 'Au moins 3 Gio libres sont requis pour ce test initial.'
+  log 'Verifier le depot puis recuperer le point de sauvegarde dans un espace neuf.'
+  "$RESTIC" cat config >/dev/null
+  install -d -o root -g root -m 0700 "$BASE" "$BASE/archives"
+  "$RESTIC" restore "$SNAPSHOT" --target "$BASE/archives" --verify
+  shopt -s nullglob
+  pfe_checks=("$BASE/archives$SOURCE_BASE"/backups/staging/run-*/SHA256SUMS)
+  [[ -n "${pfe_checks[0]:-}" && -z "${pfe_checks[1]:-}" ]] || fail 'Un seul dossier d archives coherent est attendu.'
+  ARCHIVES=$(dirname "${pfe_checks[0]}")
+  (cd "$ARCHIVES" && sha256sum --check SHA256SUMS)
+  [[ "$(cat "$ARCHIVES/manifest.txt")" == *"Projet Compose : $SOURCE_PROJECT"* ]] || fail 'Projet du manifeste inattendu.'
+  [[ "$(cat "$ARCHIVES/manifest.txt")" == *"Moodle : $VERSION"* ]] || fail 'Version du manifeste inattendue.'
+  [[ "$(cat "$ARCHIVES/manifest.txt")" == *'Base : moodle'* ]] || fail 'Base du manifeste inattendue.'
+  log 'Retablir les fichiers de configuration, le code et le depot archive.'
+  tar --acls --xattrs --numeric-owner --same-owner -xf "$ARCHIVES/configuration.tar" -C "$BASE"
+  install -d -o root -g root -m 0755 "$BASE/releases/$VERSION/moodle"
+  install -d -o root -g root -m 0700 "$BASE/infrastructure"
+  tar --acls --xattrs --numeric-owner --same-owner -xf "$ARCHIVES/code.tar" -C "$BASE/releases/$VERSION/moodle"
+  tar --acls --xattrs --numeric-owner --same-owner -xf "$ARCHIVES/infrastructure.tar" -C "$BASE/infrastructure"
+  /usr/bin/python3 "$CONFIG_HELPER" "$BASE/compose.yml" "$BASE/compose.json" "$SOURCE_BASE" "$BASE" "$SOURCE_PROJECT" "$PROJECT" "$VERSION" "$WWWROOT"
+  "${DC[@]}" config --quiet
+  while IFS= read -r pfe_image; do /usr/bin/docker image inspect "$pfe_image" >/dev/null; done < "$BASE/compose.images"
+  log 'Creer les reseaux et les volumes vides de la copie.'
+  /usr/bin/docker network create --label moodle.pfe.recovery="$PROJECT" "${PROJECT}_public" >/dev/null
+  /usr/bin/docker network create --internal --label moodle.pfe.recovery="$PROJECT" "${PROJECT}_private" >/dev/null
+  /usr/bin/docker volume create --label moodle.pfe.recovery="$PROJECT" "${PROJECT}_postgres_data" >/dev/null
+  /usr/bin/docker volume create --label moodle.pfe.recovery="$PROJECT" "${PROJECT}_moodledata" >/dev/null
+
+  exec 8>"/run/lock/$SOURCE_PROJECT-cron.lock"
+  flock -w {{ moodle_recovery_cron_wait | int }} 8 || fail 'Le cron ne s est pas termine dans le delai prevu.'
+  printf '%s\n' "$PROJECT" > "$PAUSE"
+  source_stopped=1
+  log 'Suspendre le cron et arreter le pilote pendant l essai.'
+  "${SOURCE_DC[@]}" stop --timeout 60 apache php postgres
+  {% raw %}
+  for pfe_service in apache php postgres; do
+    pfe_cid=$("${SOURCE_DC[@]}" ps --all --quiet "$pfe_service")
+    [[ -n "$pfe_cid" && "$(/usr/bin/docker inspect --format '{{.State.Running}}' "$pfe_cid")" == false ]] || fail 'Un service du pilote est encore actif.'
+  done
+  pfe_driver=$(/usr/bin/docker volume inspect --format '{{.Driver}}' "${PROJECT}_moodledata")
+  [[ "$pfe_driver" == local ]] || fail 'Pilote de volume local attendu.'
+  DATA_DIR=$(/usr/bin/docker volume inspect --format '{{.Mountpoint}}' "${PROJECT}_moodledata")
+  {% endraw %}
+  [[ -d "$DATA_DIR" ]] || fail 'Volume de copie inaccessible.'
+  /usr/bin/python3 -c 'import pathlib,sys; sys.exit(0 if next(pathlib.Path(sys.argv[1]).iterdir(), None) is None else 1)' "$DATA_DIR"
+  tar --acls --xattrs --numeric-owner --same-owner -xf "$ARCHIVES/moodledata.tar" -C "$DATA_DIR"
+  log 'Initialiser PostgreSQL de la copie et importer la base sauvegardee.'
+  "${DC[@]}" up -d --pull never --wait --wait-timeout {{ moodle_recovery_start_timeout | int }} postgres
+  "${DC[@]}" exec -T --user postgres postgres sh -ec '
+    export PGPASSWORD="$(cat /run/secrets/postgres_admin_password)"
+    export PGCONNECT_TIMEOUT=10
+    exec pg_restore --host=127.0.0.1 --username=postgres --dbname=moodle --clean --if-exists --single-transaction --exit-on-error
+  ' < "$ARCHIVES/moodle.pgdump"
+  "${DC[@]}" exec -T --user postgres postgres sh -ec '
+    export PGPASSWORD="$(cat /run/secrets/postgres_admin_password)"
+    export PGCONNECT_TIMEOUT=10
+    exec psql --host=127.0.0.1 --username=postgres --dbname=moodle --set=ON_ERROR_STOP=1 --command="ANALYZE;"
+  '
+  "${DC[@]}" up -d --pull never --wait --wait-timeout {{ moodle_recovery_start_timeout | int }} php
+  "${DC[@]}" exec -T --user 33:33 php composer check-platform-reqs --no-dev
+  "${DC[@]}" exec -T --user 33:33 php php /var/www/moodle/admin/cli/purge_caches.php
+  "${DC[@]}" exec -T --user 33:33 php php -r '
+    define("CLI_SCRIPT", true);
+    require("/var/www/moodle/config.php");
+    require("/var/www/moodle/public/version.php");
+    if (!$DB->record_exists("config", ["name" => "version"])) { exit(1); }
+    if ($DB->count_records("course") < 2) { exit(1); }
+    if (!is_writable($CFG->dataroot)) { exit(1); }
+    if (is_writable("/var/www/moodle/config.php")) { exit(1); }
+    echo "Version Moodle restauree : ", $release, "\n";
+    echo "Cours presents : ", $DB->count_records("course"), "\n";
+    echo "Utilisateurs presents : ", $DB->count_records("user"), "\n";
+    echo "Quiz presents : ", $DB->count_records("quiz"), "\n";
+  '
+  "${DC[@]}" up -d --pull never --wait --wait-timeout {{ moodle_recovery_start_timeout | int }} apache
+  http_ok "$BASE"
+  elapsed=$(( $(date +%s) - started ))
+  printf 'snapshot=%s\nproject=%s\ntechnical_duration_seconds=%s\ncompleted_at_utc=%s\n' "$SNAPSHOT" "$PROJECT" "$elapsed" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$BASE/restore-success.txt"
+  success=1
+  source_stopped=0
+  log "RESTAURATION TECHNIQUE OK : $PROJECT, $elapsed secondes depuis le lancement."
+  log "La copie est active sur $WWWROOT ; le pilote et son cron restent suspendus pendant les tests."
+  log "Pour revenir au pilote : sudo /usr/local/sbin/$SOURCE_PROJECT-recovery return"
+else
+  [[ -s "$PAUSE" && "$(cat "$PAUSE")" == "$PROJECT" && -s "$BASE/compose.json" ]] || fail 'Aucun test actif correspondant a cette copie.'
+  exec 8>"/run/lock/$SOURCE_PROJECT-cron.lock"
+  flock -w {{ moodle_recovery_cron_wait | int }} 8 || fail 'Le verrou du cron reste occupe.'
+  log 'Arreter la copie avant le retour au pilote.'
+  copy_stopped=1
+  "${DC[@]}" stop --timeout 60 apache php postgres
+  start_source
+  rm -f -- "$PAUSE"
+  success=1
+  copy_stopped=0
+  log 'RETOUR AU PILOTE OK : services disponibles, cron reactive. La copie reste conservee et arretee.'
+fi

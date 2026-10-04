@@ -1,0 +1,63 @@
+---
+- name: Installer les outils de restauration
+  ansible.builtin.apt:
+    name: [python3, python3-yaml, curl, tar, util-linux]
+    state: present
+
+- name: Verifier la separation des projets et des chemins
+  ansible.builtin.assert:
+    that:
+      - moodle_recovery_action in ['prepare', 'restore', 'return']
+      - moodle_recovery_project != moodle_recovery_source_project
+      - moodle_recovery_base != moodle_recovery_source_base
+      - not moodle_recovery_base.startswith(moodle_recovery_source_base ~ '/')
+      - moodle_recovery_snapshot is match('^[0-9a-f]{64}$')
+    quiet: true
+
+- name: Creer le repertoire des outils de restauration
+  ansible.builtin.file:
+    path: /usr/local/libexec/moodle-pfe
+    state: directory
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Installer le generateur de configuration de restauration
+  ansible.builtin.copy:
+    src: recovery-config.py
+    dest: /usr/local/libexec/moodle-pfe/recovery-config.py
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Installer et verifier les commandes de restauration
+  ansible.builtin.template:
+    src: moodle-recovery.sh.j2
+    dest: "/usr/local/sbin/{{ moodle_recovery_source_project }}-recovery"
+    owner: root
+    group: root
+    mode: '0750'
+    validate: /bin/bash -n %s
+
+- name: Gerer le cron du pilote avec la suspension pendant les tests
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../roles/operations/templates/moodle-cron.sh.j2"
+    dest: "/usr/local/sbin/{{ moodle_recovery_source_project }}-cron"
+    owner: root
+    group: root
+    mode: '0750'
+    validate: /bin/sh -n %s
+
+- name: Executer l operation de restauration demandee explicitement
+  ansible.builtin.command:
+    argv:
+      - "/usr/local/sbin/{{ moodle_recovery_source_project }}-recovery"
+      - "{{ moodle_recovery_action }}"
+  register: moodle_recovery_operation
+  changed_when: true
+  when: moodle_recovery_action != 'prepare'
+
+- name: Afficher le resultat de l operation de restauration
+  ansible.builtin.debug:
+    var: moodle_recovery_operation.stdout_lines
+  when: moodle_recovery_action != 'prepare'

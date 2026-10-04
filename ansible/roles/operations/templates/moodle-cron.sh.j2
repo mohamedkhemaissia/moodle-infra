@@ -2,6 +2,11 @@
 set -eu
 umask 027
 
+# PFE_RESTORE_PAUSE
+if [ -e "{{ moodle_base_dir }}/backups/restoration-active" ]; then
+    exit 0
+fi
+
 exec >> "/var/log/moodle/{{ moodle_compose_project }}-cron.log" 2>&1
 
 exec /usr/bin/flock -n -E 0 "/run/lock/{{ moodle_compose_project }}-cron.lock" \
