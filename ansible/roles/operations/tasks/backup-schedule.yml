@@ -1,0 +1,36 @@
+---
+- name: Retirer l ancienne planification cron de sauvegarde
+  ansible.builtin.cron:
+    name: Moodle sauvegarde Restic
+    cron_file: "{{ moodle_compose_project }}-backup"
+    user: root
+    state: absent
+
+- name: Installer les unites systemd de sauvegarde
+  ansible.builtin.template:
+    src: "moodle-backup.{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ moodle_compose_project }}-backup.{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - service
+    - timer
+
+- name: Verifier les unites systemd installees
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemd-analyze
+      - verify
+      - "/etc/systemd/system/{{ moodle_compose_project }}-backup.service"
+      - "/etc/systemd/system/{{ moodle_compose_project }}-backup.timer"
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Gerer la planification systemd de sauvegarde
+  ansible.builtin.systemd_service:
+    name: "{{ moodle_compose_project }}-backup.timer"
+    daemon_reload: true
+    enabled: "{{ moodle_backup_schedule_enabled | bool }}"
+    state: >-
+      {{ (moodle_backup_schedule_enabled | bool) | ternary("started", "stopped") }}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Planification quotidienne de la sauvegarde Moodle
+
+[Timer]
+OnCalendar=*-*-* {{ "%02d" | format(moodle_backup_hour | int) }}:{{ "%02d" | format(moodle_backup_minute | int) }}:00 Africa/Tunis
+Persistent=true
+AccuracySec=1min
+Unit={{ moodle_compose_project }}-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -132,13 +132,5 @@
     - {src: moodle-restic.sh.j2, suffix: restic}
     - {src: moodle-backup.sh.j2, suffix: backup}
 
-- name: Configurer la sauvegarde quotidienne
-  ansible.builtin.cron:
-    name: Moodle sauvegarde Restic
-    cron_file: "{{ moodle_compose_project }}-backup"
-    user: root
-    hour: "{{ moodle_backup_hour }}"
-    minute: "{{ moodle_backup_minute }}"
-    disabled: "{{ not (moodle_backup_schedule_enabled | bool) }}"
-    job: "/usr/local/sbin/{{ moodle_compose_project }}-backup >> /var/log/moodle/{{ moodle_compose_project }}-backup.log 2>&1"
-    state: present
+- name: Gerer la planification systemd de sauvegarde
+  ansible.builtin.import_tasks: backup-schedule.yml

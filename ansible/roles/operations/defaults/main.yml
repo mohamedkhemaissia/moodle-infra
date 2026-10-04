@@ -15,6 +15,6 @@ moodle_backup_stop_timeout: 60
 moodle_backup_start_timeout: 180
 moodle_backup_min_free_mb: 1024
 # Activer apres validation de la premiere sauvegarde complete et restauration.
-moodle_backup_schedule_enabled: false
+moodle_backup_schedule_enabled: true
 moodle_backup_hour: '2'
 moodle_backup_minute: '0'

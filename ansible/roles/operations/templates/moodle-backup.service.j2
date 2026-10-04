@@ -1,0 +1,17 @@
+[Unit]
+Description=Sauvegarde complete Moodle vers Windows
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+ConditionPathExists=!{{ moodle_base_dir }}/backups/restoration-active
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/local/sbin/{{ moodle_compose_project }}-backup
+TimeoutStartSec=0
+TimeoutStopSec=300
+KillMode=mixed
+StandardOutput=append:/var/log/moodle/{{ moodle_compose_project }}-backup.log
+StandardError=inherit
