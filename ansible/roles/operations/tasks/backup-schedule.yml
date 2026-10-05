@@ -6,6 +6,15 @@
     user: root
     state: absent
 
+- name: Installer et verifier la commande de conservation
+  ansible.builtin.template:
+    src: moodle-retention.sh.j2
+    dest: "/usr/local/sbin/{{ moodle_compose_project }}-retention"
+    owner: root
+    group: root
+    mode: '0750'
+    validate: /bin/bash -n %s
+
 - name: Installer les unites systemd de sauvegarde
   ansible.builtin.template:
     src: "moodle-backup.{{ item }}.j2"

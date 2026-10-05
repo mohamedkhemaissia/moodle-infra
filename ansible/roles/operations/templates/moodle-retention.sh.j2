@@ -1,0 +1,108 @@
+#!/bin/bash
+set -Eeuo pipefail
+umask 077
+
+BASE_DIR={{ moodle_base_dir | quote }}
+PROJECT={{ moodle_compose_project | quote }}
+RESTIC={{ ('/usr/local/sbin/' ~ moodle_compose_project ~ '-restic') | quote }}
+KEEP_DAILY={{ moodle_backup_keep_daily | int }}
+KEEP_WEEKLY={{ moodle_backup_keep_weekly | int }}
+ENABLED={{ (moodle_backup_retention_enabled | bool) | ternary('true', 'false') }}
+PROTECTED_JSON={{ moodle_backup_retention_protected_snapshots | to_json | quote }}
+MODE="${1:-dry-run}"
+work_dir=''
+log() { printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"; }
+finish() {
+  local rc=$?
+  trap - EXIT INT TERM
+  set +e
+  if [[ -n "$work_dir" ]]; then rm -rf -- "$work_dir"; fi
+  if (( rc != 0 )); then log "ECHEC CONSERVATION, code $rc. Le marqueur de sauvegarde reste inchange." >&2; fi
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+case "$MODE" in dry-run|apply) ;; *) log 'Utiliser dry-run ou apply.' >&2; exit 1 ;; esac
+(( EUID == 0 && KEEP_DAILY > 0 && KEEP_WEEKLY > 0 )) || { log 'Utilisateur ou politique invalide.' >&2; exit 1; }
+if [[ "$MODE" == apply && "$ENABLED" != true ]]; then
+  log 'La conservation automatique est encore desactivee.' >&2; exit 1
+fi
+exec 9>"/run/lock/$PROJECT-backup.lock"
+flock -n 9 || { log 'Sauvegarde ou restauration deja en cours.' >&2; exit 1; }
+[[ ! -e "$BASE_DIR/backups/restoration-active" ]] || { log 'Test de restauration actif.' >&2; exit 1; }
+[[ -s "$BASE_DIR/backups/last-success.txt" ]] || { log 'Aucune sauvegarde reussie enregistree.' >&2; exit 1; }
+BACKUP_HOST=$(/usr/bin/hostname)
+work_dir=$(mktemp -d "$BASE_DIR/backups/retention.XXXXXX")
+
+log "Verifier le depot puis calculer la conservation : $KEEP_DAILY quotidiens, $KEEP_WEEKLY hebdomadaires."
+"$RESTIC" check
+"$RESTIC" --json forget --host "$BACKUP_HOST" --tag "$PROJECT-full" --group-by host,tags \
+  --keep-daily "$KEEP_DAILY" --keep-weekly "$KEEP_WEEKLY" --dry-run > "$work_dir/policy.json"
+
+/usr/bin/python3 - "$work_dir/policy.json" "$BASE_DIR/backups/last-success.txt" "$BACKUP_HOST" "$PROJECT-full" "$PROTECTED_JSON" > "$work_dir/remove.txt" <<'PY'
+import json, re, sys
+from pathlib import Path
+
+def require(condition, message):
+    if not condition:
+        raise SystemExit(message)
+
+def valid_id(value):
+    return isinstance(value, str) and re.fullmatch(r'[0-9a-f]{64}', value) is not None
+
+policy = json.loads(Path(sys.argv[1]).read_text())
+marker = Path(sys.argv[2]).read_text().splitlines()
+matches = [line.split('=', 1)[1] for line in marker if line.startswith('snapshot=')]
+require(len(matches) == 1 and valid_id(matches[0]), 'Marqueur de sauvegarde invalide.')
+latest = matches[0]
+protected = json.loads(sys.argv[5])
+require(isinstance(protected, list) and all(valid_id(x) for x in protected), 'Liste des points proteges invalide.')
+protected = set(protected) | {latest}
+require(isinstance(policy, list) and len(policy) > 0, 'Politique vide ou invalide.')
+catalog, remove = {}, []
+for group in policy:
+    require(isinstance(group, dict) and group.get('host') == sys.argv[3], 'Groupe de sauvegarde inattendu.')
+    for field in ('keep', 'remove'):
+        snapshots = group.get(field)
+        if snapshots is None:
+            snapshots = []
+        require(isinstance(snapshots, list), 'Liste de sauvegardes invalide.')
+        for snapshot in snapshots:
+            require(isinstance(snapshot, dict), 'Objet de sauvegarde invalide.')
+            sid = snapshot.get('id')
+            require(valid_id(sid) and sid not in catalog, 'Identifiant invalide ou duplique.')
+            require(snapshot.get('hostname') == sys.argv[3], 'Hote de sauvegarde inattendu.')
+            tags = snapshot.get('tags')
+            require(isinstance(tags, list) and sys.argv[4] in tags, 'Sauvegarde hors du pilote Moodle.')
+            catalog[sid] = snapshot
+            if field == 'remove':
+                remove.append(sid)
+require(latest in catalog, 'La derniere sauvegarde reussie est absente du depot selectionne.')
+require(protected <= catalog.keys(), 'Un point protege est absent du depot selectionne.')
+selected = [sid for sid in remove if sid not in protected]
+print('Points proteges : ' + ', '.join(sorted(sid[:8] for sid in protected)), file=sys.stderr)
+print(f'Conservation : {len(catalog)-len(selected)} points conserves, {len(selected)} suppressions retenues.', file=sys.stderr)
+for sid in selected:
+    print(sid)
+PY
+
+{% raw %}
+mapfile -t remove_ids < "$work_dir/remove.txt"
+if [[ "$MODE" == dry-run ]]; then
+  for sid in "${remove_ids[@]}"; do log "SUPPRESSION PROPOSEE : $sid"; done
+  log "SIMULATION OK : ${#remove_ids[@]} suppression(s), aucune modification du depot."
+  exit 0
+fi
+
+if (( ${#remove_ids[@]} > 0 )); then
+  log "Supprimer ${#remove_ids[@]} point(s) non protege(s), puis liberer les donnees inutilisees."
+  "$RESTIC" forget "${remove_ids[@]}"
+  "$RESTIC" prune
+fi
+"$RESTIC" check
+printf 'removed=%s\ncompleted_at_utc=%s\n' "${#remove_ids[@]}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$work_dir/success.txt"
+mv -f -- "$work_dir/success.txt" "$BASE_DIR/backups/retention-last-success.txt"
+log "CONSERVATION OK : ${#remove_ids[@]} suppression(s), points proteges conserves."
+{% endraw %}

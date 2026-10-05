@@ -10,6 +10,9 @@ Type=oneshot
 User=root
 UMask=0077
 ExecStart=/usr/local/sbin/{{ moodle_compose_project }}-backup
+{% if moodle_backup_retention_enabled | bool %}
+ExecStartPost=/usr/local/sbin/{{ moodle_compose_project }}-retention apply
+{% endif %}
 TimeoutStartSec=0
 TimeoutStopSec=300
 KillMode=mixed

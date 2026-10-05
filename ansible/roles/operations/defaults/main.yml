@@ -18,3 +18,10 @@ moodle_backup_min_free_mb: 1024
 moodle_backup_schedule_enabled: true
 moodle_backup_hour: '2'
 moodle_backup_minute: '0'
+
+# Conservation des sauvegardes apres validation.
+moodle_backup_retention_enabled: true
+moodle_backup_keep_daily: 7
+moodle_backup_keep_weekly: 4
+moodle_backup_retention_protected_snapshots:
+  - b0a4abbc1c50394312af6c92a333136c8b65760133b179aa2eda04c9d7e3f7e6
