@@ -1,0 +1,12 @@
+[Unit]
+Description=Controle de l age de la sauvegarde Moodle
+ConditionPathExists=!{{ moodle_base_dir }}/backups/restoration-active
+
+[Service]
+Type=oneshot
+User=root
+UMask=0027
+ExecStart=/usr/local/sbin/{{ moodle_compose_project }}-backup-age
+TimeoutStartSec=30
+StandardOutput=append:/var/log/moodle/{{ moodle_compose_project }}-backup-age.log
+StandardError=inherit

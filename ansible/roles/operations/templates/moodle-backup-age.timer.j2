@@ -1,0 +1,11 @@
+[Unit]
+Description=Controle horaire de la sauvegarde Moodle
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=1h
+AccuracySec=1min
+Unit={{ moodle_compose_project }}-backup-age.service
+
+[Install]
+WantedBy=timers.target

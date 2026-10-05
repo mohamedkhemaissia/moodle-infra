@@ -1,0 +1,38 @@
+---
+- name: Installer et verifier le controle de l age des sauvegardes
+  ansible.builtin.template:
+    src: moodle-backup-age.py.j2
+    dest: "/usr/local/sbin/{{ moodle_compose_project }}-backup-age"
+    owner: root
+    group: root
+    mode: '0750'
+    validate: /usr/bin/python3 -c "import ast,pathlib,sys; ast.parse(pathlib.Path(sys.argv[1]).read_text())" %s
+
+- name: Installer les unites systemd du controle des sauvegardes
+  ansible.builtin.template:
+    src: "moodle-backup-age.{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ moodle_compose_project }}-backup-age.{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - service
+    - timer
+
+- name: Verifier les unites du controle des sauvegardes
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemd-analyze
+      - verify
+      - "/etc/systemd/system/{{ moodle_compose_project }}-backup-age.service"
+      - "/etc/systemd/system/{{ moodle_compose_project }}-backup-age.timer"
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Gerer le controle horaire des sauvegardes
+  ansible.builtin.systemd_service:
+    name: "{{ moodle_compose_project }}-backup-age.timer"
+    daemon_reload: true
+    enabled: "{{ moodle_backup_schedule_enabled | bool }}"
+    state: >-
+      {{ (moodle_backup_schedule_enabled | bool) | ternary("started", "stopped") }}

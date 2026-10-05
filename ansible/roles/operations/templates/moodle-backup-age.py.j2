@@ -1,0 +1,48 @@
+#!/usr/bin/python3
+"""Controle en lecture seule de l age du point de sauvegarde recuperable."""
+import argparse
+from datetime import datetime, timezone
+from pathlib import Path
+import re
+import sys
+
+DEFAULT_MARKER = {{ (moodle_base_dir ~ '/backups/last-success.txt') | to_json }}
+DEFAULT_MAX_AGE = {{ moodle_backup_max_age_hours | int }}
+
+def evaluate(marker, now, max_hours):
+    if max_hours <= 0:
+        raise ValueError('Le seuil doit etre strictement positif.')
+    records = {}
+    for line in Path(marker).read_text(encoding='utf-8').splitlines():
+        if not line.strip():
+            continue
+        key, separator, value = line.partition('=')
+        if not separator or key in records:
+            raise ValueError('Marqueur mal forme ou cle dupliquee.')
+        records[key] = value
+    snapshot = records.get('snapshot', '')
+    if re.fullmatch(r'[0-9a-f]{64}', snapshot) is None:
+        raise ValueError('Identifiant de sauvegarde absent ou invalide.')
+    frozen = datetime.strptime(records['frozen_at_utc'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+    completed = datetime.strptime(records['completed_at_utc'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+    if frozen > completed or completed > now:
+        raise ValueError('Dates incoherentes ou dans le futur ; verifier l horloge.')
+    age_hours = (now - frozen).total_seconds() / 3600
+    if age_hours > max_hours:
+        return 2, f'ALERTE SAUVEGARDE : point {snapshot[:8]} age de {age_hours:.2f} heures, seuil {max_hours} heures depasse.'
+    return 0, f'SAUVEGARDE RECENTE : point {snapshot[:8]}, age {age_hours:.2f} heures, seuil {max_hours} heures.'
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--marker', default=DEFAULT_MARKER, help='Marqueur a examiner ; un fichier distinct peut servir aux tests.')
+    args = parser.parse_args()
+    now = datetime.now(timezone.utc)
+    try:
+        code, message = evaluate(args.marker, now, DEFAULT_MAX_AGE)
+    except (OSError, UnicodeError, ValueError, KeyError) as error:
+        code, message = 1, f'ERREUR CONTROLE SAUVEGARDE : {error}'
+    print(now.strftime('%Y-%m-%dT%H:%M:%SZ') + ' ' + message, file=sys.stderr if code else sys.stdout)
+    return code
+
+if __name__ == '__main__':
+    sys.exit(main())

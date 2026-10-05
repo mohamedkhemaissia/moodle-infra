@@ -43,3 +43,6 @@
     enabled: "{{ moodle_backup_schedule_enabled | bool }}"
     state: >-
       {{ (moodle_backup_schedule_enabled | bool) | ternary("started", "stopped") }}
+
+- name: Gerer le controle de l age des sauvegardes
+  ansible.builtin.import_tasks: backup-age.yml
