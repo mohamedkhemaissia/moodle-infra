@@ -1,0 +1,41 @@
+services:
+  api:
+    image: {{ control_plane_image | to_json }}
+    network_mode: host
+    restart: unless-stopped
+    command:
+      - python
+      - -m
+      - uvicorn
+      - app.main:app
+      - --host
+      - 127.0.0.1
+      - --port
+      - {{ control_plane_port | string | to_json }}
+    environment:
+      PROMETHEUS_URL: {{ control_plane_prometheus_url | to_json }}
+      MAX_SCRAPE_AGE_SECONDS: {{ control_plane_max_scrape_age_seconds | string | to_json }}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ control_plane_memory_limit | to_json }}
+    cpus: {{ control_plane_cpu_limit | to_json }}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:{{ control_plane_port }}/api/v1/health', timeout=3).close()"
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

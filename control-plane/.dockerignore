@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!requirements-lock.txt
+!app/
+!app/*.py
+!tests/
+!tests/test_api.py

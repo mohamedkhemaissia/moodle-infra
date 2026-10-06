@@ -1,0 +1,7 @@
+---
+- name: Deployer l API de pilotage Moodle
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - control_plane

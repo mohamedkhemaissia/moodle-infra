@@ -1,0 +1,126 @@
+---
+- name: Creer les repertoires de l API
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ control_plane_base_dir }}"
+    - "{{ control_plane_base_dir }}/build"
+    - "{{ control_plane_base_dir }}/build/app"
+    - "{{ control_plane_base_dir }}/build/tests"
+
+- name: Copier les sources necessaires a l image
+  ansible.builtin.copy:
+    src: "{{ control_plane_source_dir }}/{{ item }}"
+    dest: "{{ control_plane_base_dir }}/build/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ control_plane_source_files }}"
+
+- name: Calculer les empreintes des sources
+  ansible.builtin.stat:
+    path: "{{ control_plane_base_dir }}/build/{{ item }}"
+    checksum_algorithm: sha256
+    get_checksum: true
+  loop: "{{ control_plane_source_files }}"
+  register: control_plane_source_checksums
+
+- name: Identifier la version de l image par ses sources
+  ansible.builtin.set_fact:
+    control_plane_image: >-
+      {{ control_plane_image_repository }}:{{
+      (control_plane_source_checksums.results
+      | map(attribute='stat.checksum') | join('') | hash('sha256'))[:16] }}
+
+- name: Rechercher cette image sur le serveur
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - ls
+      - --quiet
+      - --no-trunc
+      - "{{ control_plane_image }}"
+  register: control_plane_image_lookup
+  changed_when: false
+
+- name: Construire l image et executer les tests de l API
+  ansible.builtin.command:
+    argv:
+      - docker
+      - build
+      - --tag
+      - "{{ control_plane_image }}"
+      - "{{ control_plane_base_dir }}/build"
+  when: control_plane_image_lookup.stdout | trim | length == 0
+  changed_when: true
+
+- name: Installer la configuration Docker Compose de l API
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ control_plane_base_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Valider la configuration Docker Compose
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-directory
+      - "{{ control_plane_base_dir }}"
+      - --project-name
+      - "{{ control_plane_project_name }}"
+      - config
+      - --quiet
+  changed_when: false
+
+- name: Demarrer le service de pilotage
+  community.docker.docker_compose_v2:
+    project_src: "{{ control_plane_base_dir }}"
+    project_name: "{{ control_plane_project_name }}"
+    state: present
+    build: never
+    pull: never
+    recreate: auto
+    wait: true
+    wait_timeout: 60
+
+- name: Verifier la sante de l API
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/health"
+    return_content: true
+    status_code: 200
+    use_proxy: false
+  register: control_plane_health
+  until: >-
+    control_plane_health.status | default(0) == 200 and
+    control_plane_health.json is defined and
+    control_plane_health.json.status == 'ok' and
+    control_plane_health.json.service == 'moodle-control-plane'
+  retries: 6
+  delay: 5
+
+- name: Verifier la lecture de Prometheus depuis l API
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/metrics/summary"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+  register: control_plane_summary
+  until: >-
+    control_plane_summary.status | default(0) == 200 and
+    control_plane_summary.json is defined and
+    control_plane_summary.json.source == 'prometheus'
+  retries: 6
+  delay: 5
+
+- name: Afficher le resume de supervision
+  ansible.builtin.debug:
+    var: control_plane_summary.json
