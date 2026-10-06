@@ -39,5 +39,24 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  blackbox:
+    image: "{{ monitoring_blackbox_image }}"
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - "--config.file=/etc/blackbox/blackbox.yml"
+      - "--web.listen-address=127.0.0.1:{{ monitoring_blackbox_port }}"
+    extra_hosts:
+      - "{{ monitoring_moodle_hostname }}:{{ monitoring_moodle_target_ip }}"
+    volumes:
+      - "{{ monitoring_base_dir }}/blackbox:/etc/blackbox:ro"
+    mem_limit: 128m
+    cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   prometheus_data:

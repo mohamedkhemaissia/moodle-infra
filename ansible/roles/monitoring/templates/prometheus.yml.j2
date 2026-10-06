@@ -13,3 +13,25 @@ scrape_configs:
         labels:
           environment: pfe
           service: moodle-host
+
+  - job_name: blackbox_exporter
+    static_configs:
+      - targets: ["127.0.0.1:{{ monitoring_blackbox_port }}"]
+
+  - job_name: moodle_https
+    metrics_path: /probe
+    scrape_timeout: 10s
+    params:
+      module: [moodle_https]
+    static_configs:
+      - targets: ["{{ monitoring_moodle_probe_url }}"]
+        labels:
+          environment: pfe
+          service: moodle-pilote
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "127.0.0.1:{{ monitoring_blackbox_port }}"

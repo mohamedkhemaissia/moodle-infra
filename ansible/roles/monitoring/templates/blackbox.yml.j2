@@ -1,0 +1,14 @@
+modules:
+  moodle_https:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      valid_status_codes: [200]
+      follow_redirects: true
+      fail_if_not_ssl: true
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+      tls_config:
+        ca_file: /etc/blackbox/moodle-ca.crt
+        insecure_skip_verify: false

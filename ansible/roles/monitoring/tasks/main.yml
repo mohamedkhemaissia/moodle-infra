@@ -9,6 +9,26 @@
   loop:
     - "{{ monitoring_base_dir }}"
     - "{{ monitoring_base_dir }}/prometheus"
+    - "{{ monitoring_base_dir }}/blackbox"
+
+- name: Copier le certificat public de confiance Moodle
+  ansible.builtin.copy:
+    src: "{{ monitoring_moodle_ca_source }}"
+    dest: "{{ monitoring_base_dir }}/blackbox/moodle-ca.crt"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Redemarrer Blackbox
+
+- name: Installer la configuration Blackbox
+  ansible.builtin.template:
+    src: blackbox.yml.j2
+    dest: "{{ monitoring_base_dir }}/blackbox/blackbox.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Redemarrer Blackbox
 
 - name: Installer la configuration Docker Compose
   ansible.builtin.template:
@@ -68,7 +88,7 @@
     wait: true
     wait_timeout: 60
 
-- name: Appliquer le redemarrage demande par la configuration
+- name: Appliquer les redemarrages demandes
   ansible.builtin.meta: flush_handlers
 
 - name: Attendre que Prometheus soit pret
@@ -81,7 +101,7 @@
   retries: 12
   delay: 5
 
-- name: Verifier la collecte des deux cibles
+- name: Verifier la collecte des quatre cibles
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ monitoring_prometheus_port }}/api/v1/targets"
     return_content: true
@@ -91,8 +111,24 @@
   until: >-
     monitoring_targets.json is defined and
     monitoring_targets.json.status == 'success' and
-    (monitoring_targets.json.data.activeTargets | length) == 2 and
+    (monitoring_targets.json.data.activeTargets | length) == 4 and
     (monitoring_targets.json.data.activeTargets
-    | selectattr('health', 'equalto', 'up') | list | length) == 2
+    | selectattr('health', 'equalto', 'up') | list | length) == 4
+  retries: 12
+  delay: 5
+
+- name: Verifier le succes de la sonde HTTPS Moodle
+  ansible.builtin.uri:
+    url: >-
+      http://127.0.0.1:{{ monitoring_prometheus_port }}/api/v1/query?query={{ 'probe_success{job="moodle_https"}' | urlencode }}
+    return_content: true
+    status_code: 200
+    use_proxy: false
+  register: monitoring_probe
+  until: >-
+    monitoring_probe.json is defined and
+    monitoring_probe.json.status == 'success' and
+    (monitoring_probe.json.data.result | length) == 1 and
+    (monitoring_probe.json.data.result[0].value[1] | float) == 1
   retries: 12
   delay: 5

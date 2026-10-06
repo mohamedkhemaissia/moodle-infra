@@ -7,3 +7,12 @@
     services:
       - prometheus
     dependencies: false
+
+- name: Redemarrer Blackbox
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_base_dir }}"
+    project_name: "{{ monitoring_project_name }}"
+    state: restarted
+    services:
+      - blackbox
+    dependencies: false
