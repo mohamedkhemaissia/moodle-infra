@@ -1,0 +1,7 @@
+---
+- name: Planifier les exports de metriques Moodle
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - metrics_export

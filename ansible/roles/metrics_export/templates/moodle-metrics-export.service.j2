@@ -1,0 +1,29 @@
+[Unit]
+Description=Export historique des metriques Moodle pour l apprentissage
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User={{ metrics_export_user }}
+Group={{ metrics_export_group }}
+WorkingDirectory={{ metrics_export_base_dir }}
+ExecStart=/usr/bin/python3 -B -u -m ml.export_metrics --hours {{ metrics_export_hours }} --step-seconds {{ metrics_export_step_seconds }} --max-age-seconds {{ metrics_export_max_age_seconds }} --prometheus-url "{{ metrics_export_prometheus_url }}" --output-dir "{{ metrics_export_data_dir }}"
+TimeoutStartSec=5min
+UMask=0027
+Nice=10
+MemoryMax={{ metrics_export_memory_max }}
+CPUQuota={{ metrics_export_cpu_quota }}
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ metrics_export_data_dir }}
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=moodle-metrics-export

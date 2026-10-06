@@ -1,0 +1,10 @@
+---
+- name: Recharger systemd pour les exports
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Reprogrammer le timer des exports
+  ansible.builtin.systemd_service:
+    name: moodle-metrics-export.timer
+    enabled: true
+    state: restarted

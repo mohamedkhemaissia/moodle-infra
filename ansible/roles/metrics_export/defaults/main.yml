@@ -1,0 +1,17 @@
+---
+metrics_export_base_dir: /opt/moodle-metrics-export
+metrics_export_data_dir: /var/lib/moodle-metrics-export/exports
+metrics_export_source_dir: "{{ playbook_dir }}/../../ml"
+metrics_export_user: moodle-metrics
+metrics_export_group: moodle-metrics
+metrics_export_prometheus_url: http://127.0.0.1:9090
+metrics_export_hours: 6
+metrics_export_step_seconds: 30
+metrics_export_max_age_seconds: 60
+metrics_export_calendar: "*-*-* *:05:00"
+metrics_export_memory_max: 128M
+metrics_export_cpu_quota: "20%"
+metrics_export_source_files:
+  - __init__.py
+  - export_metrics.py
+  - tests/test_export_metrics.py

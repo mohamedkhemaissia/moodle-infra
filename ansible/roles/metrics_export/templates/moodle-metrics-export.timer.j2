@@ -1,0 +1,11 @@
+[Unit]
+Description=Export des metriques Moodle chaque heure
+
+[Timer]
+OnCalendar={{ metrics_export_calendar }}
+AccuracySec=30s
+Persistent=true
+Unit=moodle-metrics-export.service
+
+[Install]
+WantedBy=timers.target

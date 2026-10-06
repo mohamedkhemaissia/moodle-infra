@@ -1,0 +1,117 @@
+---
+- name: Verifier les parametres de la periode d export
+  ansible.builtin.assert:
+    that:
+      - metrics_export_hours | float > 0
+      - metrics_export_hours | float <= 24
+      - metrics_export_step_seconds | int >= 15
+      - metrics_export_max_age_seconds | float > 0
+      - metrics_export_base_dir is match('^/[A-Za-z0-9_./-]+$')
+      - metrics_export_data_dir is match('^/[A-Za-z0-9_./-]+$')
+    fail_msg: "Verifier la duree, le pas, la fraicheur et les chemins de l export."
+
+- name: Valider le calendrier systemd
+  ansible.builtin.command:
+    argv:
+      - systemd-analyze
+      - calendar
+      - "{{ metrics_export_calendar }}"
+  changed_when: false
+
+- name: Creer le groupe des exports
+  ansible.builtin.group:
+    name: "{{ metrics_export_group }}"
+    system: true
+    state: present
+
+- name: Creer le compte systeme des exports
+  ansible.builtin.user:
+    name: "{{ metrics_export_user }}"
+    group: "{{ metrics_export_group }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+    state: present
+
+- name: Creer les repertoires du code
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ metrics_export_base_dir }}"
+    - "{{ metrics_export_base_dir }}/ml"
+    - "{{ metrics_export_base_dir }}/ml/tests"
+
+- name: Creer le repertoire des donnees
+  ansible.builtin.file:
+    path: "{{ metrics_export_data_dir }}"
+    state: directory
+    owner: "{{ metrics_export_user }}"
+    group: "{{ metrics_export_group }}"
+    mode: "0750"
+
+- name: Copier le code et ses tests
+  ansible.builtin.copy:
+    src: "{{ metrics_export_source_dir }}/{{ item }}"
+    dest: "{{ metrics_export_base_dir }}/ml/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ metrics_export_source_files }}"
+  register: metrics_export_source_copy
+
+- name: Verifier le code installe
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -B
+      - -m
+      - unittest
+      - discover
+      - -s
+      - ml/tests
+      - -v
+    chdir: "{{ metrics_export_base_dir }}"
+  when: metrics_export_source_copy.changed
+  changed_when: false
+
+- name: Installer le service d export
+  ansible.builtin.template:
+    src: moodle-metrics-export.service.j2
+    dest: /etc/systemd/system/moodle-metrics-export.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Recharger systemd pour les exports
+
+- name: Installer la planification des exports
+  ansible.builtin.template:
+    src: moodle-metrics-export.timer.j2
+    dest: /etc/systemd/system/moodle-metrics-export.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Recharger systemd pour les exports
+    - Reprogrammer le timer des exports
+
+- name: Valider les unites systemd
+  ansible.builtin.command:
+    argv:
+      - systemd-analyze
+      - verify
+      - /etc/systemd/system/moodle-metrics-export.service
+      - /etc/systemd/system/moodle-metrics-export.timer
+  changed_when: false
+
+- name: Appliquer les changements de configuration
+  ansible.builtin.meta: flush_handlers
+
+- name: Activer la planification des exports au demarrage
+  ansible.builtin.systemd_service:
+    name: moodle-metrics-export.timer
+    enabled: true
+    state: started
