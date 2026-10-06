@@ -1,0 +1,147 @@
+---
+- name: Creer les repertoires du tableau de bord
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ dashboard_base_dir }}"
+    - "{{ dashboard_base_dir }}/build"
+    - "{{ dashboard_base_dir }}/build/src"
+    - "{{ dashboard_base_dir }}/build/public"
+    - "{{ dashboard_base_dir }}/build/tests"
+
+- name: Copier les sources necessaires a l image
+  ansible.builtin.copy:
+    src: "{{ dashboard_source_dir }}/{{ item }}"
+    dest: "{{ dashboard_base_dir }}/build/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ dashboard_source_files }}"
+
+- name: Calculer les empreintes des sources
+  ansible.builtin.stat:
+    path: "{{ dashboard_base_dir }}/build/{{ item }}"
+    checksum_algorithm: sha256
+    get_checksum: true
+  loop: "{{ dashboard_source_files }}"
+  register: dashboard_source_checksums
+
+- name: Identifier la version de l image par ses sources
+  ansible.builtin.set_fact:
+    dashboard_image: >-
+      {{ dashboard_image_repository }}:{{
+      (dashboard_source_checksums.results
+      | map(attribute='stat.checksum') | join('') | hash('sha256'))[:16] }}
+
+- name: Rechercher cette image sur le serveur
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - ls
+      - --quiet
+      - --no-trunc
+      - "{{ dashboard_image }}"
+  register: dashboard_image_lookup
+  changed_when: false
+
+- name: Construire l image et executer les tests de l interface
+  ansible.builtin.command:
+    argv:
+      - docker
+      - build
+      - --tag
+      - "{{ dashboard_image }}"
+      - "{{ dashboard_base_dir }}/build"
+  when: dashboard_image_lookup.stdout | trim | length == 0
+  changed_when: true
+
+- name: Valider la configuration Nginx
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - --network
+      - none
+      - --read-only
+      - --tmpfs
+      - /tmp:rw,noexec,nosuid,size=32m,mode=1777
+      - --env
+      - "DASHBOARD_PORT={{ dashboard_port }}"
+      - --env
+      - "API_ORIGIN={{ dashboard_api_origin }}"
+      - --entrypoint
+      - /bin/sh
+      - "{{ dashboard_image }}"
+      - -ec
+      - >-
+        envsubst '$DASHBOARD_PORT $API_ORIGIN'
+        < /etc/dashboard/nginx.conf.template > /tmp/nginx.conf
+        && nginx -t -c /tmp/nginx.conf
+  changed_when: false
+
+- name: Installer la configuration Docker Compose
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ dashboard_base_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Valider la configuration Docker Compose
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-directory
+      - "{{ dashboard_base_dir }}"
+      - --project-name
+      - "{{ dashboard_project_name }}"
+      - config
+      - --quiet
+  changed_when: false
+
+- name: Demarrer le tableau de bord
+  community.docker.docker_compose_v2:
+    project_src: "{{ dashboard_base_dir }}"
+    project_name: "{{ dashboard_project_name }}"
+    state: present
+    build: never
+    pull: never
+    recreate: auto
+    wait: true
+    wait_timeout: 60
+
+- name: Verifier le serveur du tableau de bord
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ dashboard_port }}/healthz"
+    status_code: 200
+    use_proxy: false
+  register: dashboard_health
+  until: dashboard_health.status | default(0) == 200
+  retries: 6
+  delay: 5
+
+- name: Verifier la lecture des mesures a travers Nginx
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ dashboard_port }}/api/v1/metrics/summary"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+  register: dashboard_summary
+  until: >-
+    dashboard_summary.status | default(0) == 200 and
+    dashboard_summary.json is defined and
+    dashboard_summary.json.source == 'prometheus'
+  retries: 6
+  delay: 5
+
+- name: Afficher les mesures accessibles au tableau de bord
+  ansible.builtin.debug:
+    var: dashboard_summary.json

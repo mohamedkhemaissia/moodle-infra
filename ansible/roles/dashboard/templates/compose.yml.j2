@@ -1,0 +1,22 @@
+services:
+  dashboard:
+    image: {{ dashboard_image | to_json }}
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      DASHBOARD_PORT: {{ dashboard_port | string | to_json }}
+      API_ORIGIN: {{ dashboard_api_origin | to_json }}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ dashboard_memory_limit | to_json }}
+    cpus: {{ dashboard_cpu_limit | to_json }}
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

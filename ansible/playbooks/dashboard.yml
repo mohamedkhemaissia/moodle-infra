@@ -1,0 +1,7 @@
+---
+- name: Deployer le tableau de bord Moodle
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - dashboard

@@ -1,0 +1,25 @@
+---
+dashboard_base_dir: /opt/moodle-dashboard
+dashboard_project_name: moodle-dashboard
+dashboard_image_repository: moodle-pfe/dashboard
+dashboard_source_dir: "{{ playbook_dir }}/../../dashboard"
+dashboard_port: 8088
+dashboard_api_origin: http://127.0.0.1:8000
+dashboard_memory_limit: 128m
+dashboard_cpu_limit: "0.25"
+dashboard_source_files:
+  - Dockerfile
+  - .dockerignore
+  - package.json
+  - package-lock.json
+  - index.html
+  - vite.config.js
+  - nginx.conf.template
+  - start.sh
+  - public/favicon.svg
+  - src/main.jsx
+  - src/App.jsx
+  - src/snapshot.js
+  - src/useMetrics.js
+  - src/styles.css
+  - tests/snapshot.test.js
