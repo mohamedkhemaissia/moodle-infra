@@ -1,0 +1,13 @@
+---
+monitoring_project_name: moodle-monitoring
+monitoring_base_dir: /opt/moodle-monitoring
+
+monitoring_prometheus_image: prom/prometheus:v3.13.4
+monitoring_node_exporter_image: prom/node-exporter:v1.12.1
+
+monitoring_prometheus_port: 9090
+monitoring_node_exporter_port: 9100
+
+monitoring_scrape_interval: 15s
+monitoring_retention_time: 7d
+monitoring_retention_size: 1GB

@@ -1,0 +1,98 @@
+---
+- name: Creer les repertoires de supervision
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ monitoring_base_dir }}"
+    - "{{ monitoring_base_dir }}/prometheus"
+
+- name: Installer la configuration Docker Compose
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ monitoring_base_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Installer la configuration Prometheus
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ monitoring_base_dir }}/prometheus/prometheus.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Redemarrer Prometheus
+
+- name: Valider la configuration Docker Compose
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-directory
+      - "{{ monitoring_base_dir }}"
+      - --project-name
+      - "{{ monitoring_project_name }}"
+      - config
+      - --quiet
+  changed_when: false
+
+- name: Valider la configuration Prometheus avec promtool
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - --network
+      - none
+      - --volume
+      - "{{ monitoring_base_dir }}/prometheus:/etc/prometheus:ro"
+      - --entrypoint
+      - /bin/promtool
+      - "{{ monitoring_prometheus_image }}"
+      - check
+      - config
+      - /etc/prometheus/prometheus.yml
+  changed_when: false
+
+- name: Demarrer les services de supervision
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_base_dir }}"
+    project_name: "{{ monitoring_project_name }}"
+    state: present
+    pull: missing
+    recreate: auto
+    wait: true
+    wait_timeout: 60
+
+- name: Appliquer le redemarrage demande par la configuration
+  ansible.builtin.meta: flush_handlers
+
+- name: Attendre que Prometheus soit pret
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ monitoring_prometheus_port }}/-/ready"
+    status_code: 200
+    use_proxy: false
+  register: monitoring_ready
+  until: monitoring_ready.status | default(0) == 200
+  retries: 12
+  delay: 5
+
+- name: Verifier la collecte des deux cibles
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ monitoring_prometheus_port }}/api/v1/targets"
+    return_content: true
+    status_code: 200
+    use_proxy: false
+  register: monitoring_targets
+  until: >-
+    monitoring_targets.json is defined and
+    monitoring_targets.json.status == 'success' and
+    (monitoring_targets.json.data.activeTargets | length) == 2 and
+    (monitoring_targets.json.data.activeTargets
+    | selectattr('health', 'equalto', 'up') | list | length) == 2
+  retries: 12
+  delay: 5

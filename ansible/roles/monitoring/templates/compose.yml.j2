@@ -1,0 +1,43 @@
+services:
+  prometheus:
+    image: "{{ monitoring_prometheus_image }}"
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time={{ monitoring_retention_time }}"
+      - "--storage.tsdb.retention.size={{ monitoring_retention_size }}"
+      - "--web.listen-address=127.0.0.1:{{ monitoring_prometheus_port }}"
+    volumes:
+      - "{{ monitoring_base_dir }}/prometheus:/etc/prometheus:ro"
+      - prometheus_data:/prometheus
+    mem_limit: 512m
+    cpus: "0.50"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  node-exporter:
+    image: "{{ monitoring_node_exporter_image }}"
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command:
+      - "--path.rootfs=/host"
+      - "--web.listen-address=127.0.0.1:{{ monitoring_node_exporter_port }}"
+      - "--no-collector.timex"
+    volumes:
+      - "/:/host:ro,rslave"
+    mem_limit: 128m
+    cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  prometheus_data:

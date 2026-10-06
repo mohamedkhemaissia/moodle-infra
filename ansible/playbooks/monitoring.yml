@@ -1,0 +1,7 @@
+---
+- name: Deployer la supervision de la VM Moodle
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - monitoring
