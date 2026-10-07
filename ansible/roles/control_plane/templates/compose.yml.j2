@@ -15,6 +15,14 @@ services:
     environment:
       PROMETHEUS_URL: {{ control_plane_prometheus_url | to_json }}
       MAX_SCRAPE_AGE_SECONDS: {{ control_plane_max_scrape_age_seconds | string | to_json }}
+{% if control_plane_forecasts_enabled | bool %}
+      FORECASTS_DIR: /opt/forecasts
+    volumes:
+      - type: bind
+        source: {{ control_plane_forecast_runtime_dir | to_json }}
+        target: /opt/forecasts
+        read_only: true
+{% endif %}
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=32m,mode=1777

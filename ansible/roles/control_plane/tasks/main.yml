@@ -59,6 +59,10 @@
   when: control_plane_image_lookup.stdout | trim | length == 0
   changed_when: true
 
+- name: Deployer les artefacts des previsions
+  ansible.builtin.include_tasks: forecasts.yml
+  when: control_plane_forecasts_enabled | bool
+
 - name: Installer la configuration Docker Compose de l API
   ansible.builtin.template:
     src: compose.yml.j2
@@ -90,6 +94,21 @@
     recreate: auto
     wait: true
     wait_timeout: 60
+  register: control_plane_deployment
+
+- name: Recharger les modeles modifies dans une API deja demarree
+  community.docker.docker_compose_v2:
+    project_src: "{{ control_plane_base_dir }}"
+    project_name: "{{ control_plane_project_name }}"
+    state: restarted
+    services:
+      - api
+    wait: true
+    wait_timeout: 60
+  when:
+    - control_plane_forecasts_enabled | bool
+    - control_plane_forecast_artifacts.changed
+    - not control_plane_deployment.changed
 
 - name: Verifier la sante de l API
   ansible.builtin.uri:
@@ -124,3 +143,26 @@
 - name: Afficher le resume de supervision
   ansible.builtin.debug:
     var: control_plane_summary.json
+
+- name: Verifier l endpoint des previsions
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/forecasts/summary"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+  register: control_plane_forecasts_response
+  retries: 6
+  delay: 5
+  until: >-
+    control_plane_forecasts_response.status | default(0) == 200 and
+    control_plane_forecasts_response.json is defined and
+    control_plane_forecasts_response.json.status | default('') in ['available', 'unavailable']
+  when: control_plane_forecasts_enabled | bool
+
+- name: Afficher l etat des previsions
+  ansible.builtin.debug:
+    msg: >-
+      Etat={{ control_plane_forecasts_response.json.status }},
+      raison={{ control_plane_forecasts_response.json.reason | default('historique complet') }}
+  when: control_plane_forecasts_enabled | bool
