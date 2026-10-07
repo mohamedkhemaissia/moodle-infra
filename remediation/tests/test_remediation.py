@@ -132,6 +132,59 @@ class ActionTests(unittest.TestCase):
     def test_a_tls_error_never_dispatches_the_action(self):
         result = self.run_action(probe_fn=lambda: {"success": False, "tls_validated": False, "http_status": None})
         self.assertEqual(result["status"], "blocked"); self.assertEqual(self.calls, [])
+    def test_http_500_with_confirmed_stopped_php_requires_proven_recovery(self):
+        def probe():
+            return {"success": self.started, "tls_validated": True,
+                    "http_status": 200 if self.started else 500}
+        def json_read(url):
+            if "/decisions/" in url:
+                return decision()
+            result = metrics(self.started)
+            result["metrics"]["moodle_http_status_code"] = 200 if self.started else 500
+            return result
+        with patch("remediation.action.get_json", side_effect=json_read):
+            result = apply(self.config, 1, self.identifier, self.expected,
+                           inspect_fn=self.inspect, probe_fn=probe,
+                           operations_fn=lambda config: None, start_fn=self.start,
+                           pause=lambda seconds: None, wait_seconds=5)
+        self.assertEqual(result["status"], "completed")
+        self.assertTrue(result["recovered"])
+        self.assertEqual(result["checks"]["https_before"]["http_status"], 500)
+        self.assertEqual(self.calls, ["a" * 64])
+        self.assertEqual(len(result["checks"]["recovery_samples"]), 3)
+        self.assertIsNotNone(self.store.detail(self.identifier)["action_reservation"])
+    def test_http_500_with_running_php_never_dispatches(self):
+        result = self.run_action(inspect_fn=lambda name: container(name, True),
+                                probe_fn=lambda: {"success": False, "tls_validated": True, "http_status": 500})
+        self.assertEqual(result["reason"], "php_not_stopped_or_maintenance")
+        self.assertFalse(result["action_dispatched"])
+        self.assertEqual(self.calls, [])
+        self.assertIsNone(self.store.detail(self.identifier)["action_reservation"])
+    def test_http_500_with_unhealthy_database_never_dispatches(self):
+        def inspect(name):
+            state = container(name)
+            if name == "postgres":
+                state["health"] = "unhealthy"
+            return state
+        result = self.run_action(inspect_fn=inspect,
+                                probe_fn=lambda: {"success": False, "tls_validated": True, "http_status": 500})
+        self.assertEqual(result["reason"], "dependency_not_ready:postgres")
+        self.assertFalse(result["action_dispatched"])
+        self.assertEqual(self.calls, [])
+        self.assertIsNone(self.store.detail(self.identifier)["action_reservation"])
+    def test_http_500_without_validated_tls_never_dispatches(self):
+        result = self.run_action(probe_fn=lambda: {"success": False, "tls_validated": False, "http_status": 500})
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(self.calls, [])
+        self.assertIsNone(self.store.detail(self.identifier)["action_reservation"])
+    def test_other_http_codes_do_not_authorize_stopped_php_start(self):
+        for status in (200, 302, 400, 404, 501):
+            with self.subTest(http_status=status):
+                result = self.run_action(probe_fn=lambda: {
+                    "success": False, "tls_validated": True, "http_status": status})
+                self.assertEqual(result["status"], "blocked")
+                self.assertEqual(self.calls, [])
+                self.assertIsNone(self.store.detail(self.identifier)["action_reservation"])
     def test_running_php_never_restarts(self):
         result = self.run_action(inspect_fn=lambda name: container(name, True))
         self.assertEqual(result["status"], "blocked"); self.assertEqual(self.calls, [])
@@ -230,6 +283,12 @@ class TLSTests(TLSFixture, unittest.TestCase):
 
 class RealRunnerTests(TLSFixture, unittest.TestCase):
     def test_actual_runner_playbook_action_audit_and_tls_recovery(self):
+        self.runner_case(503)
+
+    def test_actual_runner_recovers_http_500_with_stopped_php(self):
+        self.runner_case(500)
+
+    def runner_case(self, failure_status):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp); code = directory / "code"; code.mkdir()
             for package in ("remediation", "diagnostics"):
@@ -240,7 +299,7 @@ class RealRunnerTests(TLSFixture, unittest.TestCase):
                 def log_message(self, *args): pass
                 def do_GET(self):
                     ready = flag.exists(); body = b'<input name="username"><input name="password">' if ready else b'PHP stopped'
-                    self.send_response(200 if ready else 503); self.send_header('Content-Type', 'text/html')
+                    self.send_response(200 if ready else failure_status); self.send_header('Content-Type', 'text/html')
                     self.send_header('Content-Length', str(len(body))); self.end_headers(); self.wfile.write(body)
             tls = ThreadingHTTPServer(('127.0.0.1', 0), LoginHandler)
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); context.load_cert_chain(self.cert, self.key)
@@ -250,6 +309,8 @@ class RealRunnerTests(TLSFixture, unittest.TestCase):
                 def log_message(self, *args): pass
                 def do_GET(self):
                     body = decision() if '/decisions/' in self.path else metrics(flag.exists())
+                    if '/decisions/' not in self.path and not flag.exists():
+                        body['metrics']['moodle_http_status_code'] = failure_status
                     data = json.dumps(body).encode(); self.send_response(200); self.send_header('Content-Length',str(len(data)))
                     self.end_headers(); self.wfile.write(data)
             api = ThreadingHTTPServer(('127.0.0.1', 0), APIHandler)
@@ -291,6 +352,8 @@ subprocess.run = _run
                 report = store.detail(result['run_id'])
                 self.assertEqual((rc, result['status']), (0, 'completed'), report)
                 self.assertTrue(flag.exists()); self.assertTrue(report['report']['recovered'])
+                self.assertEqual(report['report']['checks']['https_before']['http_status'], failure_status)
+                self.assertTrue(report['report']['checks']['https_before']['tls_validated'])
                 self.assertIsNotNone(report['action_reservation']); self.assertEqual(report['runner_rc'], 0)
             finally:
                 for server, thread in ((tls,tls_thread),(api,api_thread)):

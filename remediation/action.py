@@ -108,7 +108,10 @@ def apply(config, incident_id, identifier, expected, *, inspect_fn=inspect, prob
         report["checks"]["containers_before"] = services
         before = probe_fn()
         report["checks"]["https_before"] = before
-        if before["success"] is not False or before["tls_validated"] is not True or before["http_status"] not in (502,503,504):
+        # Le pilote peut renvoyer HTTP 500 lorsque PHP est arrete. Ce code seul
+        # ne prouve aucune cause : l'etat PHP et les dependances sont controles
+        # ci-dessus, puis revalides juste avant le demarrage du conteneur identifie.
+        if before["success"] is not False or before["tls_validated"] is not True or before["http_status"] not in (500,502,503,504):
             raise Blocked("php_upstream_failure_not_confirmed")
         # Revalidation apres les sondes et comparaison du conteneur juste avant l'action.
         decision, _ = current(config, incident_id, expected)
