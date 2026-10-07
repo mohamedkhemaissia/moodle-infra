@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Request, Response, Query, Path as Ap
 from typing import Literal
 
 from .models import MetricsSummary
+from .diagnostics_store import DiagnosticStore, DiagnosticStorageError
 from .incidents import IncidentStore, IncidentStorageError
 from .decisions import policy_document, summarize as decision_summary
 from .anomalies import AnomalyBundle, AnomalyBundleError, AnomalyService
@@ -27,12 +28,15 @@ def create_app(
     anomalies_dir: str | None = None,
     incidents_dir: str | None = None,
     decisions_enabled: bool | None = None,
+    diagnostics_dir: str | None = None,
 ) -> FastAPI:
     url = prometheus_url or os.getenv("PROMETHEUS_URL", "http://127.0.0.1:9090")
     max_age = float(os.getenv("MAX_SCRAPE_AGE_SECONDS", "60"))
     model_directory = forecasts_dir if forecasts_dir is not None else os.getenv("FORECASTS_DIR", "")
 
     anomaly_directory = anomalies_dir if anomalies_dir is not None else os.getenv("ANOMALIES_DIR", "")
+
+    diagnostic_directory = diagnostics_dir if diagnostics_dir is not None else os.getenv("DIAGNOSTICS_DIR", "")
 
     incident_directory = incidents_dir if incidents_dir is not None else os.getenv("INCIDENTS_DIR", "")
     if decisions_enabled is None:
@@ -68,18 +72,19 @@ def create_app(
                     logging.getLogger(__name__).error("Artefacts d'anomalies invalides ; endpoint indisponible.")
             application.state.incidents = IncidentStore(incident_directory) if incident_directory else None
             application.state.decisions_enabled = decisions_enabled
+            application.state.diagnostics = DiagnosticStore(diagnostic_directory) if diagnostic_directory else None
             yield
 
     application = FastAPI(
         title="Pilotage Moodle",
         description="Supervision, analyses experimentales et historique des incidents observes du pilote Moodle.",
-        version="0.5.0",
+        version="0.6.0",
         lifespan=lifespan,
     )
 
     @application.get("/api/v1/health", tags=["Sante"])
     async def health():
-        return {"status": "ok", "service": "moodle-control-plane", "version": "0.5.0"}
+        return {"status": "ok", "service": "moodle-control-plane", "version": "0.6.0"}
 
     @application.get(
         "/api/v1/metrics/summary",
@@ -208,6 +213,34 @@ def create_app(
         result = await read_incidents(decision_summary, store, datetime.now(timezone.utc).timestamp(), incident_id)
         if result is None:
             raise HTTPException(404, detail="Incident inconnu.")
+        return result
+
+    async def read_diagnostics(request, response, method, *args, **kwargs):
+        response.headers["Cache-Control"] = "no-store"
+        store = request.app.state.diagnostics
+        if store is None:
+            raise HTTPException(503, detail="Les diagnostics ne sont pas configures.")
+        try:
+            return await asyncio.to_thread(getattr(store, method), *args, **kwargs)
+        except DiagnosticStorageError as exc:
+            raise HTTPException(503, detail="Le journal des diagnostics est indisponible.") from exc
+
+    @application.get("/api/v1/diagnostics/summary", tags=["Diagnostics"])
+    async def diagnostics_summary(request: Request, response: Response):
+        return await read_diagnostics(request, response, "summary")
+
+    @application.get("/api/v1/diagnostics", tags=["Diagnostics"])
+    async def diagnostics_list(request: Request, response: Response,
+                               incident_id: int | None = Query(None, ge=1, le=9223372036854775807),
+                               limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=100000)):
+        return await read_diagnostics(request, response, "listing", incident_id=incident_id, limit=limit, offset=offset)
+
+    @application.get("/api/v1/diagnostics/{run_id}", tags=["Diagnostics"])
+    async def diagnostic_detail(request: Request, response: Response,
+                                run_id: str = ApiPath(..., pattern="^[0-9a-f]{32}$")):
+        result = await read_diagnostics(request, response, "detail", run_id)
+        if result is None:
+            raise HTTPException(404, detail="Diagnostic inconnu.")
         return result
 
     return application

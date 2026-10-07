@@ -1,0 +1,146 @@
+---
+- name: Verifier les repertoires dedies aux diagnostics
+  ansible.builtin.assert:
+    that:
+      - diagnostics_base_dir is match('^/opt/[^/]+$')
+      - diagnostics_data_dir is match('^/var/lib/[^/]+$')
+      - diagnostics_data_dir != (control_plane_incident_data_dir | default('/var/lib/moodle-control-plane/incidents'))
+      - diagnostics_data_dir == control_plane_diagnostics_data_dir
+      - control_plane_decisions_enabled | bool
+      - control_plane_diagnostics_enabled | bool
+    fail_msg: "Configurer des repertoires dedies et activer decisions et diagnostics."
+
+- name: Verifier le Python utilise pour le nouvel environnement
+  ansible.builtin.command:
+    argv:
+      - "{{ diagnostics_python_source }}"
+      - -c
+      - "import sys; assert sys.version_info[:2] == (3, 12); print(sys.version.split()[0])"
+  changed_when: false
+
+- name: Creer les repertoires du code de diagnostic
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ diagnostics_base_dir }}"
+    - "{{ diagnostics_base_dir }}/code"
+    - "{{ diagnostics_base_dir }}/code/diagnostics"
+    - "{{ diagnostics_base_dir }}/code/diagnostics/project"
+    - "{{ diagnostics_base_dir }}/code/diagnostics/tests"
+
+- name: Creer le repertoire persistant du journal
+  ansible.builtin.file:
+    path: "{{ diagnostics_data_dir }}"
+    state: directory
+    owner: root
+    group: "10001"
+    mode: "2750"
+
+- name: Copier le code du diagnostic et ses tests
+  ansible.builtin.copy:
+    src: "{{ diagnostics_source_dir }}/{{ item }}"
+    dest: "{{ diagnostics_base_dir }}/code/diagnostics/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ diagnostics_files }}"
+  register: diagnostics_sources
+
+- name: Creer un environnement Python independant
+  ansible.builtin.command:
+    argv:
+      - "{{ diagnostics_python_source }}"
+      - -m
+      - venv
+      - "{{ diagnostics_base_dir }}/venv"
+    creates: "{{ diagnostics_base_dir }}/venv/bin/python"
+
+- name: Verifier les versions installees dans cet environnement
+  ansible.builtin.command:
+    argv:
+      - "{{ diagnostics_base_dir }}/venv/bin/python"
+      - -c
+      - |
+        import importlib.metadata as m, sys
+        from pathlib import Path
+        try:
+            wanted = [line.strip().split('==') for line in Path(sys.argv[1]).read_text().splitlines() if line.strip() and not line.startswith('#')]
+            ok = all(m.version(name) == version for name, version in wanted)
+        except m.PackageNotFoundError:
+            ok = False
+        sys.exit(0 if ok else 3)
+      - "{{ diagnostics_base_dir }}/code/diagnostics/requirements-lock.txt"
+  register: diagnostics_versions
+  changed_when: false
+  failed_when: diagnostics_versions.rc not in [0, 3]
+
+- name: Installer Runner et Ansible dans le nouvel environnement
+  ansible.builtin.command:
+    argv:
+      - "{{ diagnostics_base_dir }}/venv/bin/python"
+      - -m
+      - pip
+      - install
+      - --disable-pip-version-check
+      - "--only-binary=:all:"
+      - --timeout
+      - "120"
+      - --retries
+      - "10"
+      - -r
+      - "{{ diagnostics_base_dir }}/code/diagnostics/requirements-lock.txt"
+  when: diagnostics_versions.rc == 3
+  changed_when: true
+
+- name: Installer la configuration locale des diagnostics
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ diagnostics_base_dir }}/config.json"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Verifier le module de diagnostic installe
+  ansible.builtin.command:
+    argv:
+      - "{{ diagnostics_base_dir }}/venv/bin/python"
+      - -B
+      - -m
+      - unittest
+      - discover
+      - -s
+      - diagnostics/tests
+      - -q
+    chdir: "{{ diagnostics_base_dir }}/code"
+  changed_when: false
+  when: diagnostics_sources.changed or diagnostics_versions.rc == 3
+
+- name: Initialiser le journal des diagnostics
+  ansible.builtin.command:
+    argv:
+      - "{{ diagnostics_base_dir }}/venv/bin/python"
+      - -B
+      - -m
+      - diagnostics.initialize
+    chdir: "{{ diagnostics_base_dir }}/code"
+  register: diagnostics_initialization
+  changed_when: (diagnostics_initialization.stdout | from_json).changed
+
+- name: Autoriser la lecture du journal par l API
+  ansible.builtin.file:
+    path: "{{ diagnostics_data_dir }}/diagnostics.sqlite3"
+    owner: root
+    group: "10001"
+    mode: "0640"
+
+- name: Installer la commande de lancement manuel
+  ansible.builtin.template:
+    src: moodle-diagnostic.j2
+    dest: /usr/local/sbin/moodle-diagnostic
+    owner: root
+    group: root
+    mode: "0755"

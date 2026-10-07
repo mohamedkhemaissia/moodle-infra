@@ -25,7 +25,10 @@ services:
 {% if control_plane_incidents_enabled | bool %}
       INCIDENTS_DIR: /var/lib/moodle-incidents
 {% endif %}
-{% if control_plane_forecasts_enabled | bool or control_plane_anomalies_enabled | bool or control_plane_incidents_enabled | bool %}
+{% if control_plane_diagnostics_enabled | bool %}
+      DIAGNOSTICS_DIR: /var/lib/moodle-diagnostics
+{% endif %}
+{% if control_plane_forecasts_enabled | bool or control_plane_anomalies_enabled | bool or control_plane_incidents_enabled | bool or control_plane_diagnostics_enabled | bool %}
     volumes:
 {% if control_plane_forecasts_enabled | bool %}
       - type: bind
@@ -43,6 +46,12 @@ services:
       - type: bind
         source: {{ control_plane_incident_data_dir | to_json }}
         target: /var/lib/moodle-incidents
+        read_only: true
+{% endif %}
+{% if control_plane_diagnostics_enabled | bool %}
+      - type: bind
+        source: {{ control_plane_diagnostics_data_dir | to_json }}
+        target: /var/lib/moodle-diagnostics
         read_only: true
 {% endif %}
 {% endif %}

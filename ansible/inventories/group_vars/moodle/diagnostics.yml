@@ -1,0 +1,5 @@
+---
+control_plane_diagnostics_enabled: true
+control_plane_diagnostics_data_dir: /var/lib/moodle-diagnostics
+diagnostics_data_dir: "{{ control_plane_diagnostics_data_dir }}"
+diagnostics_python_source: /home/hamma/.local/share/uv/tools/ansible-core/bin/python

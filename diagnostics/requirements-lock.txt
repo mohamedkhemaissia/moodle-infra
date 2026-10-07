@@ -1,0 +1,14 @@
+ansible-core==2.21.4
+ansible-runner==2.4.3
+cffi==2.1.1
+cryptography==50.0.2
+Jinja2==3.1.6
+lockfile==0.12.2
+MarkupSafe==3.0.4
+packaging==26.3
+pexpect==4.9.0
+ptyprocess==0.7.0
+pycparser==3.0
+python-daemon==3.1.2
+PyYAML==6.0.3
+resolvelib==1.2.1

@@ -1,0 +1,19 @@
+---
+diagnostics_base_dir: /opt/moodle-diagnostics
+diagnostics_data_dir: /var/lib/moodle-diagnostics
+diagnostics_source_dir: "{{ playbook_dir }}/../../diagnostics"
+# Interpreteur observe sur la VM ; ne modifie pas l'environnement uv d'Ansible.
+diagnostics_python_source: /home/hamma/.local/share/uv/tools/ansible-core/bin/python
+diagnostics_api_url: "http://127.0.0.1:{{ control_plane_port | default(8000) }}"
+diagnostics_prometheus_url: http://127.0.0.1:9090
+diagnostics_files:
+  - __init__.py
+  - store.py
+  - policy.py
+  - collector.py
+  - run.py
+  - initialize.py
+  - requirements-lock.txt
+  - project/ansible.cfg
+  - project/diagnose.yml
+  - tests/test_diagnostics.py

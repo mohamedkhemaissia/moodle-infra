@@ -1,0 +1,8 @@
+---
+- name: Installer les diagnostics Ansible Runner et leur consultation
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - diagnostics
+    - control_plane

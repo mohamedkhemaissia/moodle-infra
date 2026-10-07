@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+umask 027
+cd {{ (diagnostics_base_dir ~ '/code') | quote }}
+exec /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 PYTHONNOUSERSITE=1 \
+  {{ (diagnostics_base_dir ~ '/venv/bin/python') | quote }} -B -m diagnostics.run "$@"
