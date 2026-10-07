@@ -1,0 +1,87 @@
+---
+- name: Verifier les parametres de detection des anomalies
+  ansible.builtin.assert:
+    that:
+      - control_plane_anomaly_bundle_dir | length > 0
+      - control_plane_anomaly_bundle_dir is match('^/')
+      - control_plane_anomaly_features_dir | length > 0
+      - control_plane_anomaly_features_dir is match('^/')
+      - control_plane_max_scrape_age_seconds | float == 60
+    fail_msg: "Indiquer les dossiers absolus du modele et des variables ; fraicheur attendue de 60 s."
+
+- name: Identifier les artefacts des anomalies sur le controleur
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    checksum_algorithm: sha256
+    get_checksum: true
+  loop:
+    - "{{ control_plane_anomaly_bundle_dir }}/model.json"
+    - "{{ control_plane_anomaly_bundle_dir }}/report.json"
+    - "{{ control_plane_anomaly_features_dir }}/metadata.json"
+  delegate_to: localhost
+  become: false
+  register: control_plane_anomaly_source_checksums
+
+- name: Verifier la presence des trois artefacts
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg | default(false)
+      - item.stat.checksum is defined
+    fail_msg: "Artefact absent ou non regulier : {{ item.item }}"
+  loop: "{{ control_plane_anomaly_source_checksums.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Definir le repertoire de cette version des artefacts
+  ansible.builtin.set_fact:
+    control_plane_anomaly_deployed_dir: >-
+      {{ control_plane_anomaly_runtime_dir }}/{{
+      (control_plane_anomaly_source_checksums.results
+      | map(attribute='stat.checksum') | join('') | hash('sha256'))[:16] }}
+
+- name: Creer le repertoire de cette version des anomalies
+  ansible.builtin.file:
+    path: "{{ control_plane_anomaly_deployed_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Copier les artefacts de cette version des anomalies
+  ansible.builtin.copy:
+    src: "{{ item.source }}"
+    dest: "{{ control_plane_anomaly_deployed_dir }}/{{ item.target }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - source: "{{ control_plane_anomaly_bundle_dir }}/model.json"
+      target: model.json
+    - source: "{{ control_plane_anomaly_bundle_dir }}/report.json"
+      target: report.json
+    - source: "{{ control_plane_anomaly_features_dir }}/metadata.json"
+      target: features_metadata.json
+
+- name: Valider les anomalies avant de modifier le service actif
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - --network
+      - none
+      - --read-only
+      - --cap-drop
+      - ALL
+      - --security-opt
+      - no-new-privileges:true
+      - --mount
+      - "type=bind,src={{ control_plane_anomaly_deployed_dir }},dst=/opt/anomalies,readonly"
+      - "{{ control_plane_image }}"
+      - python
+      - -m
+      - app.anomalies
+      - --check-bundle
+      - /opt/anomalies
+  changed_when: false

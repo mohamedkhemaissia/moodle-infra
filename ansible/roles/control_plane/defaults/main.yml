@@ -12,6 +12,12 @@ control_plane_forecasts_enabled: false
 control_plane_forecast_bundle_dir: ""
 control_plane_forecast_features_dir: ""
 control_plane_forecast_runtime_dir: "{{ control_plane_base_dir }}/forecasts"
+control_plane_anomalies_enabled: false
+control_plane_anomaly_bundle_dir: ""
+control_plane_anomaly_features_dir: ""
+control_plane_anomaly_runtime_dir: "{{ control_plane_base_dir }}/anomalies"
+# Ce module est partage avec l'entrainement ; copie dans l'image sans duplication dans Git.
+control_plane_isolation_source: "{{ playbook_dir }}/../../ml/isolation_model.py"
 control_plane_source_files:
   - Dockerfile
   - .dockerignore
@@ -19,7 +25,11 @@ control_plane_source_files:
   - app/__init__.py
   - app/main.py
   - app/forecasts.py
+  - app/resource_history.py
+  - app/anomalies.py
+  - app/isolation_model.py
   - app/models.py
   - app/prometheus.py
   - tests/test_api.py
   - tests/test_forecasts.py
+  - tests/test_anomalies.py

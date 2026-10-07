@@ -19,7 +19,15 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ control_plane_source_files }}"
+  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py']) }}"
+
+- name: Copier le moteur numerique partage avec l entrainement
+  ansible.builtin.copy:
+    src: "{{ control_plane_isolation_source }}"
+    dest: "{{ control_plane_base_dir }}/build/app/isolation_model.py"
+    owner: root
+    group: root
+    mode: "0644"
 
 - name: Calculer les empreintes des sources
   ansible.builtin.stat:
@@ -62,6 +70,10 @@
 - name: Deployer les artefacts des previsions
   ansible.builtin.include_tasks: forecasts.yml
   when: control_plane_forecasts_enabled | bool
+
+- name: Deployer les artefacts des anomalies
+  ansible.builtin.include_tasks: anomalies.yml
+  when: control_plane_anomalies_enabled | bool
 
 - name: Installer la configuration Docker Compose de l API
   ansible.builtin.template:
@@ -166,3 +178,42 @@
       Etat={{ control_plane_forecasts_response.json.status }},
       raison={{ control_plane_forecasts_response.json.reason | default('historique complet') }}
   when: control_plane_forecasts_enabled | bool
+
+- name: Verifier la configuration du modele d anomalies
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/anomalies/model"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+  register: control_plane_anomaly_model
+  until: >-
+    control_plane_anomaly_model.status | default(0) == 200 and
+    control_plane_anomaly_model.json is defined and
+    control_plane_anomaly_model.json.status | default('') == 'configured'
+  retries: 6
+  delay: 5
+  when: control_plane_anomalies_enabled | bool
+
+- name: Verifier l endpoint des anomalies
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/anomalies/summary"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+  register: control_plane_anomaly_response
+  until: >-
+    control_plane_anomaly_response.status | default(0) == 200 and
+    control_plane_anomaly_response.json is defined and
+    control_plane_anomaly_response.json.status | default('') in ['available', 'unavailable']
+  retries: 6
+  delay: 5
+  when: control_plane_anomalies_enabled | bool
+
+- name: Afficher l etat de detection des anomalies
+  ansible.builtin.debug:
+    msg: >-
+      Mode=observation, etat={{ control_plane_anomaly_response.json.status }},
+      raison={{ control_plane_anomaly_response.json.reason | default('historique complet') }}
+  when: control_plane_anomalies_enabled | bool

@@ -1,0 +1,5 @@
+---
+# Artefacts experimentaux du pilote ; donnees et modeles exclus de Git.
+control_plane_anomalies_enabled: true
+control_plane_anomaly_bundle_dir: /home/hamma/moodle-infra/ml/data/models/moodle_anomalies_20261006T192230Z_e20a57079c6e
+control_plane_anomaly_features_dir: /home/hamma/moodle-infra/ml/data/features/moodle_features_20261006T192230Z_a4188acb4149
