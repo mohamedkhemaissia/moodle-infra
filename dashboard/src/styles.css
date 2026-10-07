@@ -1050,3 +1050,79 @@ h1 {
     transition: none;
   }
 }
+
+/* Incidents, analyse et journaux du pilote. */
+.ops-panel { margin-top: 22px; overflow: hidden; }
+.ops-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 18px; padding: 24px; }
+.ops-card { min-width: 0; padding: 22px; border: 1px solid #e5eaf2; border-radius: 12px; background: #fbfcfe; }
+.ops-card h3, .decision-card h3, .run-detail h3 { font-size: 14px; color: #223049; }
+.ops-caption { font-size: 11px; color: #697b92; margin-top: 7px; overflow-wrap: anywhere; }
+.ops-note, .ops-section-note { font-size: 11px; line-height: 1.65; color: #697b92; }
+.ops-note { padding-top: 14px; margin-top: 12px; border-top: 1px solid #e4eaf2; }
+.ops-section-note { padding: 0 24px 20px; }
+.ops-empty { padding: 24px 0; font-size: 12px; color: #64748b; }
+.ops-table-wrap { width: 100%; overflow-x: auto; margin: 15px 0 0; }
+.ops-table-wrap table { border-collapse: collapse; width: 100%; text-align: left; font-size: 11px; }
+.ops-table-wrap th { color: #52647e; font-weight: 600; }
+.ops-table-wrap th, .ops-table-wrap td { padding: 11px 10px; border-bottom: 1px solid #e6ebf2; vertical-align: top; }
+.ops-table-wrap small, .audit-row small { display: block; font-size: 10px; color: #7c8a9e; margin-top: 4px; }
+.ops-table-wrap td strong { white-space: nowrap; }
+.incident-table { min-width: 760px; }
+.incident-table td:first-child { min-width: 230px; max-width: 290px; }
+.incident-table td:first-child strong { white-space: normal; }
+.ops-badge { display: inline-block; padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.ops-badge.good { color: #16786c; background: #e1f3ed; }
+.ops-badge.warning { color: #93691b; background: #fff1d2; }
+.ops-badge.bad { color: #ad424a; background: #fae6e9; }
+.ops-badge.neutral { color: #5c718f; background: #e9eef6; }
+.anomaly-score { display: flex; align-items: baseline; gap: 14px; padding: 22px 0 8px; flex-wrap: wrap; }
+.anomaly-score strong { font-size: 36px; letter-spacing: -1px; color: #3975e7; }
+.anomaly-score span { font-size: 11px; color: #7c8a9e; }
+.anomaly-verdict { font-size: 12px; font-weight: 550; }
+.ops-body { padding: 22px 24px; }
+.incident-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 22px; font-size: 12px; color: #75859b; }
+.incident-summary strong { font-size: 22px; color: #223049; margin-right: 4px; }
+.collector-label { margin-left: auto; border-radius: 20px; padding: 6px 12px; font-size: 10px; }
+.collector-label.good { color: #16786c; background: #e1f3ed; }
+.collector-label.warning { color: #93691b; background: #fff1d2; }
+.ops-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ops-toolbar label { color: #667b95; font-size: 11px; }
+.ops-toolbar select { margin-left: 10px; border: 1px solid #dce3ee; background: white; border-radius: 7px; padding: 8px; color: #445974; font: inherit; }
+.ops-toolbar select:focus-visible, details summary:focus-visible { outline: 3px solid #779ff5; outline-offset: 3px; }
+.ops-button, .ops-pagination button { border: 1px solid #dce3ee; background: white; border-radius: 7px; padding: 8px 12px; color: #526681; font-size: 11px; cursor: pointer; }
+.ops-button:hover, .ops-pagination button:hover:not(:disabled) { color: #2460c3; border-color: #9db8e9; }
+.ops-pagination { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 16px; color: #7a879a; font-size: 10px; flex-wrap: wrap; }
+.ops-pagination div { display: flex; gap: 7px; }
+.ops-pagination button:disabled { opacity: .45; cursor: default; }
+.selected { background: #edf3fd; }
+.decision-card { margin-top: 24px; padding: 20px; background: #f8faff; border: 1px solid #dce6f6; border-radius: 10px; }
+.decision-card .ops-badge { margin-top: 14px; }
+.decision-explanation { margin-top: 12px; font-size: 12px; color: #697b92; }
+.decision-card h4 { font-size: 12px; margin-bottom: 8px; }
+.decision-card ol { padding-left: 21px; font-size: 12px; color: #697b92; }
+.decision-card li { margin: 7px 0; }
+.ops-panel details { margin-top: 16px; font-size: 11px; color: #526681; }
+.ops-panel summary { cursor: pointer; padding: 8px 0; }
+.ops-panel pre { font-size: 10px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; background: #f1f5fa; padding: 16px; border-radius: 8px; max-height: 340px; overflow: auto; }
+.audit-list { list-style: none; padding: 0; margin: 12px 0 0; }
+.audit-list li + li { border-top: 1px solid #e6ebf2; }
+.audit-row { display: flex; text-align: left; width: 100%; justify-content: space-between; align-items: center; gap: 10px; border: 0; border-radius: 6px; background: transparent; padding: 13px 8px; color: #526681; cursor: pointer; }
+.audit-row:hover { background: #edf3fd; }
+.audit-row strong { font-size: 12px; }
+.audit-row code { font-size: 10px; color: #7c8a9e; }
+.run-detail { border-top: 1px solid #e6ebf2; }
+.run-verdict { font-size: 12px; margin-top: 16px; }
+.run-verdict.good { color: #16786c; }
+.run-verdict.warning { color: #93691b; }
+.ops-json-link { display: inline-block; font-size: 11px; margin-top: 15px; color: #3975e7; }
+@media (max-width: 1100px) { .ops-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .ops-grid, .ops-body { padding: 16px; gap: 14px; }
+  .ops-card { padding: 15px; }
+  .ops-section-note { padding: 0 16px 16px; }
+  .ops-toolbar, .ops-pagination { align-items: flex-start; }
+  .collector-label { margin-left: 0; }
+  .ops-panel > .panel-heading { flex-wrap: wrap; }
+  .ops-table-wrap th, .ops-table-wrap td { padding: 8px 5px; font-size: 10px; }
+  .decision-card { padding: 14px; }
+}

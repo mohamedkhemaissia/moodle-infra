@@ -19,7 +19,11 @@ dashboard_source_files:
   - public/favicon.svg
   - src/main.jsx
   - src/App.jsx
+  - src/Operations.jsx
+  - src/operations.js
+  - src/useReadings.js
   - src/snapshot.js
   - src/useMetrics.js
   - src/styles.css
   - tests/snapshot.test.js
+  - tests/operations.test.js

@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import Operations from './Operations.jsx';
 import { chartSeries } from './snapshot.js';
 import { useMetrics } from './useMetrics.js';
 
@@ -293,6 +295,7 @@ function SourceCard({ title, description, source, icon }) {
 }
 
 export default function App() {
+  const [operationsRefresh, setOperationsRefresh] = useState(0);
   const { snapshot, error, busy, samples, now, view, refresh } = useMetrics();
   const metrics = view.metrics;
   const availability = metrics.moodle_available;
@@ -357,6 +360,9 @@ export default function App() {
             <Icon name="pulse" />
             Qualité de la collecte
           </a>
+          <a className="nav-item" href="#analysis"><Icon name="chart" />Intelligence artificielle</a>
+          <a className="nav-item" href="#incidents"><Icon name="alert" />Incidents et décisions</a>
+          <a className="nav-item" href="#audits"><Icon name="clock" />Journaux d’exécution</a>
         </nav>
         <div className="sidebar-environment">
           <span className="sidebar-label">ENVIRONNEMENT</span>
@@ -370,7 +376,7 @@ export default function App() {
           <span className="sidebar-avatar">MK</span>
           <div>
             <strong>Administration</strong>
-            <small>Version 0.1.0</small>
+            <small>Version 0.2.0</small>
           </div>
         </div>
       </aside>
@@ -392,7 +398,7 @@ export default function App() {
             <button
               className="refresh-button"
               type="button"
-              onClick={refresh}
+              onClick={() => { refresh(); setOperationsRefresh((value) => value + 1); }}
               disabled={busy}
             >
               <Icon name="refresh" className={busy ? 'spin' : ''} />
@@ -540,6 +546,8 @@ export default function App() {
               />
             </div>
           </section>
+
+          <Operations now={now} refreshToken={operationsRefresh} />
 
           <footer className="page-footer">
             <span>Pilote Moodle · BeeCoders</span>
