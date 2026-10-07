@@ -18,6 +18,10 @@ control_plane_anomaly_features_dir: ""
 control_plane_anomaly_runtime_dir: "{{ control_plane_base_dir }}/anomalies"
 # Ce module est partage avec l'entrainement ; copie dans l'image sans duplication dans Git.
 control_plane_isolation_source: "{{ playbook_dir }}/../../ml/isolation_model.py"
+control_plane_incidents_enabled: false
+control_plane_incident_data_dir: /var/lib/moodle-control-plane/incidents
+control_plane_incident_observer_memory_limit: 192m
+control_plane_incident_observer_cpu_limit: "0.25"
 control_plane_source_files:
   - Dockerfile
   - .dockerignore
@@ -28,8 +32,13 @@ control_plane_source_files:
   - app/resource_history.py
   - app/anomalies.py
   - app/isolation_model.py
+  - app/incidents.py
+  - app/incident_signals.py
+  - app/incident_observer.py
   - app/models.py
   - app/prometheus.py
   - tests/test_api.py
   - tests/test_forecasts.py
   - tests/test_anomalies.py
+  - tests/test_incidents.py
+  - tests/test_incident_observer.py

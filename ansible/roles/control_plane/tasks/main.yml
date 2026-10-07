@@ -75,6 +75,23 @@
   ansible.builtin.include_tasks: anomalies.yml
   when: control_plane_anomalies_enabled | bool
 
+- name: Verifier le repertoire persistant des incidents
+  ansible.builtin.assert:
+    that:
+      - control_plane_incident_data_dir is match('^/')
+      - control_plane_incident_data_dir not in ['/', '/opt', '/var', '/var/lib']
+    fail_msg: "Indiquer un repertoire absolu dedie aux incidents."
+  when: control_plane_incidents_enabled | bool
+
+- name: Creer le repertoire persistant des incidents
+  ansible.builtin.file:
+    path: "{{ control_plane_incident_data_dir }}"
+    state: directory
+    owner: "10001"
+    group: "10001"
+    mode: "0750"
+  when: control_plane_incidents_enabled | bool
+
 - name: Installer la configuration Docker Compose de l API
   ansible.builtin.template:
     src: compose.yml.j2
@@ -105,7 +122,7 @@
     pull: never
     recreate: auto
     wait: true
-    wait_timeout: 60
+    wait_timeout: 120
   register: control_plane_deployment
 
 - name: Recharger les modeles modifies dans une API deja demarree
@@ -116,7 +133,7 @@
     services:
       - api
     wait: true
-    wait_timeout: 60
+    wait_timeout: 120
   when:
     - control_plane_forecasts_enabled | bool
     - control_plane_forecast_artifacts.changed
@@ -217,3 +234,28 @@
       Mode=observation, etat={{ control_plane_anomaly_response.json.status }},
       raison={{ control_plane_anomaly_response.json.reason | default('historique complet') }}
   when: control_plane_anomalies_enabled | bool
+
+- name: Verifier la consultation des incidents
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/incidents/summary"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+  register: control_plane_incidents_response
+  until: >-
+    control_plane_incidents_response.status | default(0) == 200 and
+    control_plane_incidents_response.json is defined and
+    control_plane_incidents_response.json.status | default('') == 'available'
+  retries: 6
+  delay: 5
+  when: control_plane_incidents_enabled | bool
+
+- name: Afficher le resume des incidents observes
+  ansible.builtin.debug:
+    msg: >-
+      Mode=observation,
+      ouverts={{ control_plane_incidents_response.json.counts.open }},
+      resolus={{ control_plane_incidents_response.json.counts.resolved }},
+      observateur={{ (control_plane_incidents_response.json.collector | default({}, true)).status | default('initialisation') }}
+  when: control_plane_incidents_enabled | bool

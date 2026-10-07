@@ -21,7 +21,10 @@ services:
 {% if control_plane_anomalies_enabled | bool %}
       ANOMALIES_DIR: /opt/anomalies
 {% endif %}
-{% if control_plane_forecasts_enabled | bool or control_plane_anomalies_enabled | bool %}
+{% if control_plane_incidents_enabled | bool %}
+      INCIDENTS_DIR: /var/lib/moodle-incidents
+{% endif %}
+{% if control_plane_forecasts_enabled | bool or control_plane_anomalies_enabled | bool or control_plane_incidents_enabled | bool %}
     volumes:
 {% if control_plane_forecasts_enabled | bool %}
       - type: bind
@@ -33,6 +36,12 @@ services:
       - type: bind
         source: {{ control_plane_anomaly_deployed_dir | to_json }}
         target: /opt/anomalies
+        read_only: true
+{% endif %}
+{% if control_plane_incidents_enabled | bool %}
+      - type: bind
+        source: {{ control_plane_incident_data_dir | to_json }}
+        target: /var/lib/moodle-incidents
         read_only: true
 {% endif %}
 {% endif %}
@@ -60,3 +69,58 @@ services:
       options:
         max-size: 10m
         max-file: "3"
+
+{% if control_plane_incidents_enabled | bool %}
+  observer:
+    image: {{ control_plane_image | to_json }}
+    network_mode: host
+    restart: unless-stopped
+    init: true
+    command:
+      - python
+      - -m
+      - app.incident_observer
+    environment:
+      PROMETHEUS_URL: {{ control_plane_prometheus_url | to_json }}
+      MAX_SCRAPE_AGE_SECONDS: {{ control_plane_max_scrape_age_seconds | string | to_json }}
+      INCIDENTS_DIR: /var/lib/moodle-incidents
+{% if control_plane_anomalies_enabled | bool %}
+      ANOMALIES_DIR: /opt/anomalies
+{% endif %}
+    volumes:
+      - type: bind
+        source: {{ control_plane_incident_data_dir | to_json }}
+        target: /var/lib/moodle-incidents
+        read_only: false
+{% if control_plane_anomalies_enabled | bool %}
+      - type: bind
+        source: {{ control_plane_anomaly_deployed_dir | to_json }}
+        target: /opt/anomalies
+        read_only: true
+{% endif %}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ control_plane_incident_observer_memory_limit | to_json }}
+    cpus: {{ control_plane_incident_observer_cpu_limit | to_json }}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -m
+        - app.incident_observer
+        - --healthcheck
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+{% endif %}
