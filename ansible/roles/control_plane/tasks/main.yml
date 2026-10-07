@@ -1,4 +1,10 @@
 ---
+- name: Verifier les dependances du moteur de decision
+  ansible.builtin.assert:
+    that:
+      - not (control_plane_decisions_enabled | bool) or (control_plane_incidents_enabled | bool)
+    fail_msg: "Activer les incidents avant le moteur de decision."
+
 - name: Creer les repertoires de l API
   ansible.builtin.file:
     path: "{{ item }}"
@@ -259,3 +265,30 @@
       resolus={{ control_plane_incidents_response.json.counts.resolved }},
       observateur={{ (control_plane_incidents_response.json.collector | default({}, true)).status | default('initialisation') }}
   when: control_plane_incidents_enabled | bool
+
+- name: Verifier la simulation des decisions
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/decisions/summary"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+  register: control_plane_decisions_response
+  until: >-
+    control_plane_decisions_response.status | default(0) == 200 and
+    control_plane_decisions_response.json is defined and
+    control_plane_decisions_response.json.status | default('') == 'available' and
+    control_plane_decisions_response.json.mode | default('') == 'simulation' and
+    not (control_plane_decisions_response.json.execution.enabled | default(true) | bool)
+  retries: 6
+  delay: 5
+  when: control_plane_decisions_enabled | bool
+
+- name: Afficher le resultat de la simulation
+  ansible.builtin.debug:
+    msg: >-
+      Mode=simulation,
+      recommandations={{ control_plane_decisions_response.json.counts.recommendation }},
+      bloquees={{ control_plane_decisions_response.json.counts.blocked }},
+      surveillance={{ control_plane_decisions_response.json.counts.monitoring }}
+  when: control_plane_decisions_enabled | bool

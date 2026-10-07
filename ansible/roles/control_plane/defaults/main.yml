@@ -22,6 +22,7 @@ control_plane_incidents_enabled: false
 control_plane_incident_data_dir: /var/lib/moodle-control-plane/incidents
 control_plane_incident_observer_memory_limit: 192m
 control_plane_incident_observer_cpu_limit: "0.25"
+control_plane_decisions_enabled: false
 control_plane_source_files:
   - Dockerfile
   - .dockerignore
@@ -35,6 +36,7 @@ control_plane_source_files:
   - app/incidents.py
   - app/incident_signals.py
   - app/incident_observer.py
+  - app/decisions.py
   - app/models.py
   - app/prometheus.py
   - tests/test_api.py
@@ -42,3 +44,4 @@ control_plane_source_files:
   - tests/test_anomalies.py
   - tests/test_incidents.py
   - tests/test_incident_observer.py
+  - tests/test_decisions.py

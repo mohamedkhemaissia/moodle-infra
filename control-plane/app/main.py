@@ -5,11 +5,12 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request, Query, Path as ApiPath
+from fastapi import FastAPI, HTTPException, Request, Response, Query, Path as ApiPath
 from typing import Literal
 
 from .models import MetricsSummary
 from .incidents import IncidentStore, IncidentStorageError
+from .decisions import policy_document, summarize as decision_summary
 from .anomalies import AnomalyBundle, AnomalyBundleError, AnomalyService
 from .forecasts import ForecastBundle, ForecastBundleError, ForecastService
 from .prometheus import (
@@ -25,6 +26,7 @@ def create_app(
     forecasts_dir: str | None = None,
     anomalies_dir: str | None = None,
     incidents_dir: str | None = None,
+    decisions_enabled: bool | None = None,
 ) -> FastAPI:
     url = prometheus_url or os.getenv("PROMETHEUS_URL", "http://127.0.0.1:9090")
     max_age = float(os.getenv("MAX_SCRAPE_AGE_SECONDS", "60"))
@@ -33,6 +35,13 @@ def create_app(
     anomaly_directory = anomalies_dir if anomalies_dir is not None else os.getenv("ANOMALIES_DIR", "")
 
     incident_directory = incidents_dir if incidents_dir is not None else os.getenv("INCIDENTS_DIR", "")
+    if decisions_enabled is None:
+        setting = os.getenv("DECISIONS_ENABLED", "false").lower()
+        if setting not in ("true", "false"):
+            raise ValueError("DECISIONS_ENABLED doit valoir true ou false.")
+        decisions_enabled = setting == "true"
+    if type(decisions_enabled) is not bool:
+        raise ValueError("Le mode des decisions doit etre booleen.")
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -58,18 +67,19 @@ def create_app(
                 except AnomalyBundleError:
                     logging.getLogger(__name__).error("Artefacts d'anomalies invalides ; endpoint indisponible.")
             application.state.incidents = IncidentStore(incident_directory) if incident_directory else None
+            application.state.decisions_enabled = decisions_enabled
             yield
 
     application = FastAPI(
         title="Pilotage Moodle",
         description="Supervision, analyses experimentales et historique des incidents observes du pilote Moodle.",
-        version="0.4.0",
+        version="0.5.0",
         lifespan=lifespan,
     )
 
     @application.get("/api/v1/health", tags=["Sante"])
     async def health():
-        return {"status": "ok", "service": "moodle-control-plane", "version": "0.4.0"}
+        return {"status": "ok", "service": "moodle-control-plane", "version": "0.5.0"}
 
     @application.get(
         "/api/v1/metrics/summary",
@@ -169,6 +179,33 @@ def create_app(
                               limit: int = Query(50, ge=1, le=100), after_id: int = Query(0, ge=0, le=9223372036854775807)):
         store = incident_store(request)
         result = await read_incidents(store.events, incident_id, limit=limit, after_id=after_id)
+        if result is None:
+            raise HTTPException(404, detail="Incident inconnu.")
+        return result
+
+    def decision_store(request):
+        if not request.app.state.decisions_enabled:
+            raise HTTPException(503, detail="La simulation des decisions n'est pas activee.")
+        return incident_store(request)
+
+    @application.get("/api/v1/decisions/policies", tags=["Decisions"])
+    async def decision_policies(request: Request, response: Response):
+        decision_store(request)
+        response.headers["Cache-Control"] = "no-store"
+        return policy_document()
+
+    @application.get("/api/v1/decisions/summary", tags=["Decisions"])
+    async def decisions_summary(request: Request, response: Response):
+        store = decision_store(request)
+        response.headers["Cache-Control"] = "no-store"
+        return await read_incidents(decision_summary, store, datetime.now(timezone.utc).timestamp())
+
+    @application.get("/api/v1/decisions/{incident_id}", tags=["Decisions"])
+    async def incident_decision(request: Request, response: Response,
+                                incident_id: int = ApiPath(..., ge=1, le=9223372036854775807)):
+        store = decision_store(request)
+        response.headers["Cache-Control"] = "no-store"
+        result = await read_incidents(decision_summary, store, datetime.now(timezone.utc).timestamp(), incident_id)
         if result is None:
             raise HTTPException(404, detail="Incident inconnu.")
         return result

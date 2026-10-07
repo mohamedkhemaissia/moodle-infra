@@ -274,15 +274,7 @@ class IncidentStore:
             counts = {"open":0,"resolved":0}
             for row in connection.execute("SELECT status,count(*) AS count FROM incidents GROUP BY status"):
                 counts[row["status"]] = row["count"]
-            collector = connection.execute("SELECT value FROM metadata WHERE key='collector'").fetchone()
-            collector = json.loads(collector[0]) if collector else None
-            if collector is not None:
-                age = now - collector.pop("last_completed_epoch")
-                input_age = now - collector.pop("input_epoch")
-                collector["age_seconds"] = round(age,3)
-                collector["input_age_seconds"] = round(input_age,3)
-                collector["status"] = ("clock_inconsistent" if age < 0 or input_age < 0 or collector.get("clock_inconsistent")
-                                       else "stale" if max(age,input_age) > POLICY["max_gap_seconds"] else "running")
+            collector = self.read_collector(connection, now)
             signals = [{"key":row["key"],"state":row["state"],"last_observed_at":iso(row["last_point"]),
                         "pending_trigger_checks":row["bad_count"],"pending_recovery_checks":row["good_count"]}
                        for row in connection.execute("SELECT * FROM signal_state ORDER BY key")]
@@ -292,3 +284,47 @@ class IncidentStore:
                                  "unknown":"Une observation inconnue ne resout aucun incident.",
                                  "action":"Aucune remediation executee par ce module.",
                                  "freshness":"Les etats des signaux ne decrivent pas le present si l observateur est obsolete."}}
+
+    @staticmethod
+    def read_collector(connection, now):
+        row = connection.execute("SELECT value FROM metadata WHERE key='collector'").fetchone()
+        collector = json.loads(row[0]) if row else None
+        if collector is not None:
+            if (not isinstance(collector,dict)
+                    or type(collector.get("last_completed_epoch")) not in (int,float)
+                    or not math.isfinite(collector["last_completed_epoch"])
+                    or type(collector.get("input_epoch")) is not int
+                    or collector["input_epoch"] < 0 or collector["input_epoch"] % POLICY["interval_seconds"]):
+                raise IncidentStorageError("Metadonnees de l'observateur invalides.")
+            age = now - collector.pop("last_completed_epoch")
+            input_age = now - collector.pop("input_epoch")
+            collector["age_seconds"] = round(age,3)
+            collector["input_age_seconds"] = round(input_age,3)
+            collector["status"] = ("clock_inconsistent" if age < 0 or input_age < 0 or collector.get("clock_inconsistent")
+                                   else "stale" if max(age,input_age) > POLICY["max_gap_seconds"] else "running")
+        return collector
+
+    def decision_snapshot(self, now, identifier=None):
+        """Lire episodes et signaux sur le meme instantane SQLite, sans ecriture."""
+        if type(now) not in (int, float) or not math.isfinite(now) or now < 0:
+            raise ValueError("Date d'evaluation invalide.")
+        if identifier is not None and (type(identifier) is not int or not 1 <= identifier < 2**63):
+            raise ValueError("Identifiant d'incident invalide.")
+        with self.connection() as connection:
+            self.check_schema(connection)
+            connection.execute("BEGIN")
+            collector = self.read_collector(connection, now)
+            signals = {}
+            for row in connection.execute("SELECT * FROM signal_state ORDER BY key"):
+                item = dict(row)
+                item["last_observed_at"] = iso(item.pop("last_point"))
+                item["evidence"] = json.loads(item.pop("evidence_json"))
+                item.pop("first_bad_at")
+                signals[item["key"]] = item
+            clause, parameters = ("status='open'", ()) if identifier is None else ("id=?", (identifier,))
+            rows = connection.execute("SELECT * FROM incidents WHERE " + clause + " ORDER BY id DESC LIMIT 11", parameters).fetchall()
+            if len(rows) > len(DEFINITIONS):
+                raise IncidentStorageError("Nombre d'incidents actifs incoherent.")
+            active = connection.execute("SELECT id,signal_key FROM incidents WHERE status='open' ORDER BY id").fetchall()
+            return {"collector":collector,"signals":signals,"incidents":[self.incident(row) for row in rows],
+                    "open_incidents":[dict(row) for row in active]}
