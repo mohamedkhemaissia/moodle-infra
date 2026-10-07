@@ -4,6 +4,7 @@
     that:
       - not (control_plane_decisions_enabled | bool) or (control_plane_incidents_enabled | bool)
       - not (control_plane_diagnostics_enabled | bool) or (control_plane_decisions_enabled | bool)
+      - not (control_plane_remediation_enabled | bool) or (control_plane_decisions_enabled | bool)
     fail_msg: "Activer les incidents avant le moteur de decision."
 
 - name: Creer les repertoires de l API
@@ -26,7 +27,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py']) }}"
+  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py']) }}"
 
 - name: Copier le moteur numerique partage avec l entrainement
   ansible.builtin.copy:
@@ -40,6 +41,14 @@
   ansible.builtin.copy:
     src: "{{ control_plane_diagnostics_store_source }}"
     dest: "{{ control_plane_base_dir }}/build/app/diagnostics_store.py"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Copier le lecteur partage du journal de remediation
+  ansible.builtin.copy:
+    src: "{{ control_plane_remediation_store_source }}"
+    dest: "{{ control_plane_base_dir }}/build/app/remediation_store.py"
     owner: root
     group: root
     mode: "0644"
@@ -317,3 +326,20 @@
   retries: 6
   delay: 5
   when: control_plane_diagnostics_enabled | bool
+
+- name: Verifier la consultation du journal de remediation
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/remediations/summary"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+  register: control_plane_remediation_response
+  until: >-
+    control_plane_remediation_response.status | default(0) == 200 and
+    control_plane_remediation_response.json is defined and
+    control_plane_remediation_response.json.mode | default('') == 'manual_guarded' and
+    not (control_plane_remediation_response.json.automatic_execution_enabled | default(true) | bool)
+  retries: 6
+  delay: 5
+  when: control_plane_remediation_enabled | bool

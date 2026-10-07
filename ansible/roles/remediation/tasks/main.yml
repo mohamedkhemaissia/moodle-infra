@@ -1,0 +1,111 @@
+---
+- name: Verifier le perimetre et les dependances de la remediation
+  ansible.builtin.assert:
+    that:
+      - remediation_base_dir is match('^/opt/[^/]+$')
+      - remediation_data_dir is match('^/var/lib/[^/]+$')
+      - remediation_data_dir == control_plane_remediation_data_dir
+      - remediation_data_dir != control_plane_diagnostics_data_dir
+      - control_plane_remediation_enabled | bool
+      - control_plane_decisions_enabled | bool
+    fail_msg: "Indiquer un journal separe et activer le moteur de decision."
+
+- name: Verifier l environnement Runner deja installe
+  ansible.builtin.command:
+    argv:
+      - "{{ remediation_python }}"
+      - -c
+      - "import importlib.metadata as m; assert m.version('ansible-runner') == '2.4.3'; assert m.version('ansible-core') == '2.21.4'"
+  changed_when: false
+
+- name: Creer les repertoires du code de remediation
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ remediation_base_dir }}"
+    - "{{ remediation_base_dir }}/code"
+    - "{{ remediation_base_dir }}/code/remediation"
+    - "{{ remediation_base_dir }}/code/remediation/project"
+    - "{{ remediation_base_dir }}/code/remediation/tests"
+    - "{{ remediation_base_dir }}/code/diagnostics"
+
+- name: Creer le repertoire du journal de remediation
+  ansible.builtin.file:
+    path: "{{ remediation_data_dir }}"
+    state: directory
+    owner: root
+    group: "10001"
+    mode: "2750"
+
+- name: Copier les sources de la remediation et ses tests
+  ansible.builtin.copy:
+    src: "{{ remediation_source_dir }}/{{ item }}"
+    dest: "{{ remediation_base_dir }}/code/remediation/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ remediation_files }}"
+  register: remediation_sources
+
+- name: Copier les utilitaires partages des diagnostics
+  ansible.builtin.copy:
+    src: "{{ remediation_diagnostics_source_dir }}/{{ item }}"
+    dest: "{{ remediation_base_dir }}/code/diagnostics/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ remediation_shared_diagnostics_files }}"
+  register: remediation_shared_sources
+
+- name: Installer la configuration locale de remediation
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ remediation_base_dir }}/config.json"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Verifier les conditions et l execution du module de remediation
+  ansible.builtin.command:
+    argv:
+      - "{{ remediation_python }}"
+      - -B
+      - -m
+      - unittest
+      - discover
+      - -s
+      - remediation/tests
+      - -q
+    chdir: "{{ remediation_base_dir }}/code"
+  changed_when: false
+  when: remediation_sources.changed or remediation_shared_sources.changed
+
+- name: Initialiser le journal de remediation
+  ansible.builtin.command:
+    argv:
+      - "{{ remediation_python }}"
+      - -B
+      - -m
+      - remediation.initialize
+    chdir: "{{ remediation_base_dir }}/code"
+  register: remediation_initialization
+  changed_when: (remediation_initialization.stdout | from_json).changed
+
+- name: Autoriser la consultation du journal par l API
+  ansible.builtin.file:
+    path: "{{ remediation_data_dir }}/remediations.sqlite3"
+    owner: root
+    group: "10001"
+    mode: "0640"
+
+- name: Installer la commande de remediation manuelle
+  ansible.builtin.template:
+    src: moodle-remediate.j2
+    dest: /usr/local/sbin/moodle-remediate
+    owner: root
+    group: root
+    mode: "0755"

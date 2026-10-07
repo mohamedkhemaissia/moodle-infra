@@ -1,0 +1,8 @@
+---
+- name: Installer la remediation encadree et la consultation de son audit
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - remediation
+    - control_plane

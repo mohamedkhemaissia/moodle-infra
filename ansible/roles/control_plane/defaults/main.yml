@@ -26,6 +26,9 @@ control_plane_decisions_enabled: false
 control_plane_diagnostics_enabled: false
 control_plane_diagnostics_data_dir: /var/lib/moodle-diagnostics
 control_plane_diagnostics_store_source: "{{ playbook_dir }}/../../diagnostics/store.py"
+control_plane_remediation_enabled: false
+control_plane_remediation_data_dir: /var/lib/moodle-remediation
+control_plane_remediation_store_source: "{{ playbook_dir }}/../../remediation/store.py"
 control_plane_source_files:
   - Dockerfile
   - .dockerignore
@@ -41,6 +44,7 @@ control_plane_source_files:
   - app/incident_observer.py
   - app/decisions.py
   - app/diagnostics_store.py
+  - app/remediation_store.py
   - app/models.py
   - app/prometheus.py
   - tests/test_api.py
@@ -50,3 +54,4 @@ control_plane_source_files:
   - tests/test_incident_observer.py
   - tests/test_decisions.py
   - tests/test_diagnostics_api.py
+  - tests/test_remediation_api.py

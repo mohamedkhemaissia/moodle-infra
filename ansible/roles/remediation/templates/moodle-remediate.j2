@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+umask 027
+cd {{ (remediation_base_dir ~ '/code') | quote }}
+exec /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 PYTHONNOUSERSITE=1 \
+  {{ remediation_python | quote }} -B -m remediation.run "$@"

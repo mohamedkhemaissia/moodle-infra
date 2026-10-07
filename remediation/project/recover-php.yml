@@ -1,0 +1,22 @@
+---
+- name: Remise en service encadree de PHP
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Remettre PHP en service et verifier Moodle
+      ansible.builtin.command:
+        argv:
+          - "{{ remediation_python }}"
+          - -B
+          - -m
+          - remediation.action
+          - --config
+          - "{{ remediation_config }}"
+          - --incident-id
+          - "{{ remediation_incident_id | string }}"
+          - --expected
+          - "{{ remediation_expected }}"
+          - --run-id
+          - "{{ remediation_run_id }}"
+      register: remediation_result
+      changed_when: (remediation_result.stdout | from_json).action_dispatched

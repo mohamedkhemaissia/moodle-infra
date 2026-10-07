@@ -1,0 +1,4 @@
+---
+control_plane_remediation_enabled: true
+control_plane_remediation_data_dir: /var/lib/moodle-remediation
+remediation_data_dir: "{{ control_plane_remediation_data_dir }}"

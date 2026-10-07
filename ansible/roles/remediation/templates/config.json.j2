@@ -1,0 +1,8 @@
+{
+  "api_url": {{ remediation_api_url | to_json }},
+  "data_dir": {{ remediation_data_dir | to_json }},
+  "hostname": "moodle-pfe.test",
+  "https_port": 8443,
+  "ca_file": "/opt/moodle/tls/lab-ca.crt",
+  "restoration_marker": "/opt/moodle/backups/restoration-active"
+}
