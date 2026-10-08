@@ -69,7 +69,7 @@
     owner: root
     group: root
     mode: '0644'
-  loop: [__init__.py, db.py, schemas.py, migrate.py]
+  loop: [__init__.py, db.py, schemas.py, migrate.py, worker_auth.py]
 
 - name: Verifier si PostgreSQL a ete active pour le pilotage
   ansible.builtin.stat:
@@ -96,6 +96,8 @@
       - remediation/tests
       - -q
     chdir: "{{ remediation_base_dir }}/code"
+  environment:
+    PILOTAGE_SERVICE_TOKEN_FILE: ''
   changed_when: false
   when: remediation_sources.changed or remediation_shared_sources.changed
 

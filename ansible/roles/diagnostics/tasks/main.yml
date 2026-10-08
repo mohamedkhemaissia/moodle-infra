@@ -58,7 +58,7 @@
     owner: root
     group: root
     mode: '0644'
-  loop: [__init__.py, db.py, schemas.py, migrate.py]
+  loop: [__init__.py, db.py, schemas.py, migrate.py, worker_auth.py]
 
 - name: Verifier si PostgreSQL a ete active pour le pilotage
   ansible.builtin.stat:
@@ -131,6 +131,8 @@
       - diagnostics/tests
       - -q
     chdir: "{{ diagnostics_base_dir }}/code"
+  environment:
+    PILOTAGE_SERVICE_TOKEN_FILE: ''
   changed_when: false
   when: diagnostics_sources.changed or diagnostics_versions.rc == 3
 

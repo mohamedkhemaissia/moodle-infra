@@ -1,0 +1,11 @@
+---
+- name: Activer les comptes du tableau de bord sans modifier les historiques
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - diagnostics
+    - remediation
+    - authentication
+    - control_plane
+    - dashboard

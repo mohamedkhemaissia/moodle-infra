@@ -60,6 +60,7 @@ def execute(config, config_path, incident_id, *, project_dir=None, runner_functi
                                "diagnostic_incident_id": incident_id, "diagnostic_expected": str(expected)},
                     envvars={"PATH": str(Path(sys.executable).parent) + ":/usr/bin:/bin",
                              "PILOTAGE_DATABASE_CONFIG": os.environ.get("PILOTAGE_DATABASE_CONFIG", ""),
+                             "PILOTAGE_SERVICE_TOKEN_FILE": os.environ.get("PILOTAGE_SERVICE_TOKEN_FILE", ""),
                              "PYTHONPATH": str(CODE_DIR), "ANSIBLE_CONFIG": str(CODE_DIR / "diagnostics" / "project" / "ansible.cfg"),
                              "ANSIBLE_NOCOLOR": "1", "ANSIBLE_LOCAL_TEMP": private + "/tmp"},
                     settings={"job_timeout": 120, "idle_timeout": 120}, quiet=True,

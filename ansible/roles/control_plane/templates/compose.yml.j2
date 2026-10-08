@@ -8,11 +8,18 @@ services:
       - -m
       - uvicorn
       - app.main:app
+      - --no-proxy-headers
       - --host
       - 127.0.0.1
       - --port
       - {{ control_plane_port | string | to_json }}
     environment:
+      AUTH_ENABLED: {{ (pilotage_auth_activation.stat.exists | ternary('true', 'false')) | to_json }}
+{% if pilotage_auth_activation.stat.exists %}
+      AUTH_ALLOWED_ORIGINS: {{ (control_plane_auth_origins | to_json) | to_json }}
+      AUTH_COOKIE_SECURE: {{ (control_plane_auth_secure_cookie | bool | ternary('true', 'false')) | to_json }}
+      AUTH_WORKER_HASH_FILE: {{ (pilotage_database_config_dir ~ '/worker-token.sha256') | to_json }}
+{% endif %}
 {% if pilotage_database_activation.stat.exists %}
       PILOTAGE_DATABASE_CONFIG: {{ (pilotage_database_config_dir ~ '/database.json') | to_json }}
 {% endif %}

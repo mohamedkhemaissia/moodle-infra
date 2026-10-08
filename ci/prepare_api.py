@@ -18,6 +18,10 @@ SHARED = {
     'pilotage/db.py': 'pilotage/db.py',
     'pilotage/schemas.py': 'pilotage/schemas.py',
     'pilotage/migrate.py': 'pilotage/migrate.py',
+    'pilotage/auth.py': 'pilotage/auth.py',
+    'pilotage/auth_cli.py': 'pilotage/auth_cli.py',
+    'pilotage/passwords.py': 'pilotage/passwords.py',
+    'pilotage/worker_auth.py': 'pilotage/worker_auth.py',
 }
 BASE_FILES = ('Dockerfile', '.dockerignore', 'requirements-lock.txt')
 

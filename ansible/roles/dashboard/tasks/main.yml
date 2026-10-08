@@ -1,4 +1,21 @@
 ---
+- name: Verifier si les comptes du pilotage sont actifs
+  ansible.builtin.stat:
+    path: "{{ pilotage_database_config_dir }}/auth-active"
+  register: dashboard_auth_activation
+
+- name: Lire l identite locale de verification du proxy
+  ansible.builtin.slurp:
+    src: "{{ pilotage_database_config_dir }}/worker-token"
+  register: dashboard_worker_token
+  when: dashboard_auth_activation.stat.exists
+  no_log: true
+
+- name: Configurer la lecture de verification du proxy
+  ansible.builtin.set_fact:
+    dashboard_read_headers: "{{ {'Authorization': 'Bearer ' ~ (dashboard_worker_token.content | b64decode | trim)} if dashboard_auth_activation.stat.exists else {} }}"
+  no_log: true
+
 - name: Creer les repertoires du tableau de bord
   ansible.builtin.file:
     path: "{{ item }}"
@@ -134,6 +151,8 @@
     status_code: 200
     timeout: 10
     use_proxy: false
+    headers: "{{ dashboard_read_headers }}"
+  no_log: "{{ dashboard_auth_activation.stat.exists }}"
   register: dashboard_summary
   until: >-
     dashboard_summary.status | default(0) == 200 and

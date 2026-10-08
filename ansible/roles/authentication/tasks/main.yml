@@ -1,0 +1,107 @@
+---
+- name: Verifier les chemins dedies aux comptes
+  ansible.builtin.assert:
+    that:
+      - authentication_base_dir is match('^/opt/[^/]+$')
+      - pilotage_database_config_dir is match('^/etc/[^/]+$')
+
+- name: Verifier que la migration PostgreSQL est active
+  ansible.builtin.stat:
+    path: "{{ pilotage_database_config_dir }}/active"
+  register: authentication_database
+
+- name: Exiger PostgreSQL pour les comptes
+  ansible.builtin.assert:
+    that: authentication_database.stat.exists
+    fail_msg: "Valider la migration PostgreSQL avant d activer les comptes."
+
+- name: Creer les repertoires des commandes de gestion
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ authentication_base_dir }}"
+    - "{{ authentication_base_dir }}/code"
+    - "{{ authentication_base_dir }}/code/pilotage"
+
+- name: Copier les modules de gestion des comptes
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../pilotage/{{ item }}"
+    dest: "{{ authentication_base_dir }}/code/pilotage/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [__init__.py, db.py, schemas.py, auth.py, auth_cli.py, passwords.py, worker_auth.py]
+
+- name: Initialiser le schema des comptes independant des historiques
+  ansible.builtin.command:
+    argv: ["{{ authentication_python }}", -B, -m, pilotage.auth_cli, init]
+    chdir: "{{ authentication_base_dir }}/code"
+  environment:
+    PILOTAGE_DATABASE_CONFIG: "{{ pilotage_database_config_dir }}/database.json"
+  register: authentication_initialization
+  changed_when: (authentication_initialization.stdout | from_json).changed
+
+- name: Creer une identite pour les commandes locales
+  ansible.builtin.command:
+    argv:
+      - "{{ authentication_python }}"
+      - -c
+      - |
+        import os, secrets, sys
+        descriptor = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, 'w') as stream:
+            stream.write(secrets.token_hex(32) + '\n')
+      - "{{ pilotage_database_config_dir }}/worker-token"
+    creates: "{{ pilotage_database_config_dir }}/worker-token"
+  no_log: true
+
+- name: Proteger le secret des commandes locales
+  ansible.builtin.file:
+    path: "{{ pilotage_database_config_dir }}/worker-token"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Calculer l empreinte publique de cette identite
+  ansible.builtin.command:
+    argv:
+      - "{{ authentication_python }}"
+      - -c
+      - |
+        import sys
+        from pilotage.worker_auth import read_secret_file, token_fingerprint
+        print(token_fingerprint(read_secret_file(sys.argv[1])))
+      - "{{ pilotage_database_config_dir }}/worker-token"
+    chdir: "{{ authentication_base_dir }}/code"
+  register: authentication_worker_fingerprint
+  changed_when: false
+  no_log: true
+
+- name: Permettre a l API de verifier les commandes locales
+  ansible.builtin.copy:
+    content: "{{ authentication_worker_fingerprint.stdout | trim }}\n"
+    dest: "{{ pilotage_database_config_dir }}/worker-token.sha256"
+    owner: root
+    group: '10001'
+    mode: '0640'
+  no_log: true
+
+- name: Installer la commande de gestion des comptes
+  ansible.builtin.template:
+    src: moodle-pilotage-user.j2
+    dest: /usr/local/sbin/moodle-pilotage-user
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Conserver l activation de l authentification pour les prochains deploiements
+  ansible.builtin.copy:
+    content: "Comptes du pilotage actives ; schema PostgreSQL pilotage_auth.\n"
+    dest: "{{ pilotage_database_config_dir }}/auth-active"
+    owner: root
+    group: '10001'
+    mode: '0640'

@@ -9,6 +9,8 @@ from fastapi import FastAPI, HTTPException, Request, Response, Query, Path as Ap
 from typing import Literal
 
 from .models import MetricsSummary
+from .auth import Settings as AuthSettings, install as install_auth
+from pilotage.auth import AuthStore, AuthStorageError
 from .diagnostics_store import DiagnosticStore, DiagnosticStorageError
 from .remediation_store import RemediationStore
 from .incidents import IncidentStore, IncidentStorageError
@@ -31,7 +33,13 @@ def create_app(
     decisions_enabled: bool | None = None,
     diagnostics_dir: str | None = None,
     remediation_dir: str | None = None,
+    auth_enabled: bool | None = None,
+    auth_store=None,
+    auth_origins=None,
+    auth_secure_cookie: bool | None = None,
+    auth_worker_hash_file: str | None = None,
 ) -> FastAPI:
+    authentication = AuthSettings.load(auth_enabled, auth_origins, auth_secure_cookie, auth_worker_hash_file)
     url = prometheus_url or os.getenv("PROMETHEUS_URL", "http://127.0.0.1:9090")
     max_age = float(os.getenv("MAX_SCRAPE_AGE_SECONDS", "60"))
     model_directory = forecasts_dir if forecasts_dir is not None else os.getenv("FORECASTS_DIR", "")
@@ -52,6 +60,10 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
+        application.state.auth_store = (auth_store or AuthStore()) if authentication.enabled else None
+        application.state.auth_password_slots = asyncio.Semaphore(2)
+        if authentication.enabled:
+            await asyncio.to_thread(application.state.auth_store.check)
         async with httpx.AsyncClient(
             base_url=url.rstrip("/") + "/",
             timeout=5,
@@ -82,13 +94,14 @@ def create_app(
     application = FastAPI(
         title="Pilotage Moodle",
         description="Supervision, analyses experimentales et historique des incidents observes du pilote Moodle.",
-        version="0.8.0",
+        version="0.9.0",
         lifespan=lifespan,
     )
+    install_auth(application, authentication)
 
     @application.get("/api/v1/health", tags=["Sante"])
     async def health():
-        return {"status": "ok", "service": "moodle-control-plane", "version": "0.8.0"}
+        return {"status": "ok", "service": "moodle-control-plane", "version": "0.9.0"}
 
     @application.get("/api/v1/storage/health", tags=["Sante"])
     async def storage_health(request: Request, response: Response):
@@ -107,10 +120,13 @@ def create_app(
                     connection.execute("SELECT 1")
                 result[name] = {"status": "available", "schema_version": 1,
                                 "backend": "postgresql" if store.database is not None else "sqlite"}
+            if request.app.state.auth_store is not None:
+                request.app.state.auth_store.check()
+                result["accounts"] = {"status": "available", "schema_version": 1, "backend": "postgresql"}
             return result
         try:
             stores = await asyncio.to_thread(inspect_storage)
-        except (IncidentStorageError, DiagnosticStorageError) as exc:
+        except (IncidentStorageError, DiagnosticStorageError, AuthStorageError) as exc:
             raise HTTPException(503, detail="Le stockage du pilotage est indisponible.") from exc
         if not stores:
             raise HTTPException(503, detail="Aucun historique du pilotage n'est configure.")

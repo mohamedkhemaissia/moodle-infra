@@ -8,6 +8,10 @@ control_plane_prometheus_url: http://127.0.0.1:9090
 control_plane_max_scrape_age_seconds: 60
 control_plane_memory_limit: 256m
 control_plane_cpu_limit: "0.50"
+# Acces local au laboratoire par le port du tableau de bord ou un tunnel SSH.
+# En production : origine HTTPS exacte et cookie secure=true.
+control_plane_auth_origins: [http://127.0.0.1:8088, http://localhost:8088]
+control_plane_auth_secure_cookie: false
 control_plane_forecasts_enabled: false
 control_plane_forecast_bundle_dir: ""
 control_plane_forecast_features_dir: ""
@@ -37,8 +41,13 @@ control_plane_source_files:
   - pilotage/db.py
   - pilotage/schemas.py
   - pilotage/migrate.py
+  - pilotage/auth.py
+  - pilotage/auth_cli.py
+  - pilotage/passwords.py
+  - pilotage/worker_auth.py
   - app/__init__.py
   - app/main.py
+  - app/auth.py
   - app/forecasts.py
   - app/resource_history.py
   - app/anomalies.py
@@ -52,6 +61,7 @@ control_plane_source_files:
   - app/models.py
   - app/prometheus.py
   - tests/test_api.py
+  - tests/test_auth_api.py
   - tests/test_forecasts.py
   - tests/test_anomalies.py
   - tests/test_incidents.py

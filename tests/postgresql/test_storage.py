@@ -21,6 +21,7 @@ from remediation.store import RemediationStore
 from pilotage.db import load_config, raw_connect
 from pilotage.migrate import migrate, MigrationError
 from pilotage.schemas import SCHEMAS
+from pilotage.auth import AuthStore
 
 BASE = 1700000010
 RUN = '1' * 32
@@ -106,6 +107,25 @@ class PostgreSQLTests(unittest.TestCase):
         after = (incidents.listing(), incidents.events(1), incidents.detail(1),
                  diagnostics.detail(RUN), remediation.detail(REMEDIATION_RUN),
                  incidents.summary(BASE + 61), incidents.decision_snapshot(BASE + 61))
+        self.assertEqual(before, after)
+        self.assert_sources_unchanged()
+
+    def test_account_activation_does_not_modify_migrated_incidents_or_executions(self):
+        def cleanup():
+            with raw_connect(self.config) as connection:
+                connection.execute('DROP SCHEMA IF EXISTS pilotage_auth CASCADE')
+        cleanup()
+        self.addCleanup(cleanup)
+        self.migrate()
+        incidents, diagnostics, remediation = self.pg_stores()
+        before = (incidents.listing(), incidents.events(1), incidents.summary(BASE + 61),
+                  diagnostics.detail(RUN), remediation.detail(REMEDIATION_RUN))
+        accounts = AuthStore(database_config=self.config_path)
+        self.assertTrue(accounts.initialize())
+        accounts.add_user('hamma', 'Mohamed Khemaissia', 'admin', 'phrase-de-test-sans-compte-reel', now=BASE)
+        self.assertFalse(accounts.initialize())
+        after = (incidents.listing(), incidents.events(1), incidents.summary(BASE + 61),
+                 diagnostics.detail(RUN), remediation.detail(REMEDIATION_RUN))
         self.assertEqual(before, after)
         self.assert_sources_unchanged()
 
