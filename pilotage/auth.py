@@ -247,11 +247,13 @@ class AuthStore:
             return result
 
     def authenticate(self, token, *, now=None):
-        now = timestamp(now)
         if not isinstance(token, str) or not SESSION_PATTERN.fullmatch(token):
             raise AuthDenied("Connexion requise.")
         fingerprint = session_hash(token)
         with self.connection(write=True) as cursor:
+            # Echantillonner apres le verrou : une requete concurrente peut avoir
+            # deja avance last_seen_at pendant l'attente de cette transaction.
+            now = timestamp(now)
             row = cursor.execute("""SELECT users.*,sessions.user_version,sessions.created_at AS session_created_at,
                 sessions.last_seen_at,sessions.expires_at FROM sessions JOIN users ON users.id=sessions.user_id
                 WHERE token_hash=%s""", (fingerprint,)).fetchone()

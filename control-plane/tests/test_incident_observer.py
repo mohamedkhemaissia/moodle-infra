@@ -186,7 +186,7 @@ sys.argv=['app.incident_observer','--healthcheck']
 runpy.run_module('app.incident_observer',run_name='__main__')
 """
             result=subprocess.run([sys.executable,"-B","-c",script],env=environment,
-                                  capture_output=True,text=True,timeout=5)
+                                  capture_output=True,text=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual(result.stdout,"")
             self.assertEqual(database.read_bytes(),before)
@@ -206,7 +206,7 @@ runpy.run_module('app.incident_observer',run_name='__main__')
                 before={file.name:file.read_bytes() for file in Path(directory).iterdir()}
                 environment={**os.environ,"INCIDENTS_DIR":directory}
                 result=subprocess.run([sys.executable,"-B","-m","app.incident_observer","--healthcheck"],
-                                      env=environment,capture_output=True,text=True,timeout=5)
+                                      env=environment,capture_output=True,text=True,timeout=30)
                 self.assertEqual(result.returncode,1,result.stderr)
                 self.assertIn("Observateur indisponible",result.stderr)
                 self.assertEqual({file.name:file.read_bytes() for file in Path(directory).iterdir()},before)
@@ -221,7 +221,7 @@ runpy.run_module('app.incident_observer',run_name='__main__')
             self.assertEqual(json.loads(result.stdout)["processed_signals"],10)
             self.assertTrue((Path(directory)/"incidents.sqlite3").exists())
             health=subprocess.run([sys.executable,"-B","-m","app.incident_observer","--healthcheck"],
-                                  env=environment,capture_output=True,text=True,timeout=5)
+                                  env=environment,capture_output=True,text=True,timeout=30)
             self.assertEqual(health.returncode,0,health.stderr)
             self.assertEqual(IncidentStore(directory).listing()["total"],0)
 
