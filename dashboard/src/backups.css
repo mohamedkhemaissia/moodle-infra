@@ -1,0 +1,7 @@
+.backup-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin: 6px 0 22px; }
+.backup-grid > div { padding: 16px; background: #12151e; border: 1px solid #2c2e33; border-radius: 6px; }
+.backup-grid dt { color: #b5b9c6; font-size: .85rem; margin-bottom: 9px; }
+.backup-grid dd { margin: 0; color: #fff; font-size: 1.12rem; font-weight: 500; overflow-wrap: anywhere; }
+.backup-grid small { display: block; margin-top: 8px; color: #b5b9c6; }
+@media (max-width: 900px) { .backup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .backup-grid { grid-template-columns: 1fr; } }

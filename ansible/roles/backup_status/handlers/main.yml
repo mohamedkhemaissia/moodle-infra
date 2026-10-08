@@ -1,0 +1,6 @@
+---
+- name: Recharger la collecte des sauvegardes
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    name: moodle-backup-status.timer
+    state: restarted

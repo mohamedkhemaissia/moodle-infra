@@ -1,0 +1,9 @@
+---
+- name: Afficher le suivi des sauvegardes dans le tableau de bord
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - backup_status
+    - control_plane
+    - dashboard
