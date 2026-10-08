@@ -17,3 +17,5 @@ diagnostics_files:
   - project/ansible.cfg
   - project/diagnose.yml
   - tests/test_diagnostics.py
+
+pilotage_database_config_dir: /etc/moodle-pilotage

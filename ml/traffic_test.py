@@ -204,7 +204,8 @@ class MetricsReader:
 
     def read(self) -> dict:
         try:
-            request = Request(self.url, headers={"Accept": "application/json"})
+            from pilotage.worker_auth import worker_headers
+            request = Request(self.url, headers={"Accept": "application/json", **worker_headers(self.url)})
             with self.opener.open(request, timeout=5) as response:
                 content = response.read(131073)
             if len(content) > 131072:

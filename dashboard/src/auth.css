@@ -1,0 +1,27 @@
+.auth-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #000; color: #fff; }
+.auth-card { width: min(100%, 430px); padding: 36px; border: 1px solid #2c2e33; border-radius: 8px; }
+.auth-brand { font-size: 22px; font-weight: 500; margin-bottom: 24px; color: #fff; }
+.auth-brand span { color: #a7acc3; font-size: 12px; margin-left: 10px; }
+.auth-card h1 { font-size: 22px; margin-bottom: 8px; }
+.auth-card > p { color: #a7acc3; font-size: 13px; margin-bottom: 20px; }
+.auth-form { display: grid; gap: 12px; margin-top: 20px; font-size: 13px; }
+.auth-form label { display: grid; gap: 7px; color: #c9ccda; }
+.auth-form input, .auth-form select, .account-table select { background: #111319; border: 1px solid #3b3e49; border-radius: 4px; color: #fff; padding: 11px 12px; font: inherit; width: 100%; }
+.auth-form input:focus-visible { outline: 2px solid #0090e7; outline-offset: 2px; }
+.auth-form input:disabled { opacity: .6; }
+.auth-primary { background: #0090e7; border: 1px solid #0090e7; border-radius: 4px; padding: 12px 16px; color: #fff; font: inherit; margin-top: 8px; }
+.auth-primary:hover { background: #087cbc; }
+.auth-error { color: #ff8087 !important; font-size: 13px; padding: 12px 0; }
+.account-notice { color: #5cdd94; padding: 12px 0; font-size: 13px; }
+.account-form { max-width: 460px; }
+.account-form small { color: #a7acc3; }
+.account-details { padding: 18px 0 8px; border-top: 1px solid #2c2e33; margin-top: 20px; }
+.account-details summary { cursor: pointer; color: #c9ccda; font-size: 14px; }
+.account-table-wrap { overflow-x: auto; }
+.account-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.account-table td, .account-table th { text-align: left; padding: 13px 14px; border-bottom: 1px solid #2c2e33; white-space: nowrap; }
+.account-table th { color: #a7acc3; font-weight: 400; }
+.account-table select { width: auto; font-size: 12px; }
+.session-actions { display: flex; align-items: center; gap: 12px; }
+.session-role { font-size: 11px; color: #a7acc3; }
+@media (max-width: 720px) { .session-role { display: none; } .session-actions { gap: 8px; } .auth-card { padding: 26px; } .navbar-end .today { display: none; } }

@@ -12,7 +12,7 @@ import unittest
 
 from prepare_api import prepare
 
-COMPONENTS = ('ci', 'ml', 'control-plane', 'diagnostics', 'remediation', 'scripts')
+COMPONENTS = ('ci', 'ml', 'control-plane', 'diagnostics', 'remediation', 'scripts', 'pilotage')
 
 
 def run_suites(root: Path, context: Path, output: Path | None = None, preparation: dict | None = None) -> int:
@@ -23,6 +23,8 @@ def run_suites(root: Path, context: Path, output: Path | None = None, preparatio
         [str(context), str(root), os.environ.get('PYTHONPATH', '')]
     ).rstrip(os.pathsep)
     os.chdir(root)
+    # Les fixtures locales n'utilisent jamais l'identite d'exploitation du pilote.
+    os.environ['PILOTAGE_SERVICE_TOKEN_FILE'] = ''
     report = {'evaluated_at': datetime.now(timezone.utc).isoformat(),
               'scope': 'tests_with_fixtures', 'api_preparation': preparation,
               'components': {}, 'status': 'passed'}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { freshResult, validateDocument } from './operations.js';
+import { apiFetch } from './authClient.js';
 
 export function useReadings(requests, refreshToken, now) {
   const [results, setResults] = useState({});
@@ -19,7 +20,7 @@ export function useReadings(requests, refreshToken, now) {
         const timeout = setTimeout(() => controller.abort(), 8000);
         let result;
         try {
-          const response = await fetch(path, { method: 'GET', signal: controller.signal,
+          const response = await apiFetch(path, { method: 'GET', signal: controller.signal,
             cache: 'no-store', headers: { Accept: 'application/json' } });
           if (!response.ok) throw new Error(`Lecture indisponible (HTTP ${response.status}).`);
           result = { data: validateDocument(kind, await response.json()), receivedAt: Date.now(), error: null };

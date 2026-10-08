@@ -1,0 +1,11 @@
+---
+- name: Migrer le stockage du pilotage vers PostgreSQL en conservant les historiques
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    # Mettre a jour les commandes locales avant la publication du marqueur.
+    - diagnostics
+    - remediation
+    - control_plane_database
+    - control_plane

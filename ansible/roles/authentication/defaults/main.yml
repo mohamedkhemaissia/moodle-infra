@@ -1,0 +1,4 @@
+---
+authentication_base_dir: /opt/moodle-pilotage-auth
+authentication_python: /opt/moodle-diagnostics/venv/bin/python
+pilotage_database_config_dir: /etc/moodle-pilotage

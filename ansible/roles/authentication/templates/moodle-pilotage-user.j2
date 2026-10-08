@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+umask 077
+cd {{ (authentication_base_dir ~ '/code') | quote }}
+exec /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 PYTHONNOUSERSITE=1 \
+  PILOTAGE_DATABASE_CONFIG={{ (pilotage_database_config_dir ~ '/database.json') | quote }} \
+  {{ authentication_python | quote }} -B -m pilotage.auth_cli "$@"

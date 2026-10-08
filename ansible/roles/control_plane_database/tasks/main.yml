@@ -1,0 +1,151 @@
+---
+- name: Verifier les chemins et le port reserves au pilotage
+  ansible.builtin.assert:
+    that:
+      - pilotage_database_base_dir is match('^/opt/[^/]+$')
+      - pilotage_database_config_dir is match('^/etc/[^/]+$')
+      - pilotage_database_base_dir != (moodle_base_dir | default('/opt/moodle'))
+      - pilotage_database_port | int > 1023
+      - pilotage_database_port | int < 65536
+      - pilotage_database_port | int not in [5432, 8000, 8088, 9090, 9115, 9100, 8443]
+      - control_plane_incidents_enabled | bool
+      - control_plane_diagnostics_enabled | bool
+      - control_plane_remediation_enabled | bool
+
+- name: Creer les repertoires du serveur PostgreSQL de pilotage
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: '999'
+    mode: '0750'
+  loop:
+    - "{{ pilotage_database_base_dir }}"
+    - "{{ pilotage_database_base_dir }}/secrets"
+
+- name: Creer le repertoire de donnees independant de Moodle
+  ansible.builtin.file:
+    path: "{{ pilotage_database_base_dir }}/data"
+    state: directory
+    owner: '999'
+    group: '999'
+    mode: '0700'
+
+- name: Generer les secrets sans remplacer les valeurs existantes
+  ansible.builtin.command:
+    argv:
+      - "{{ diagnostics_base_dir }}/venv/bin/python"
+      - -c
+      - |
+        import os, re, secrets, sys
+        from pathlib import Path
+        changed = False
+        for name in ('bootstrap_password', 'app_password'):
+            path = Path(sys.argv[1]) / name
+            if path.is_symlink():
+                raise ValueError('Secret invalide')
+            if path.exists():
+                assert re.fullmatch('[a-f0-9]{64}', path.read_text().strip())
+                continue
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'w') as stream:
+                stream.write(secrets.token_hex(32) + '\n')
+            changed = True
+        print('changed' if changed else 'unchanged')
+      - "{{ pilotage_database_base_dir }}/secrets"
+  register: pilotage_secrets
+  changed_when: pilotage_secrets.stdout == 'changed'
+  no_log: true
+
+- name: Autoriser PostgreSQL a lire ses secrets
+  ansible.builtin.file:
+    path: "{{ pilotage_database_base_dir }}/secrets/{{ item }}"
+    owner: root
+    group: '999'
+    mode: '0640'
+  loop: [bootstrap_password, app_password]
+
+- name: Creer le repertoire de configuration des clients
+  ansible.builtin.file:
+    path: "{{ pilotage_database_config_dir }}"
+    state: directory
+    owner: root
+    group: '10001'
+    mode: '0750'
+
+- name: Installer le secret du compte applicatif pour les clients
+  ansible.builtin.copy:
+    src: "{{ pilotage_database_base_dir }}/secrets/app_password"
+    dest: "{{ pilotage_database_config_dir }}/app_password"
+    remote_src: true
+    owner: root
+    group: '10001'
+    mode: '0640'
+  no_log: true
+
+- name: Installer les configurations PostgreSQL
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: "{{ item.group }}"
+    mode: '0640'
+  loop:
+    - {src: compose.yml.j2, dest: "{{ pilotage_database_base_dir }}/compose.yml", group: root}
+    - {src: init.sh.j2, dest: "{{ pilotage_database_base_dir }}/init.sh", group: '999'}
+    - {src: database.json.j2, dest: "{{ pilotage_database_config_dir }}/database.json", group: '10001'}
+
+- name: Demarrer le PostgreSQL dedie sans modifier les services Moodle
+  community.docker.docker_compose_v2:
+    project_src: "{{ pilotage_database_base_dir }}"
+    project_name: moodle-control-plane-db
+    state: present
+    wait: true
+    wait_timeout: 120
+
+- name: Lire le marqueur de migration terminee
+  ansible.builtin.stat:
+    path: "{{ pilotage_database_config_dir }}/active"
+  register: pilotage_database_activation
+
+- name: Migrer les journaux sous verrou avant activation
+  when: not pilotage_database_activation.stat.exists
+  block:
+    - name: Arreter uniquement l observateur pendant la copie des historiques
+      ansible.builtin.command:
+        argv: [docker, compose, -p, moodle-control-plane, -f, /opt/moodle-control-plane/compose.yml, stop, observer]
+      changed_when: true
+
+    - name: Copier et verifier les trois journaux dans une transaction
+      ansible.builtin.command:
+        argv:
+          - "{{ diagnostics_base_dir }}/venv/bin/python"
+          - -B
+          - -m
+          - pilotage.migrate
+          - --config
+          - "{{ pilotage_database_config_dir }}/database.json"
+          - --incidents-dir
+          - "{{ control_plane_incident_data_dir }}"
+          - --diagnostics-dir
+          - "{{ diagnostics_data_dir }}"
+          - --remediation-dir
+          - "{{ remediation_data_dir }}"
+          - --activation-file
+          - "{{ pilotage_database_config_dir }}/active"
+        chdir: "{{ diagnostics_base_dir }}/code"
+      register: pilotage_migration
+      changed_when: (pilotage_migration.stdout | from_json).status == 'migrated'
+
+    - name: Afficher la preuve de conservation des historiques
+      ansible.builtin.debug:
+        var: pilotage_migration.stdout
+  rescue:
+    - name: Relancer l observateur avec sa configuration precedente
+      ansible.builtin.command:
+        argv: [docker, compose, -p, moodle-control-plane, -f, /opt/moodle-control-plane/compose.yml, start, observer]
+      changed_when: true
+
+    - name: Interrompre la bascule en conservant les fichiers SQLite
+      ansible.builtin.fail:
+        msg: "Migration interrompue. Journaux SQLite conserves ; consulter l erreur et reprendre ce playbook."

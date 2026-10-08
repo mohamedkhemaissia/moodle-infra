@@ -14,6 +14,14 @@ SHARED = {
     'ml/isolation_model.py': 'app/isolation_model.py',
     'diagnostics/store.py': 'app/diagnostics_store.py',
     'remediation/store.py': 'app/remediation_store.py',
+    'pilotage/__init__.py': 'pilotage/__init__.py',
+    'pilotage/db.py': 'pilotage/db.py',
+    'pilotage/schemas.py': 'pilotage/schemas.py',
+    'pilotage/migrate.py': 'pilotage/migrate.py',
+    'pilotage/auth.py': 'pilotage/auth.py',
+    'pilotage/auth_cli.py': 'pilotage/auth_cli.py',
+    'pilotage/passwords.py': 'pilotage/passwords.py',
+    'pilotage/worker_auth.py': 'pilotage/worker_auth.py',
 }
 BASE_FILES = ('Dockerfile', '.dockerignore', 'requirements-lock.txt')
 

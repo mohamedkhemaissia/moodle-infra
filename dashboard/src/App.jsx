@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import Operations from './Operations.jsx';
 import { useMetrics } from './useMetrics.js';
+import { useAuth } from './Auth.jsx';
+import Accounts from './Accounts.jsx';
+import { initials, canManageUsers } from './authClient.js';
 
 // Sidebar structure adapted from BootstrapDash Corona React (MIT).
 const numberFormat = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
@@ -118,6 +121,10 @@ const navigation = [
 ];
 
 export default function App() {
+  const auth = useAuth();
+  const avatar = initials(auth.user);
+  const items = auth.enabled ? [...navigation, { id: 'accounts',
+    title: canManageUsers(auth.user) ? 'Comptes et accès' : 'Mon compte', icon: 'server', color: '#0090e7' }] : navigation;
   const [operationsRefresh, setOperationsRefresh] = useState(0);
   const [activeSection, setActiveSection] = useState('main');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -136,11 +143,11 @@ export default function App() {
       <div className="sidebar-brand-wrapper"><a className="sidebar-brand" href="#main" onClick={() => setMenuOpen(false)}>
         <span className="brand-mark"><Icon name="server" size={26} /></span><span>Moodle<span className="brand-caption">BeeCoders</span></span>
       </a></div>
-      <div className="profile-desc"><span className="profile-initials">MK</span><div className="profile-name">
-        <strong>Administration</strong><span>Pilotage Moodle</span></div></div>
+      <div className="profile-desc"><span className="profile-initials">{avatar}</span><div className="profile-name">
+        <strong>{auth.user.display_name}</strong><span>{canManageUsers(auth.user) ? 'Administrateur' : 'Lecteur'}</span></div></div>
       <nav aria-label="Navigation principale"><ul className="nav">
         <li className="nav-category">Navigation</li>
-        {navigation.map((item) => <li key={item.id} className={`nav-item menu-items ${activeSection === item.id ? 'active' : ''}`}>
+        {items.map((item) => <li key={item.id} className={`nav-item menu-items ${activeSection === item.id ? 'active' : ''}`}>
           <a className="nav-link" href={`#${item.id}`} aria-current={activeSection === item.id ? 'location' : undefined}
             onClick={() => { setActiveSection(item.id); setMenuOpen(false); }}>
             <span className="menu-icon" style={{ color: item.color }}><Icon name={item.icon} size={18} /></span>
@@ -155,20 +162,23 @@ export default function App() {
           aria-expanded={menuOpen} aria-controls="sidebar" onClick={() => setMenuOpen((open) => !open)}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
         </button><span className="navbar-brand-text">Pilotage Moodle</span></div>
-        <div className="navbar-end"><span className="today">{dateFormat.format(now)}</span><span className="topbar-avatar">MK</span></div>
+        <div className="navbar-end"><span className="today">{dateFormat.format(now)}</span><span className="topbar-avatar">{avatar}</span>
+          {auth.enabled && <div className="session-actions"><span className="session-role">{canManageUsers(auth.user) ? 'Administrateur' : 'Lecteur'}</span>
+            <button className="refresh-button" onClick={auth.logout}>Déconnexion</button></div>}</div>
       </header>
       <main id="main" className="content-wrapper">
         <div className="page-heading"><div><h1>Tableau de bord</h1><p>Ressources, prévisions et suivi des incidents.</p></div>
           <button className="refresh-button" type="button" aria-label="Actualiser le tableau de bord" onClick={update} disabled={busy}>
             <Icon name="refresh" size={17} className={busy ? 'spin' : ''} /><span>{busy ? 'Actualisation…' : 'Actualiser'}</span>
           </button></div>
-        {notice && <div className="notice" role="status"><Icon name="alert" size={18} /><span>{notice}</span></div>}
+        {(notice || auth.message) && <div className="notice" role="status"><Icon name="alert" size={18} /><span>{auth.message || notice}</span></div>}
         <section id="resources" className="metrics-grid" aria-label="Mesures actuelles">
           <MetricCard label="CPU utilisé" value={metrics.cpu_usage_percent} icon="cpu" color="#0090e7" hint="Moyenne sur 2 minutes" />
           <MetricCard label="Mémoire utilisée" value={metrics.memory_usage_percent} icon="memory" color="#00d25b" hint="Part de la mémoire utilisée" />
           <MetricCard label="Disque disponible" value={metrics.disk_available_percent} icon="disk" color="#8f5fe8" hint="Espace disponible sur le disque racine" />
         </section>
         <Operations now={now} refreshToken={operationsRefresh} />
+        <Accounts />
         <footer className="page-footer"><span>BeeCoders · Pilotage Moodle</span><span>Interface Corona · v0.3.0</span></footer>
       </main>
     </div>
