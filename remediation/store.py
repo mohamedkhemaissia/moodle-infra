@@ -11,7 +11,10 @@ ACTION = "start_php_stopped"
 
 
 class RemediationStore(DiagnosticStore):
-    def __init__(self, directory):
+    database_name = "remediation"
+
+    def __init__(self, directory, *, database_config=None):
+        super().__init__(directory, database_config=database_config)
         self.path = Path(directory) / "remediations.sqlite3"
 
     def initialize(self):

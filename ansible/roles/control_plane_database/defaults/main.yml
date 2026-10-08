@@ -1,0 +1,7 @@
+---
+pilotage_database_base_dir: /opt/moodle-control-plane-db
+pilotage_database_config_dir: /etc/moodle-pilotage
+pilotage_database_port: 15432
+pilotage_database_image: 'postgres:16.15-bookworm@sha256:efedf3595f1d6f415c08568ba171029bf54052e754cc9f030e3f2412b21f3d67'
+pilotage_database_memory_limit: 256m
+pilotage_database_cpu_limit: '0.50'

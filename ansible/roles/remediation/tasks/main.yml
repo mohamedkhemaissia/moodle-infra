@@ -28,6 +28,7 @@
   loop:
     - "{{ remediation_base_dir }}"
     - "{{ remediation_base_dir }}/code"
+    - "{{ remediation_base_dir }}/code/pilotage"
     - "{{ remediation_base_dir }}/code/remediation"
     - "{{ remediation_base_dir }}/code/remediation/project"
     - "{{ remediation_base_dir }}/code/remediation/tests"
@@ -61,6 +62,20 @@
   loop: "{{ remediation_shared_diagnostics_files }}"
   register: remediation_shared_sources
 
+- name: Copier le stockage PostgreSQL partage
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../pilotage/{{ item }}"
+    dest: "{{ remediation_base_dir }}/code/pilotage/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [__init__.py, db.py, schemas.py, migrate.py]
+
+- name: Verifier si PostgreSQL a ete active pour le pilotage
+  ansible.builtin.stat:
+    path: "{{ pilotage_database_config_dir }}/active"
+  register: pilotage_database_activation
+
 - name: Installer la configuration locale de remediation
   ansible.builtin.template:
     src: config.json.j2
@@ -92,6 +107,8 @@
       - -m
       - remediation.initialize
     chdir: "{{ remediation_base_dir }}/code"
+  environment:
+    PILOTAGE_DATABASE_CONFIG: "{{ (pilotage_database_config_dir ~ '/database.json') if pilotage_database_activation.stat.exists else '' }}"
   register: remediation_initialization
   changed_when: (remediation_initialization.stdout | from_json).changed
 
@@ -101,6 +118,7 @@
     owner: root
     group: "10001"
     mode: "0640"
+  when: not pilotage_database_activation.stat.exists
 
 - name: Installer la commande de remediation manuelle
   ansible.builtin.template:

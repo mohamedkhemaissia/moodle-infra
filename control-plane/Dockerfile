@@ -10,6 +10,7 @@ RUN python -m pip install --no-cache-dir -r requirements-lock.txt \
     && python -m pip check
 
 COPY app ./app
+COPY pilotage ./pilotage
 COPY tests ./tests
 RUN python -m unittest discover -s tests -v
 

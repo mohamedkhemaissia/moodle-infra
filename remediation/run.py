@@ -62,6 +62,7 @@ def execute(config, config_path, incident_id, *, project_dir=None, runner_functi
                     extravars={"remediation_python": sys.executable, "remediation_config": str(config_path),
                                "remediation_incident_id": incident_id, "remediation_expected": str(expected), "remediation_run_id": identifier},
                     envvars={"PATH": str(Path(sys.executable).parent) + ":/usr/bin:/bin",
+                             "PILOTAGE_DATABASE_CONFIG": os.environ.get("PILOTAGE_DATABASE_CONFIG", ""),
                              "PYTHONPATH": str(CODE_DIR), "ANSIBLE_CONFIG": str(CODE_DIR / "remediation" / "project" / "ansible.cfg"),
                              "ANSIBLE_NOCOLOR": "1", "ANSIBLE_LOCAL_TEMP": private + "/tmp"},
                     settings={"job_timeout": 180, "idle_timeout": 180}, quiet=True,

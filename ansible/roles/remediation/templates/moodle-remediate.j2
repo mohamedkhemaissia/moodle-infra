@@ -2,5 +2,9 @@
 set -eu
 umask 027
 cd {{ (remediation_base_dir ~ '/code') | quote }}
-exec /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 PYTHONNOUSERSITE=1 \
+database_config=''
+if [ -f {{ (pilotage_database_config_dir ~ '/active') | quote }} ]; then
+  database_config={{ (pilotage_database_config_dir ~ '/database.json') | quote }}
+fi
+exec /usr/bin/env -i PILOTAGE_DATABASE_CONFIG="$database_config" PATH=/usr/bin:/bin LANG=C.UTF-8 PYTHONNOUSERSITE=1 \
   {{ remediation_python | quote }} -B -m remediation.run "$@"

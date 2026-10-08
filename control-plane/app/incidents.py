@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 import sqlite3
 from urllib.parse import quote
+from pilotage.db import Connection as PostgreSQLConnection, load_config
 
 SCHEMA_VERSION = 1
 APPLICATION_ID = 0x4D4F4F49
@@ -78,22 +79,26 @@ SCHEMA = (
 
 
 class IncidentStore:
-    def __init__(self, directory):
+    def __init__(self, directory, *, database_config=None):
         self.path = Path(directory) / DB_NAME
+        self.database = load_config(database_config)
 
     @contextmanager
     def connection(self, *, write=False):
         connection = None
         try:
-            if write:
+            if self.database is not None:
+                connection = PostgreSQLConnection(self.database, "incidents", write=write)
+            elif write:
                 connection = sqlite3.connect(self.path, timeout=1.5, isolation_level=None)
                 connection.execute("PRAGMA synchronous=FULL")
             else:
                 uri = "file:" + quote(str(self.path.resolve()), safe="/") + "?mode=ro"
                 connection = sqlite3.connect(uri, uri=True, timeout=1.5, isolation_level=None)
                 connection.execute("PRAGMA query_only=ON")
-            connection.row_factory = sqlite3.Row
-            connection.execute("PRAGMA foreign_keys=ON")
+            if self.database is None:
+                connection.row_factory = sqlite3.Row
+                connection.execute("PRAGMA foreign_keys=ON")
             yield connection
         except (OSError, sqlite3.Error, ValueError, KeyError, TypeError) as exc:
             raise IncidentStorageError("Stockage des incidents indisponible ou incompatible.") from exc
@@ -103,11 +108,18 @@ class IncidentStore:
 
     @staticmethod
     def check_schema(connection):
+        if isinstance(connection, PostgreSQLConnection):
+            connection.check_schema()
+            return
         if (connection.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID
                 or connection.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION):
             raise IncidentStorageError("Version du stockage des incidents incompatible.")
 
     def initialize(self):
+        if self.database is not None:
+            with self.connection() as connection:
+                self.check_schema(connection)
+            return
         if not self.path.parent.is_dir():
             raise IncidentStorageError("Repertoire persistant des incidents absent.")
         with self.connection(write=True) as connection:

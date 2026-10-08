@@ -18,6 +18,7 @@
     - "{{ control_plane_base_dir }}"
     - "{{ control_plane_base_dir }}/build"
     - "{{ control_plane_base_dir }}/build/app"
+    - "{{ control_plane_base_dir }}/build/pilotage"
     - "{{ control_plane_base_dir }}/build/tests"
 
 - name: Copier les sources necessaires a l image
@@ -27,7 +28,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py']) }}"
+  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py']) }}"
 
 - name: Copier le moteur numerique partage avec l entrainement
   ansible.builtin.copy:
@@ -52,6 +53,20 @@
     owner: root
     group: root
     mode: "0644"
+
+- name: Copier le stockage PostgreSQL partage
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../pilotage/{{ item }}"
+    dest: "{{ control_plane_base_dir }}/build/pilotage/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [__init__.py, db.py, schemas.py, migrate.py]
+
+- name: Verifier si PostgreSQL a ete active pour le pilotage
+  ansible.builtin.stat:
+    path: "{{ pilotage_database_config_dir }}/active"
+  register: pilotage_database_activation
 
 - name: Calculer les empreintes des sources
   ansible.builtin.stat:
@@ -196,6 +211,24 @@
 - name: Afficher le resume de supervision
   ansible.builtin.debug:
     var: control_plane_summary.json
+
+- name: Verifier que les trois historiques utilisent PostgreSQL apres la bascule
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/storage/health"
+    return_content: true
+    status_code: 200
+    use_proxy: false
+  register: pilotage_storage_health
+  when: pilotage_database_activation.stat.exists
+  until: >-
+    pilotage_storage_health.status | default(0) == 200 and
+    pilotage_storage_health.json is defined and
+    (pilotage_storage_health.json.stores | default({}) | length) == 3 and
+    pilotage_storage_health.json.stores.incidents.backend == 'postgresql' and
+    pilotage_storage_health.json.stores.diagnostics.backend == 'postgresql' and
+    pilotage_storage_health.json.stores.remediations.backend == 'postgresql'
+  retries: 6
+  delay: 5
 
 - name: Verifier l endpoint des previsions
   ansible.builtin.uri:

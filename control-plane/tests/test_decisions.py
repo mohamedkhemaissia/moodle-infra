@@ -275,7 +275,8 @@ class DecisionAPITests(unittest.IsolatedAsyncioTestCase):
                 point=int(time.time())//30*30-30
                 for index in range(2):
                     at=point+index*30
-                    store.apply(at,observations(metrics(cpu=90),analysis(at)),completed_at=at+1)
+                    # Ne pas fabriquer une fin dans le futur a la premiere seconde du pas.
+                    store.apply(at,observations(metrics(cpu=90),analysis(at)),completed_at=at)
             def reject_network(request):
                 raise AssertionError("Une lecture des decisions ne doit pas interroger Prometheus.")
             application=create_app(incidents_dir=directory if storage else "",forecasts_dir="",anomalies_dir="",

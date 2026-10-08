@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euo pipefail
+export PILOTAGE_PASSWORD="$(cat /run/secrets/app_password)"
+psql -X -v ON_ERROR_STOP=1 --username postgres --dbname moodle_pilotage <<'SQL'
+\getenv app_password PILOTAGE_PASSWORD
+BEGIN;
+CREATE ROLE pilotage LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+  NOREPLICATION NOBYPASSRLS PASSWORD :'app_password';
+ALTER DATABASE moodle_pilotage OWNER TO pilotage;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+COMMIT;
+SQL
+unset PILOTAGE_PASSWORD

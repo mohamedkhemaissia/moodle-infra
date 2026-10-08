@@ -33,6 +33,10 @@ control_plane_source_files:
   - Dockerfile
   - .dockerignore
   - requirements-lock.txt
+  - pilotage/__init__.py
+  - pilotage/db.py
+  - pilotage/schemas.py
+  - pilotage/migrate.py
   - app/__init__.py
   - app/main.py
   - app/forecasts.py
@@ -55,3 +59,6 @@ control_plane_source_files:
   - tests/test_decisions.py
   - tests/test_diagnostics_api.py
   - tests/test_remediation_api.py
+  - tests/test_storage_api.py
+
+pilotage_database_config_dir: /etc/moodle-pilotage

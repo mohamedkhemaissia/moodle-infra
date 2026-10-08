@@ -4,6 +4,7 @@ import math
 import re
 import sqlite3
 from pathlib import Path
+from pilotage.db import Connection as PostgreSQLConnection, load_config
 
 APPLICATION_ID = 0x4D444941
 STATUSES = {"running", "completed", "blocked", "failed", "timeout", "canceled", "interrupted"}
@@ -43,11 +44,16 @@ def run_id(value):
 
 
 class DiagnosticStore:
-    def __init__(self, directory):
+    database_name = "diagnostics"
+
+    def __init__(self, directory, *, database_config=None):
         self.path = Path(directory) / "diagnostics.sqlite3"
+        self.database = load_config(database_config)
 
     def connect(self, *, write=False):
         try:
+            if self.database is not None:
+                return PostgreSQLConnection(self.database, self.database_name, write=write)
             if self.path.is_symlink() or not self.path.is_file():
                 raise DiagnosticStorageError("Journal absent ou invalide.")
             connection = sqlite3.connect(self.path.as_uri() + ("?mode=rw" if write else "?mode=ro"),
@@ -65,6 +71,10 @@ class DiagnosticStore:
 
     def initialize(self):
         # Pas de migration destructive ; l'API n'appelle jamais cette methode.
+        if self.database is not None:
+            with self.connect() as connection:
+                connection.execute("SELECT id FROM runs LIMIT 1")
+            return False
         if self.path.exists():
             with self.connect() as connection:
                 connection.execute("SELECT id FROM runs LIMIT 1")

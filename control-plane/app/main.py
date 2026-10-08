@@ -82,13 +82,39 @@ def create_app(
     application = FastAPI(
         title="Pilotage Moodle",
         description="Supervision, analyses experimentales et historique des incidents observes du pilote Moodle.",
-        version="0.7.0",
+        version="0.8.0",
         lifespan=lifespan,
     )
 
     @application.get("/api/v1/health", tags=["Sante"])
     async def health():
-        return {"status": "ok", "service": "moodle-control-plane", "version": "0.7.0"}
+        return {"status": "ok", "service": "moodle-control-plane", "version": "0.8.0"}
+
+    @application.get("/api/v1/storage/health", tags=["Sante"])
+    async def storage_health(request: Request, response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        def inspect_storage():
+            result = {}
+            for name, store in (("incidents", request.app.state.incidents),
+                                ("diagnostics", request.app.state.diagnostics),
+                                ("remediations", request.app.state.remediations)):
+                if store is None:
+                    continue
+                context = store.connection() if name == "incidents" else store.connect()
+                with context as connection:
+                    if name == "incidents":
+                        store.check_schema(connection)
+                    connection.execute("SELECT 1")
+                result[name] = {"status": "available", "schema_version": 1,
+                                "backend": "postgresql" if store.database is not None else "sqlite"}
+            return result
+        try:
+            stores = await asyncio.to_thread(inspect_storage)
+        except (IncidentStorageError, DiagnosticStorageError) as exc:
+            raise HTTPException(503, detail="Le stockage du pilotage est indisponible.") from exc
+        if not stores:
+            raise HTTPException(503, detail="Aucun historique du pilotage n'est configure.")
+        return {"status": "available", "stores": stores}
 
     @application.get(
         "/api/v1/metrics/summary",
