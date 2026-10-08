@@ -25,6 +25,9 @@ dashboard_source_files:
   - src/main.jsx
   - src/Auth.jsx
   - src/Accounts.jsx
+  - src/Backups.jsx
+  - src/backups.js
+  - src/backups.css
   - src/authClient.js
   - src/auth.css
   - src/App.jsx
@@ -38,3 +41,4 @@ dashboard_source_files:
   - tests/snapshot.test.js
   - tests/operations.test.js
   - tests/auth.test.js
+  - tests/backups.test.js

@@ -25,6 +25,9 @@ services:
 {% endif %}
       PROMETHEUS_URL: {{ control_plane_prometheus_url | to_json }}
       MAX_SCRAPE_AGE_SECONDS: {{ control_plane_max_scrape_age_seconds | string | to_json }}
+{% if control_plane_backup_status_enabled | bool %}
+      BACKUP_STATUS_FILE: /var/lib/moodle-backup-status/status.json
+{% endif %}
       DECISIONS_ENABLED: {{ (control_plane_decisions_enabled | bool | ternary('true', 'false')) | to_json }}
 {% if control_plane_forecasts_enabled | bool %}
       FORECASTS_DIR: /opt/forecasts
@@ -41,8 +44,14 @@ services:
 {% if control_plane_remediation_enabled | bool %}
       REMEDIATION_DIR: /var/lib/moodle-remediation
 {% endif %}
-{% if pilotage_database_activation.stat.exists or control_plane_forecasts_enabled | bool or control_plane_anomalies_enabled | bool or control_plane_incidents_enabled | bool or control_plane_diagnostics_enabled | bool or control_plane_remediation_enabled | bool %}
+{% if pilotage_database_activation.stat.exists or control_plane_forecasts_enabled | bool or control_plane_anomalies_enabled | bool or control_plane_incidents_enabled | bool or control_plane_diagnostics_enabled | bool or control_plane_remediation_enabled | bool or control_plane_backup_status_enabled | bool %}
     volumes:
+{% if control_plane_backup_status_enabled | bool %}
+      - type: bind
+        source: {{ control_plane_backup_status_dir | to_json }}
+        target: /var/lib/moodle-backup-status
+        read_only: true
+{% endif %}
 {% if pilotage_database_activation.stat.exists %}
       - type: bind
         source: {{ pilotage_database_config_dir | to_json }}

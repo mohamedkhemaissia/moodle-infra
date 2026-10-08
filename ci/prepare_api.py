@@ -11,6 +11,7 @@ import tempfile
 
 
 SHARED = {
+    'backup_status/status.py': 'app/backup_status.py',
     'ml/isolation_model.py': 'app/isolation_model.py',
     'diagnostics/store.py': 'app/diagnostics_store.py',
     'remediation/store.py': 'app/remediation_store.py',

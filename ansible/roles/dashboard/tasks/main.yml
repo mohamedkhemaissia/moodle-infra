@@ -164,3 +164,21 @@
 - name: Afficher les mesures accessibles au tableau de bord
   ansible.builtin.debug:
     var: dashboard_summary.json
+
+- name: Verifier le suivi des sauvegardes a travers le proxy
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ dashboard_port }}/api/v1/backups/summary"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+    headers: "{{ dashboard_read_headers }}"
+  no_log: "{{ dashboard_auth_activation.stat.exists }}"
+  register: dashboard_backup_summary
+  until: >-
+    dashboard_backup_summary.status | default(0) == 200 and
+    dashboard_backup_summary.json is defined and
+    dashboard_backup_summary.json.mode | default('') == 'read_only'
+  retries: 6
+  delay: 5
+  when: control_plane_backup_status_enabled | default(false) | bool
