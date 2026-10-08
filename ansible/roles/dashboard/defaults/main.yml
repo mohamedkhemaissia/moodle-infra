@@ -17,6 +17,10 @@ dashboard_source_files:
   - nginx.conf.template
   - start.sh
   - public/favicon.svg
+  - public/Rubik.ttf
+  - public/CORONA-LICENSE.txt
+  - public/CORONA-SOURCE.txt
+  - public/RUBIK-OFL.txt
   - src/main.jsx
   - src/App.jsx
   - src/Operations.jsx
@@ -25,5 +29,6 @@ dashboard_source_files:
   - src/snapshot.js
   - src/useMetrics.js
   - src/styles.css
+  - src/corona.css
   - tests/snapshot.test.js
   - tests/operations.test.js

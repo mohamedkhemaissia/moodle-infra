@@ -1,34 +1,10 @@
 import { useState } from 'react';
 import Operations from './Operations.jsx';
-import { chartSeries } from './snapshot.js';
 import { useMetrics } from './useMetrics.js';
 
-const numberFormat = new Intl.NumberFormat('fr-FR', {
-  maximumFractionDigits: 1,
-});
-const timeFormat = new Intl.DateTimeFormat('fr-FR', {
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-});
-const shortTimeFormat = new Intl.DateTimeFormat('fr-FR', {
-  hour: '2-digit',
-  minute: '2-digit',
-});
-const dateFormat = new Intl.DateTimeFormat('fr-FR', {
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-});
-const formatNumber = (value) =>
-  value === null ? '—' : numberFormat.format(value);
-const sourceLabels = {
-  up: 'Collecte active',
-  down: 'Collecte en échec',
-  stale: 'Données anciennes',
-  missing: 'Données absentes',
-  unknown: 'État inconnu',
-};
+// Sidebar structure adapted from BootstrapDash Corona React (MIT).
+const numberFormat = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
+const dateFormat = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
 function Icon({ name, size = 20, ...props }) {
   const paths = {
@@ -122,441 +98,79 @@ function Icon({ name, size = 20, ...props }) {
   );
 }
 
-function SourcePill({ status }) {
-  return (
-    <span className={`pill source-${status}`}>
-      <span className="status-dot" />
-      {sourceLabels[status]}
-    </span>
-  );
+function MetricCard({ label, value, icon, hint, color }) {
+  return <article className="card metric-card" data-metric={label}>
+    <div className="metric-top"><span className="metric-icon" style={{ '--accent': color }}><Icon name={icon} size={23} /></span>
+      <span className="metric-label">{label}</span></div>
+    <div className={`metric-value ${value === null ? 'missing' : ''}`}>
+      {value === null ? '—' : numberFormat.format(value)}{value !== null && <span className="unit">%</span>}
+    </div>
+    <div className="meter" aria-hidden="true"><div style={{ width: `${value ?? 0}%`, background: color }} /></div>
+    <p className="metric-hint">{value === null ? 'Mesure indisponible' : hint}</p>
+  </article>;
 }
 
-function MetricCard({
-  label,
-  value,
-  unit,
-  icon,
-  hint,
-  color,
-  percentage = false,
-}) {
-  return (
-    <article className="metric-card" data-metric={label}>
-      <div className="metric-top">
-        <span>{label}</span>
-        <span className={`metric-icon ${color}`}>
-          <Icon name={icon} />
-        </span>
-      </div>
-      <div className={`metric-value ${value === null ? 'missing' : ''}`}>
-        {formatNumber(value)}
-        {value !== null && <span className="unit">{unit}</span>}
-      </div>
-      {percentage && (
-        <div className="meter" aria-hidden="true">
-          <div className={color} style={{ width: `${value ?? 0}%` }} />
-        </div>
-      )}
-      <p className="metric-hint">
-        {value === null ? 'Mesure indisponible' : hint}
-      </p>
-    </article>
-  );
-}
-
-function ResourceChart({ samples }) {
-  const series = [
-    { key: 'cpu_usage_percent', label: 'CPU', color: '#3975e7' },
-    { key: 'memory_usage_percent', label: 'Mémoire', color: '#1c9d93' },
-    {
-      key: 'disk_available_percent',
-      label: 'Disque disponible',
-      color: '#9671d4',
-    },
-  ];
-  const validSamples = samples.filter((sample) =>
-    series.some((item) => sample[item.key] !== null),
-  ).length;
-  return (
-    <section className="panel history-panel" aria-labelledby="history-heading">
-      <div className="panel-heading">
-        <div>
-          <h2 id="history-heading">Évolution des ressources</h2>
-          <p>Mesures collectées depuis l’ouverture de cette page.</p>
-        </div>
-        <span className="subtle-badge">
-          {validSamples} relevé{validSamples !== 1 ? 's' : ''}
-        </span>
-      </div>
-      <div className="chart-legend">
-        {series.map((item) => (
-          <span key={item.key}>
-            <i style={{ background: item.color }} />
-            {item.label}
-          </span>
-        ))}
-      </div>
-      {samples.length ? (
-        <div className="chart-container">
-          <div className="chart-frame">
-            <div className="chart-y-axis" aria-hidden="true">
-              {[100, 75, 50, 25, 0].map((value) => (
-                <span key={value}>{value}</span>
-              ))}
-            </div>
-            <svg
-              className="resource-chart"
-              viewBox="0 0 680 164"
-              preserveAspectRatio="none"
-              role="img"
-              aria-label="Évolution du CPU, de la mémoire utilisée et de l’espace disque disponible, en pourcentage."
-            >
-              {[100, 75, 50, 25, 0].map((value) => {
-                const y = 164 - (value / 100) * 164;
-                return (
-                  <line
-                    key={value}
-                    x1="0"
-                    x2="680"
-                    y1={y}
-                    y2={y}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                );
-              })}
-              {series.map((item) => {
-                const { path, lastPoint } = chartSeries(samples, item.key);
-                return (
-                  <g key={item.key}>
-                    <path
-                      d={path}
-                      stroke={item.color}
-                      fill="none"
-                      strokeWidth="2.3"
-                      strokeLinejoin="round"
-                      strokeLinecap="round"
-                      vectorEffect="non-scaling-stroke"
-                    />
-                    {lastPoint && (
-                      <path
-                        d={`M${lastPoint.x},${lastPoint.y}l0,0`}
-                        stroke={item.color}
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                        vectorEffect="non-scaling-stroke"
-                      />
-                    )}
-                  </g>
-                );
-              })}
-            </svg>
-          </div>
-          <div className="chart-x-axis" aria-hidden="true">
-            <span>{shortTimeFormat.format(samples[0].time)}</span>
-            <span>{shortTimeFormat.format(samples.at(-1).time)}</span>
-          </div>
-        </div>
-      ) : (
-        <div className="chart-empty">
-          <Icon name="chart" size={30} />
-          <p>Les premières mesures apparaîtront ici.</p>
-        </div>
-      )}
-      <div className="chart-footnote">
-        <Icon name="clock" size={14} />
-        {samples.length < 2
-          ? 'En attente des prochaines mesures'
-          : 'Jusqu’à 60 mesures · les interruptions restent visibles'}
-      </div>
-    </section>
-  );
-}
-
-function SourceCard({ title, description, source, icon }) {
-  return (
-    <article className="source-card">
-      <div className="source-symbol">
-        <Icon name={icon} size={22} />
-      </div>
-      <div className="source-details">
-        <h3>{title}</h3>
-        <p>{description}</p>
-      </div>
-      <div className="source-state">
-        <SourcePill status={source.status} />
-        <span>
-          {source.status === 'unknown' || source.age === null
-            ? 'Pas de mesure utilisable'
-            : `Âge estimé : ${formatNumber(Math.max(0, source.age))} s`}
-        </span>
-      </div>
-    </article>
-  );
-}
+const navigation = [
+  { id: 'main', title: 'Tableau de bord', icon: 'grid', color: '#8f5fe8' },
+  { id: 'analysis', title: 'Prévisions', icon: 'chart', color: '#00d25b' },
+  { id: 'incidents', title: 'Incidents et décisions', icon: 'alert', color: '#ffab00' },
+  { id: 'audits', title: 'Journaux d’exécution', icon: 'clock', color: '#0090e7' },
+];
 
 export default function App() {
   const [operationsRefresh, setOperationsRefresh] = useState(0);
-  const { snapshot, error, busy, samples, now, view, refresh } = useMetrics();
+  const [activeSection, setActiveSection] = useState('main');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { error, busy, now, view, refresh } = useMetrics();
   const metrics = view.metrics;
-  const availability = metrics.moodle_available;
-  const moodleState =
-    availability === true
-      ? 'available'
-      : availability === false
-        ? 'unavailable'
-        : 'unknown';
-  const title =
-    availability === true
-      ? 'Moodle est disponible'
-      : availability === false
-        ? 'La sonde Moodle a échoué'
-        : 'État de Moodle inconnu';
-  const description =
-    availability === true
-      ? 'La page de connexion répond correctement en HTTPS.'
-      : availability === false
-        ? 'La dernière vérification HTTPS n’a pas abouti avec succès.'
-        : 'Une mesure récente est nécessaire pour confirmer sa disponibilité.';
-  const collectionProblem = Object.values(view.collection).some(
-    (source) => source.status !== 'up',
-  );
-  const notice =
-    view.reason === 'error'
-      ? error
-      : view.reason === 'stale'
-        ? 'La dernière lecture date de plus de 60 secondes. Les valeurs actuelles sont masquées.'
-        : view.reason === 'clock'
-          ? 'L’horodatage reçu est incohérent avec l’heure actuelle. Les valeurs actuelles sont masquées.'
-          : view.reason === 'ready' && collectionProblem
-            ? 'Une collecte est absente, en échec ou trop ancienne. Les mesures concernées sont indisponibles.'
-            : null;
-  const httpCode = metrics.moodle_http_status_code;
+  const notice = view.reason === 'error' ? error : view.reason === 'stale'
+    ? 'Les données sont anciennes. Actualisez pour obtenir des mesures récentes.'
+    : view.reason === 'clock' ? 'L’heure des mesures est incohérente. Les valeurs sont indisponibles.'
+      : view.reason === 'ready' && view.collection.linux.status !== 'up'
+        ? 'La collecte des ressources est indisponible. Les mesures concernées sont masquées.' : null;
+  const update = () => { refresh(); setOperationsRefresh((value) => value + 1); };
 
-  return (
-    <div className="app-shell">
-      <a className="skip-link" href="#main">
-        Aller au contenu
-      </a>
-      <aside className="sidebar">
-        <a className="brand" href="#main">
-          <span className="brand-mark">
-            <Icon name="server" size={22} />
-          </span>
-          <span>
-            BeeCoders<small>Pilotage Moodle</small>
-          </span>
-        </a>
-        <div className="sidebar-label">SUPERVISION</div>
-        <nav aria-label="Navigation principale">
-          <a className="nav-item active" href="#main">
-            <Icon name="grid" />
-            Vue d’ensemble
-          </a>
-          <a className="nav-item" href="#resources">
-            <Icon name="chart" />
-            Ressources serveur
-          </a>
-          <a className="nav-item" href="#collection">
-            <Icon name="pulse" />
-            Qualité de la collecte
-          </a>
-          <a className="nav-item" href="#analysis"><Icon name="chart" />Intelligence artificielle</a>
-          <a className="nav-item" href="#incidents"><Icon name="alert" />Incidents et décisions</a>
-          <a className="nav-item" href="#audits"><Icon name="clock" />Journaux d’exécution</a>
-        </nav>
-        <div className="sidebar-environment">
-          <span className="sidebar-label">ENVIRONNEMENT</span>
-          <strong>
-            <span className="environment-dot" />
-            Pilote Moodle
-          </strong>
-          <p>Infrastructure de laboratoire</p>
-        </div>
-        <div className="sidebar-bottom">
-          <span className="sidebar-avatar">MK</span>
-          <div>
-            <strong>Administration</strong>
-            <small>Version 0.2.0</small>
-          </div>
-        </div>
-      </aside>
-
-      <div className="workspace">
-        <header className="topbar">
-          <span className="breadcrumb">
-            BeeCoders <span>/</span> Pilote Moodle
-          </span>
-          <span className="today">{dateFormat.format(now)}</span>
-        </header>
-        <main id="main">
-          <div className="page-heading">
-            <div>
-              <span className="eyebrow">SUPERVISION DU PILOTE</span>
-              <h1>Vue d’ensemble</h1>
-              <p>L’état de Moodle et de ses ressources, au même endroit.</p>
-            </div>
-            <button
-              className="refresh-button"
-              type="button"
-              onClick={() => { refresh(); setOperationsRefresh((value) => value + 1); }}
-              disabled={busy}
-            >
-              <Icon name="refresh" className={busy ? 'spin' : ''} />
-              {busy ? 'Actualisation…' : 'Actualiser'}
-            </button>
-          </div>
-
-          <div className="update-line">
-            <span
-              className={`update-dot ${view.reason === 'ready' ? 'live' : ''}`}
-            />
-            <span>
-              {view.reason === 'pending'
-                ? 'Première lecture en cours'
-                : 'Actualisation automatique · 15 s'}
-            </span>
-            <span className="update-separator">·</span>
-            <span>
-              Dernière lecture réussie :{' '}
-              <strong>
-                {snapshot
-                  ? timeFormat.format(Date.parse(snapshot.evaluated_at))
-                  : '—'}
-              </strong>
-            </span>
-          </div>
-
-          {notice && (
-            <div className="notice" role="status">
-              <Icon name="alert" size={19} />
-              <span>{notice}</span>
-            </div>
-          )}
-
-          <section
-            className={`availability-panel ${moodleState}`}
-            aria-labelledby="availability-heading"
-          >
-            <span className="availability-symbol">
-              <Icon
-                name={
-                  availability === true
-                    ? 'check'
-                    : availability === false
-                      ? 'alert'
-                      : 'globe'
-                }
-                size={27}
-              />
-            </span>
-            <div className="availability-copy">
-              <div className="availability-label">SONDE HTTPS MOODLE</div>
-              <h2 id="availability-heading">{title}</h2>
-              <p>{description}</p>
-            </div>
-            <div className="availability-right">
-              <span className={`http-badge ${moodleState}`}>
-                {httpCode === null
-                  ? 'HTTP non mesuré'
-                  : httpCode === 0
-                    ? 'Sans réponse HTTP'
-                    : `HTTP ${httpCode}`}
-              </span>
-              <a
-                href="https://moodle-pfe.test:8443/login/index.php"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Ouvrir Moodle <Icon name="arrow" size={15} />
-              </a>
-            </div>
-          </section>
-
-          <section
-            id="resources"
-            className="metrics-grid"
-            aria-label="Mesures actuelles"
-          >
-            <MetricCard
-              label="CPU utilisé"
-              value={metrics.cpu_usage_percent}
-              unit="%"
-              icon="cpu"
-              color="blue"
-              percentage
-              hint="Moyenne sur les 2 dernières minutes"
-            />
-            <MetricCard
-              label="Mémoire utilisée"
-              value={metrics.memory_usage_percent}
-              unit="%"
-              icon="memory"
-              color="teal"
-              percentage
-              hint="Part de la mémoire utilisée"
-            />
-            <MetricCard
-              label="Disque disponible"
-              value={metrics.disk_available_percent}
-              unit="%"
-              icon="disk"
-              color="purple"
-              percentage
-              hint="Espace disponible sur le disque racine"
-            />
-            <MetricCard
-              label="Durée de la sonde"
-              value={metrics.moodle_probe_duration_ms}
-              unit="ms"
-              icon="clock"
-              color="amber"
-              hint="Page de connexion en HTTPS"
-            />
-          </section>
-
-          <ResourceChart samples={samples} />
-
-          <section
-            id="collection"
-            className="panel collection-panel"
-            aria-labelledby="collection-heading"
-          >
-            <div className="panel-heading">
-              <div>
-                <h2 id="collection-heading">Qualité de la collecte</h2>
-                <p>
-                  Une source doit être récente pour fournir des mesures
-                  utilisables.
-                </p>
-              </div>
-              <span className="subtle-badge">2 sources</span>
-            </div>
-            <div className="sources-grid">
-              <SourceCard
-                title="Serveur Linux"
-                description="CPU, mémoire et disque"
-                icon="server"
-                source={view.collection.linux}
-              />
-              <SourceCard
-                title="Sonde HTTPS Moodle"
-                description="Disponibilité et durée de la sonde"
-                icon="globe"
-                source={view.collection.moodle_https}
-              />
-            </div>
-          </section>
-
-          <Operations now={now} refreshToken={operationsRefresh} />
-
-          <footer className="page-footer">
-            <span>Pilote Moodle · BeeCoders</span>
-            <a href="/api/v1/metrics/summary" target="_blank" rel="noreferrer">
-              Voir les mesures JSON <Icon name="arrow" size={13} />
-            </a>
-          </footer>
-        </main>
-      </div>
+  return <div className={`container-scroller app-shell ${menuOpen ? 'menu-open' : ''}`}>
+    <a className="skip-link" href="#main">Aller au contenu</a>
+    <aside className="sidebar sidebar-offcanvas" id="sidebar" aria-label="Menu principal">
+      <div className="sidebar-brand-wrapper"><a className="sidebar-brand" href="#main" onClick={() => setMenuOpen(false)}>
+        <span className="brand-mark"><Icon name="server" size={26} /></span><span>Moodle<span className="brand-caption">BeeCoders</span></span>
+      </a></div>
+      <div className="profile-desc"><span className="profile-initials">MK</span><div className="profile-name">
+        <strong>Administration</strong><span>Pilotage Moodle</span></div></div>
+      <nav aria-label="Navigation principale"><ul className="nav">
+        <li className="nav-category">Navigation</li>
+        {navigation.map((item) => <li key={item.id} className={`nav-item menu-items ${activeSection === item.id ? 'active' : ''}`}>
+          <a className="nav-link" href={`#${item.id}`} aria-current={activeSection === item.id ? 'location' : undefined}
+            onClick={() => { setActiveSection(item.id); setMenuOpen(false); }}>
+            <span className="menu-icon" style={{ color: item.color }}><Icon name={item.icon} size={18} /></span>
+            <span className="menu-title">{item.title}</span></a></li>)}
+      </ul></nav>
+      <div className="sidebar-footer"><Icon name="server" size={16} /><span>Environnement pilote</span></div>
+    </aside>
+    {menuOpen && <button className="sidebar-backdrop" aria-label="Fermer le menu" onClick={() => setMenuOpen(false)} />}
+    <div className="workspace page-body-wrapper">
+      <header className="navbar topbar"><div className="navbar-start">
+        <button className="menu-toggle" aria-label={menuOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+          aria-expanded={menuOpen} aria-controls="sidebar" onClick={() => setMenuOpen((open) => !open)}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button><span className="navbar-brand-text">Pilotage Moodle</span></div>
+        <div className="navbar-end"><span className="today">{dateFormat.format(now)}</span><span className="topbar-avatar">MK</span></div>
+      </header>
+      <main id="main" className="content-wrapper">
+        <div className="page-heading"><div><h1>Tableau de bord</h1><p>Ressources, prévisions et suivi des incidents.</p></div>
+          <button className="refresh-button" type="button" aria-label="Actualiser le tableau de bord" onClick={update} disabled={busy}>
+            <Icon name="refresh" size={17} className={busy ? 'spin' : ''} /><span>{busy ? 'Actualisation…' : 'Actualiser'}</span>
+          </button></div>
+        {notice && <div className="notice" role="status"><Icon name="alert" size={18} /><span>{notice}</span></div>}
+        <section id="resources" className="metrics-grid" aria-label="Mesures actuelles">
+          <MetricCard label="CPU utilisé" value={metrics.cpu_usage_percent} icon="cpu" color="#0090e7" hint="Moyenne sur 2 minutes" />
+          <MetricCard label="Mémoire utilisée" value={metrics.memory_usage_percent} icon="memory" color="#00d25b" hint="Part de la mémoire utilisée" />
+          <MetricCard label="Disque disponible" value={metrics.disk_available_percent} icon="disk" color="#8f5fe8" hint="Espace disponible sur le disque racine" />
+        </section>
+        <Operations now={now} refreshToken={operationsRefresh} />
+        <footer className="page-footer"><span>BeeCoders · Pilotage Moodle</span><span>Interface Corona · v0.3.0</span></footer>
+      </main>
     </div>
-  );
+  </div>;
 }

@@ -1,0 +1,24 @@
+Moodle dashboard — Corona React adaptation, version 0.3.0
+
+Template: https://github.com/BootstrapDash/corona-react-free-admin-template
+Source commit: e9b9164422989216d42bdfe67f2e90c9322f204a
+Author: BootstrapDash
+License: MIT, included in CORONA-LICENSE.txt
+
+Adapted sources:
+template/demo_1/src/assets/styles/_variables.scss
+template/demo_1/src/assets/styles/_sidebar.scss
+template/demo_1/src/assets/styles/_navbar.scss
+template/demo_1/src/assets/styles/components/_cards.scss
+template/demo_1/src/app/shared/Sidebar.js
+
+The original theme tokens, layout sizes, card geometry and navigation structure
+are adapted in src/corona.css and src/App.jsx. Demo data, commercial links,
+sample pages and unused dependencies are not part of this application.
+The existing React/Vite runtime and read-only API integration are retained.
+
+Local Rubik font: https://github.com/google/fonts/tree/main/ofl/rubik
+Original font blob: a59aeb632df494345a542697c357f608875481b0
+Subset for Latin/French characters and interface punctuation using fontTools.
+Font license: SIL Open Font License, included in RUBIK-OFL.txt.
+No third-party font or asset is fetched at runtime.

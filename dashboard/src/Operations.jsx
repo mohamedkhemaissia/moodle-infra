@@ -12,7 +12,7 @@ const labels = { open: 'Ouvert', resolved: 'Résolu', completed: 'Terminé', blo
   running: 'En cours', timeout: 'Délai dépassé', canceled: 'Annulé', interrupted: 'Interrompu',
   recommendation: 'Recommandation', monitoring: 'Sous observation', closed: 'Incident résolu',
   warning: 'Avertissement', critical: 'Critique', info: 'Information' };
-const reasons = { insufficient_contiguous_history: 'Historique continu insuffisant pour calculer l’analyse.',
+const reasons = { insufficient_contiguous_history: 'Historique continu insuffisant pour calculer les prévisions.',
   linux_collection_unavailable: 'La collecte Linux ne fournit pas de données récentes.',
   incomplete_or_unhealthy_collection: 'Des mesures sont absentes, anciennes ou issues d’une collecte en échec.' };
 
@@ -39,32 +39,17 @@ function Pager({ document, offset, setOffset, name }) {
 }
 
 function Forecasts({ result, now }) {
-  return <article className="ops-card"><h3>Prévisions des ressources</h3>
-    <p className="ops-caption">Estimations à 5, 10 et 15 minutes · pourcentages</p>
+  return <article className="forecast-card" aria-label="Prévisions des ressources">
     <Reading result={result}>{(data) => analysisReady(data, now) ? <>
       <div className="ops-table-wrap"><table><thead><tr><th>Ressource</th>
         {['5', '10', '15'].map((h) => <th key={h}>+{h} min</th>)}</tr></thead>
         <tbody>{RESOURCES.map(([key, title]) => <tr key={key}><th>{title}</th>
           {['5', '10', '15'].map((h) => { const value = data.forecasts[h].metrics[key];
             return <td key={h}><strong>{numbers.format(value.value)} %</strong><small>
-              {value.method === 'ridge' ? 'Régression Ridge' : 'Persistance'}</small></td>; })}</tr>)}</tbody></table></div>
-      <p className="ops-caption">Données du {date(data.input_evaluated_at)}. Méthode choisie sur la validation historique.</p>
+              {value.method === 'ridge' ? 'Ridge' : 'Persistance'}</small></td>; })}</tr>)}</tbody></table></div>
+      <p className="ops-caption">Données du {date(data.input_evaluated_at)}.</p>
     </> : <p className="ops-empty">{reasons[data.reason] || 'Analyse indisponible avec les données actuelles.'}
       {data.required_history_seconds ? ` Historique requis : ${data.required_history_seconds / 60} minutes.` : ''}</p>}</Reading>
-  </article>;
-}
-
-function Anomalies({ result, now }) {
-  return <article className="ops-card"><h3>Détection des anomalies</h3>
-    <p className="ops-caption">Isolation Forest · CPU, mémoire et disque</p>
-    <Reading result={result}>{(data) => analysisReady(data, now) ? <>
-      <div className="anomaly-score"><strong>{numbers.format(data.anomaly.score)}</strong><span>
-        Seuil : {numbers.format(data.anomaly.threshold)}</span></div>
-      <p className="anomaly-verdict">{data.anomaly.statistical_anomaly ? 'Observation atypique détectée' : 'Observation dans le seuil statistique'}</p>
-      <p className="ops-caption">Seuils opérationnels : {data.anomaly.operational_rules.alert ? 'alerte détectée' : 'aucun dépassement'}.</p>
-      <p className="ops-caption">Données du {date(data.input_evaluated_at)}.</p>
-    </> : <p className="ops-empty">{reasons[data.reason] || 'Analyse indisponible avec les données actuelles.'}</p>}</Reading>
-    <p className="ops-note">Le score indique une observation atypique. La qualité de détection reste à évaluer avec des incidents étiquetés.</p>
   </article>;
 }
 
@@ -93,7 +78,6 @@ export default function Operations({ now, refreshToken }) {
   const [localRefresh, setLocalRefresh] = useState(0);
   const requests = [
     { key: 'forecast', kind: 'forecast', path: requestPath('forecast') },
-    { key: 'anomaly', kind: 'anomaly', path: requestPath('anomaly') },
     { key: 'summary', kind: 'summary', path: requestPath('summary') },
     { key: 'incidents', kind: 'incidents', path: requestPath('incidents', { status: filter, offset }) },
     { key: 'diagnostics', kind: 'runs', path: requestPath('diagnostics', { incidentId, offset: diagnosticOffset }) },
@@ -113,11 +97,11 @@ export default function Operations({ now, refreshToken }) {
 
   return <>
     <section id="analysis" className="panel ops-panel" aria-labelledby="analysis-heading">
-      <div className="panel-heading"><div><h2 id="analysis-heading">Analyse par intelligence artificielle</h2>
-        <p>Résultats expérimentaux calculés à partir de l’historique des ressources.</p></div>
-        <span className="subtle-badge">Mode observation</span></div>
-      <div className="ops-grid"><Forecasts result={readings.forecast} now={now} /><Anomalies result={readings.anomaly} now={now} /></div>
-      <p className="ops-section-note">Les estimations restent expérimentales et ne déclenchent aucune action.</p>
+      <div className="panel-heading"><div><h2 id="analysis-heading">Prévisions des ressources</h2>
+        <p>Estimation de la consommation à 5, 10 et 15 minutes.</p></div>
+        <span className="subtle-badge">Expérimental</span></div>
+      <div className="forecast-body"><Forecasts result={readings.forecast} now={now} /></div>
+      <p className="ops-section-note">Les prévisions sont expérimentales.</p>
     </section>
 
     <section id="incidents" className="panel ops-panel" aria-labelledby="incidents-heading">
@@ -133,7 +117,7 @@ export default function Operations({ now, refreshToken }) {
         <div className="ops-toolbar"><label>Épisodes <select value={filter} onChange={(e) => {
           setFilter(e.target.value); setOffset(0); selectIncident(null);
         }}><option value="">Tous</option><option value="open">Ouverts</option><option value="resolved">Résolus</option></select></label>
-          <span className="ops-caption">Actualisation automatique · 30 s</span></div>
+          </div>
         <Reading result={readings.incidents}>{(data) => <>
           {data.items.length ? <div className="ops-table-wrap"><table className="incident-table"><thead><tr>
             <th>Incident</th><th>État</th><th>Ouverture</th><th>Dernière observation</th><th>Résolution</th><th>Lecture</th>
@@ -179,13 +163,13 @@ export default function Operations({ now, refreshToken }) {
         {run.kind === 'remediations' ? <p className={`run-verdict ${recoveryProven(data) ? 'good' : 'warning'}`}>
           {recoveryProven(data) ? 'Récupération confirmée par HTTPS et une nouvelle sonde Prometheus.' :
             data.status === 'blocked' ? 'Action bloquée par les contrôles de remédiation.' : 'Récupération non confirmée dans ce journal.'}</p>
-          : <p className="ops-note">Le diagnostic collecte des preuves en lecture seule. Son achèvement ne confirme pas à lui seul la santé du service.</p>}
+          : <p className="ops-note">Diagnostic terminé : consultez le rapport pour connaître les résultats des contrôles.</p>}
         {data.report?.reason && <p className="ops-caption">Motif enregistré : {data.report.reason}</p>}
         <details><summary>Consulter le rapport et la trace d’exécution</summary><pre>{JSON.stringify({
           report: data.report, events: data.events, action_reservation: data.action_reservation }, null, 2)}</pre></details>
         <a className="ops-json-link" href={requestPath(run.kind, { runId: data.id })} target="_blank" rel="noreferrer">Ouvrir le journal JSON ↗</a>
       </>}</Reading></div>}
-      <p className="ops-section-note">La remédiation est lancée manuellement par l’opérateur sur le serveur. Le tableau de bord consulte son résultat.</p>
+      <p className="ops-section-note">Exécutions lancées manuellement par l’opérateur.</p>
     </section>
   </>;
 }

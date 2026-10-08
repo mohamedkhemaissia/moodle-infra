@@ -1,0 +1,61 @@
+/*
+ * Corona React — BootstrapDash (MIT), adapted for the Moodle dashboard.
+ * Source commit: e9b9164422989216d42bdfe67f2e90c9322f204a
+ * Derived from _variables.scss, _sidebar.scss, _navbar.scss and _cards.scss.
+ * Original copyright and license: /CORONA-LICENSE.txt
+ * React router/bootstrap wrappers were replaced with native elements.
+ */
+@font-face {
+  font-family: Rubik;
+  src: url('/Rubik.ttf') format('truetype');
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+:root {
+  --corona-primary: #0090e7;
+  --corona-success: #00d25b;
+  --corona-info: #8f5fe8;
+  --corona-warning: #ffab00;
+  --corona-danger: #fc424a;
+  --corona-background: #000000;
+  --corona-surface: #191c24;
+  --corona-border: #2c2e33;
+  --corona-muted: #6c7293;
+  --corona-input: #2a3038;
+  --corona-progress: #2f323a;
+  --corona-sidebar-width: 244px;
+  --corona-navbar-height: 70px;
+  color-scheme: dark;
+  font-family: Rubik, 'Segoe UI', Arial, sans-serif;
+  font-size: 14px;
+  background: var(--corona-background);
+  color: #fff;
+}
+.sidebar {
+  width: var(--corona-sidebar-width);
+  background: var(--corona-surface);
+  font-weight: 400;
+  padding: 0;
+}
+.sidebar-brand-wrapper { height: var(--corona-navbar-height); }
+.sidebar .nav { display: flex; flex-direction: column; flex-wrap: nowrap; padding: 0; list-style: none; }
+.sidebar .nav-item { padding-right: 20px; }
+.sidebar .nav-link {
+  display: flex; align-items: center; height: 46px;
+  padding: .8rem 10px .8rem 1.188rem;
+  border-radius: 0 100px 100px 0;
+  cursor: pointer;
+}
+.sidebar .nav-link .menu-title { font-size: .9375rem; line-height: 1.3; }
+.sidebar .nav-item.active > .nav-link {
+  background: #0f1015; position: relative; color: #fff;
+}
+.sidebar .nav-item.active > .nav-link::before {
+  content: ''; width: 3px; height: 100%; background: var(--corona-primary);
+  position: absolute; left: 0; top: 0;
+}
+.navbar { height: var(--corona-navbar-height); background: var(--corona-surface); }
+.card, .panel { background: var(--corona-surface); border-radius: .25rem; }
+.card-body { padding: 1.75rem 1.5625rem; }
+.card-title { color: #fff; margin-bottom: 1.125rem; }
