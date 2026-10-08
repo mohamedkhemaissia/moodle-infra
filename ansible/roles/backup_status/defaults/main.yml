@@ -1,0 +1,7 @@
+---
+backup_status_base_dir: /opt/moodle-backup-status
+backup_status_output_dir: "{{ control_plane_backup_status_dir | default('/var/lib/moodle-backup-status') }}"
+backup_status_source_dir: "{{ playbook_dir }}/../../backup_status"
+backup_status_marker: "{{ moodle_base_dir | default('/opt/moodle') }}/backups/last-success.txt"
+backup_status_project: "{{ moodle_compose_project | default('moodle-pilote') }}"
+backup_status_max_age_hours: "{{ moodle_backup_max_age_hours | default(24) }}"

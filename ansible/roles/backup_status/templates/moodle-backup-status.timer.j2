@@ -1,0 +1,11 @@
+[Unit]
+Description=Actualiser le suivi des sauvegardes Moodle chaque minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+Unit=moodle-backup-status.service
+
+[Install]
+WantedBy=timers.target

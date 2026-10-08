@@ -3,6 +3,7 @@ import Operations from './Operations.jsx';
 import { useMetrics } from './useMetrics.js';
 import { useAuth } from './Auth.jsx';
 import Accounts from './Accounts.jsx';
+import Backups from './Backups.jsx';
 import { initials, canManageUsers } from './authClient.js';
 
 // Sidebar structure adapted from BootstrapDash Corona React (MIT).
@@ -118,6 +119,7 @@ const navigation = [
   { id: 'analysis', title: 'Prévisions', icon: 'chart', color: '#00d25b' },
   { id: 'incidents', title: 'Incidents et décisions', icon: 'alert', color: '#ffab00' },
   { id: 'audits', title: 'Journaux d’exécution', icon: 'clock', color: '#0090e7' },
+  { id: 'backups', title: 'Sauvegardes', icon: 'disk', color: '#8f5fe8' },
 ];
 
 export default function App() {
@@ -178,6 +180,7 @@ export default function App() {
           <MetricCard label="Disque disponible" value={metrics.disk_available_percent} icon="disk" color="#8f5fe8" hint="Espace disponible sur le disque racine" />
         </section>
         <Operations now={now} refreshToken={operationsRefresh} />
+        <Backups now={now} refreshToken={operationsRefresh} />
         <Accounts />
         <footer className="page-footer"><span>BeeCoders · Pilotage Moodle</span><span>Interface Corona · v0.3.0</span></footer>
       </main>
