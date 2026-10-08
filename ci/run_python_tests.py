@@ -7,25 +7,28 @@ import json
 import os
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
+from prepare_api import prepare
 
-COMPONENTS = ('ml', 'control-plane', 'diagnostics', 'remediation', 'scripts')
+COMPONENTS = ('ci', 'ml', 'control-plane', 'diagnostics', 'remediation', 'scripts')
 
 
-def run(root: Path, output: Path | None = None) -> int:
+def run_suites(root: Path, context: Path, output: Path | None = None, preparation: dict | None = None) -> int:
     root = root.resolve()
-    sys.path[:0] = [str(root), str(root / 'control-plane')]
+    sys.path[:0] = [str(context), str(root), str(root / 'ci')]
     # Les tests de commandes lancent aussi Python dans des sous-processus.
     os.environ['PYTHONPATH'] = os.pathsep.join(
-        [str(root), str(root / 'control-plane'), os.environ.get('PYTHONPATH', '')]
+        [str(context), str(root), os.environ.get('PYTHONPATH', '')]
     ).rstrip(os.pathsep)
     os.chdir(root)
     report = {'evaluated_at': datetime.now(timezone.utc).isoformat(),
-              'scope': 'tests_with_fixtures', 'components': {}, 'status': 'passed'}
+              'scope': 'tests_with_fixtures', 'api_preparation': preparation,
+              'components': {}, 'status': 'passed'}
     failed = False
     for component in COMPONENTS:
-        directory = root / component / 'tests'
+        directory = (context if component == 'control-plane' else root / component) / 'tests'
         print(f'\nTests : {component}', flush=True)
         if not directory.is_dir() or not list(directory.glob('test_*.py')):
             report['components'][component] = {'status': 'failed', 'reason': 'test_suite_missing'}
@@ -56,6 +59,13 @@ def run(root: Path, output: Path | None = None) -> int:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(encoded, encoding='utf-8')
     return 1 if failed else 0
+
+
+def run(root: Path, output: Path | None = None) -> int:
+    with tempfile.TemporaryDirectory(prefix='moodle-ci-api-') as temporary:
+        context = Path(temporary) / 'context'
+        preparation = prepare(root, context)
+        return run_suites(root, context, output, preparation)
 
 
 if __name__ == '__main__':
