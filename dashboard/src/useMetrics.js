@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from './authClient.js';
 import {
   buildView,
   REFRESH_MS,
@@ -30,7 +31,7 @@ export function useMetrics() {
       timeout = setTimeout(() => controller.abort(), 8000);
       setBusy(true);
       try {
-        const response = await fetch('/api/v1/metrics/summary', {
+        const response = await apiFetch('/api/v1/metrics/summary', {
           signal: controller.signal,
           cache: 'no-store',
           headers: { Accept: 'application/json' },

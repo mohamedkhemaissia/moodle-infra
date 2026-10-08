@@ -45,6 +45,8 @@ def candidate(document, previous_ids, fault_at):
 class Lab:
     def __init__(self):
         sys.path.insert(0, str(CODE))
+        if Path("/etc/moodle-pilotage/active").is_file():
+            os.environ.setdefault("PILOTAGE_DATABASE_CONFIG", "/etc/moodle-pilotage/database.json")
         from remediation.action import config_read, operations_clear, inspect, command
         from remediation.policy import metric_gate, decision_for_php
         from remediation.probes import login_probe

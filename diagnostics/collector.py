@@ -7,7 +7,8 @@ import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
-from urllib.request import build_opener, ProxyHandler, HTTPRedirectHandler
+from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHandler
+from pilotage.worker_auth import worker_headers
 
 from .policy import Blocked, validate
 from .store import strict_json
@@ -49,7 +50,7 @@ def load_config(path):
 def get_json(url, *, timeout=5):
     try:
         opener = build_opener(ProxyHandler({}), NoRedirect())
-        with opener.open(url, timeout=timeout) as response:
+        with opener.open(Request(url, headers=worker_headers(url)), timeout=timeout) as response:
             body = response.read(262145)
             if response.status != 200:
                 raise ProbeError("http_status_" + str(response.status))

@@ -21,3 +21,5 @@ remediation_shared_diagnostics_files:
   - collector.py
   - policy.py
   - store.py
+
+pilotage_database_config_dir: /etc/moodle-pilotage

@@ -28,6 +28,7 @@
   loop:
     - "{{ diagnostics_base_dir }}"
     - "{{ diagnostics_base_dir }}/code"
+    - "{{ diagnostics_base_dir }}/code/pilotage"
     - "{{ diagnostics_base_dir }}/code/diagnostics"
     - "{{ diagnostics_base_dir }}/code/diagnostics/project"
     - "{{ diagnostics_base_dir }}/code/diagnostics/tests"
@@ -49,6 +50,20 @@
     mode: "0644"
   loop: "{{ diagnostics_files }}"
   register: diagnostics_sources
+
+- name: Copier le stockage PostgreSQL partage
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../pilotage/{{ item }}"
+    dest: "{{ diagnostics_base_dir }}/code/pilotage/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [__init__.py, db.py, schemas.py, migrate.py, worker_auth.py]
+
+- name: Verifier si PostgreSQL a ete active pour le pilotage
+  ansible.builtin.stat:
+    path: "{{ pilotage_database_config_dir }}/active"
+  register: pilotage_database_activation
 
 - name: Creer un environnement Python independant
   ansible.builtin.command:
@@ -116,6 +131,8 @@
       - diagnostics/tests
       - -q
     chdir: "{{ diagnostics_base_dir }}/code"
+  environment:
+    PILOTAGE_SERVICE_TOKEN_FILE: ''
   changed_when: false
   when: diagnostics_sources.changed or diagnostics_versions.rc == 3
 
@@ -127,6 +144,8 @@
       - -m
       - diagnostics.initialize
     chdir: "{{ diagnostics_base_dir }}/code"
+  environment:
+    PILOTAGE_DATABASE_CONFIG: "{{ (pilotage_database_config_dir ~ '/database.json') if pilotage_database_activation.stat.exists else '' }}"
   register: diagnostics_initialization
   changed_when: (diagnostics_initialization.stdout | from_json).changed
 
@@ -136,6 +155,7 @@
     owner: root
     group: "10001"
     mode: "0640"
+  when: not pilotage_database_activation.stat.exists
 
 - name: Installer la commande de lancement manuel
   ansible.builtin.template:

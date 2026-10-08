@@ -7,6 +7,7 @@ dashboard_port: 8088
 dashboard_api_origin: http://127.0.0.1:8000
 dashboard_memory_limit: 128m
 dashboard_cpu_limit: "0.25"
+pilotage_database_config_dir: /etc/moodle-pilotage
 dashboard_source_files:
   - Dockerfile
   - .dockerignore
@@ -22,6 +23,10 @@ dashboard_source_files:
   - public/CORONA-SOURCE.txt
   - public/RUBIK-OFL.txt
   - src/main.jsx
+  - src/Auth.jsx
+  - src/Accounts.jsx
+  - src/authClient.js
+  - src/auth.css
   - src/App.jsx
   - src/Operations.jsx
   - src/operations.js
@@ -32,3 +37,4 @@ dashboard_source_files:
   - src/corona.css
   - tests/snapshot.test.js
   - tests/operations.test.js
+  - tests/auth.test.js

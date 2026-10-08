@@ -8,11 +8,21 @@ services:
       - -m
       - uvicorn
       - app.main:app
+      - --no-proxy-headers
       - --host
       - 127.0.0.1
       - --port
       - {{ control_plane_port | string | to_json }}
     environment:
+      AUTH_ENABLED: {{ (pilotage_auth_activation.stat.exists | ternary('true', 'false')) | to_json }}
+{% if pilotage_auth_activation.stat.exists %}
+      AUTH_ALLOWED_ORIGINS: {{ (control_plane_auth_origins | to_json) | to_json }}
+      AUTH_COOKIE_SECURE: {{ (control_plane_auth_secure_cookie | bool | ternary('true', 'false')) | to_json }}
+      AUTH_WORKER_HASH_FILE: {{ (pilotage_database_config_dir ~ '/worker-token.sha256') | to_json }}
+{% endif %}
+{% if pilotage_database_activation.stat.exists %}
+      PILOTAGE_DATABASE_CONFIG: {{ (pilotage_database_config_dir ~ '/database.json') | to_json }}
+{% endif %}
       PROMETHEUS_URL: {{ control_plane_prometheus_url | to_json }}
       MAX_SCRAPE_AGE_SECONDS: {{ control_plane_max_scrape_age_seconds | string | to_json }}
       DECISIONS_ENABLED: {{ (control_plane_decisions_enabled | bool | ternary('true', 'false')) | to_json }}
@@ -31,8 +41,14 @@ services:
 {% if control_plane_remediation_enabled | bool %}
       REMEDIATION_DIR: /var/lib/moodle-remediation
 {% endif %}
-{% if control_plane_forecasts_enabled | bool or control_plane_anomalies_enabled | bool or control_plane_incidents_enabled | bool or control_plane_diagnostics_enabled | bool or control_plane_remediation_enabled | bool %}
+{% if pilotage_database_activation.stat.exists or control_plane_forecasts_enabled | bool or control_plane_anomalies_enabled | bool or control_plane_incidents_enabled | bool or control_plane_diagnostics_enabled | bool or control_plane_remediation_enabled | bool %}
     volumes:
+{% if pilotage_database_activation.stat.exists %}
+      - type: bind
+        source: {{ pilotage_database_config_dir | to_json }}
+        target: {{ pilotage_database_config_dir | to_json }}
+        read_only: true
+{% endif %}
 {% if control_plane_forecasts_enabled | bool %}
       - type: bind
         source: {{ control_plane_forecast_runtime_dir | to_json }}
@@ -100,6 +116,9 @@ services:
       - -m
       - app.incident_observer
     environment:
+{% if pilotage_database_activation.stat.exists %}
+      PILOTAGE_DATABASE_CONFIG: {{ (pilotage_database_config_dir ~ '/database.json') | to_json }}
+{% endif %}
       PROMETHEUS_URL: {{ control_plane_prometheus_url | to_json }}
       MAX_SCRAPE_AGE_SECONDS: {{ control_plane_max_scrape_age_seconds | string | to_json }}
       INCIDENTS_DIR: /var/lib/moodle-incidents
@@ -107,6 +126,12 @@ services:
       ANOMALIES_DIR: /opt/anomalies
 {% endif %}
     volumes:
+{% if pilotage_database_activation.stat.exists %}
+      - type: bind
+        source: {{ pilotage_database_config_dir | to_json }}
+        target: {{ pilotage_database_config_dir | to_json }}
+        read_only: true
+{% endif %}
       - type: bind
         source: {{ control_plane_incident_data_dir | to_json }}
         target: /var/lib/moodle-incidents

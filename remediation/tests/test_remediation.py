@@ -291,7 +291,7 @@ class RealRunnerTests(TLSFixture, unittest.TestCase):
     def runner_case(self, failure_status):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp); code = directory / "code"; code.mkdir()
-            for package in ("remediation", "diagnostics"):
+            for package in ("remediation", "diagnostics", "pilotage"):
                 shutil.copytree(CODE_DIR / package, code / package, ignore=shutil.ignore_patterns('__pycache__'))
             flag = directory / "started"
             state = {}

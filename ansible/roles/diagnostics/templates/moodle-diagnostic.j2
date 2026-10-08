@@ -2,5 +2,13 @@
 set -eu
 umask 027
 cd {{ (diagnostics_base_dir ~ '/code') | quote }}
-exec /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 PYTHONNOUSERSITE=1 \
+database_config=''
+if [ -f {{ (pilotage_database_config_dir ~ '/active') | quote }} ]; then
+  database_config={{ (pilotage_database_config_dir ~ '/database.json') | quote }}
+fi
+service_token=''
+if [ -f {{ (pilotage_database_config_dir ~ '/auth-active') | quote }} ]; then
+  service_token={{ (pilotage_database_config_dir ~ '/worker-token') | quote }}
+fi
+exec /usr/bin/env -i PILOTAGE_DATABASE_CONFIG="$database_config" PILOTAGE_SERVICE_TOKEN_FILE="$service_token" PATH=/usr/bin:/bin LANG=C.UTF-8 PYTHONNOUSERSITE=1 \
   {{ (diagnostics_base_dir ~ '/venv/bin/python') | quote }} -B -m diagnostics.run "$@"
