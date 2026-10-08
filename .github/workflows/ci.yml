@@ -14,6 +14,7 @@ on:
       - 'ml/**'
       - 'scripts/**'
       - 'pilotage/**'
+      - 'backup_status/**'
       - 'tests/postgresql/**'
   pull_request:
     paths:
@@ -28,6 +29,7 @@ on:
       - 'ml/**'
       - 'scripts/**'
       - 'pilotage/**'
+      - 'backup_status/**'
       - 'tests/postgresql/**'
   workflow_dispatch:
 
@@ -71,7 +73,7 @@ jobs:
           -r ml/requirements.txt
       - name: Verifier les dependances
         run: python -m pip check
-      - name: Tester la preparation CI et les cinq composants Python
+      - name: Tester la preparation CI et les composants Python
         run: python -B ci/run_python_tests.py --output "$RUNNER_TEMP/moodle-python-tests.json"
       - name: Conserver le bilan des tests
         if: ${{ always() }}
