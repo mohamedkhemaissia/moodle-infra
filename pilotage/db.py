@@ -86,6 +86,13 @@ class Cursor:
         return self.row(self.cursor.fetchone())
     def fetchall(self):
         return [self.row(value) for value in self.cursor.fetchall()]
+    def __iter__(self):
+        return self
+    def __next__(self):
+        row = self.fetchone()
+        if row is None:
+            raise StopIteration
+        return row
 
 
 class Connection:

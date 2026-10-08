@@ -93,7 +93,8 @@ class PostgreSQLTests(unittest.TestCase):
 
     def test_migration_preserves_every_historical_value_and_api_contract(self):
         before = (self.incidents.listing(), self.incidents.events(1), self.incidents.detail(1),
-                  self.diagnostics.detail(RUN), self.remediation.detail(REMEDIATION_RUN))
+                  self.diagnostics.detail(RUN), self.remediation.detail(REMEDIATION_RUN),
+                  self.incidents.summary(BASE + 61), self.incidents.decision_snapshot(BASE + 61))
         result = self.migrate(activation_file=self.root / 'active')
         self.assertEqual(result['status'], 'migrated')
         self.assertTrue(result['source_files_preserved'])
@@ -103,7 +104,8 @@ class PostgreSQLTests(unittest.TestCase):
         self.assertFalse(diagnostics.initialize())
         self.assertFalse(remediation.initialize())
         after = (incidents.listing(), incidents.events(1), incidents.detail(1),
-                 diagnostics.detail(RUN), remediation.detail(REMEDIATION_RUN))
+                 diagnostics.detail(RUN), remediation.detail(REMEDIATION_RUN),
+                 incidents.summary(BASE + 61), incidents.decision_snapshot(BASE + 61))
         self.assertEqual(before, after)
         self.assert_sources_unchanged()
 
@@ -223,6 +225,35 @@ class PostgreSQLTests(unittest.TestCase):
                         self.assertEqual(storage.status_code, 200, storage.text)
                         self.assertEqual({v['backend'] for v in storage.json()['stores'].values()}, {'postgresql'})
         asyncio.run(check())
+
+    def test_observer_healthcheck_incident_summary_and_decisions_read_postgresql(self):
+        from app.incident_observer import main as observer_main
+
+        self.migrate()
+        environment = {'PILOTAGE_DATABASE_CONFIG': self.config_path,
+                       'INCIDENTS_DIR': str(self.root / 'no-sqlite')}
+        with patch.dict(os.environ, environment), \
+                patch('sys.argv', ['incident_observer', '--healthcheck']), \
+                patch('app.incident_observer.time.time', return_value=BASE + 61):
+            self.assertIsNone(observer_main())
+
+        async def check():
+            with patch.dict(os.environ, environment):
+                app = create_app(incidents_dir=environment['INCIDENTS_DIR'], decisions_enabled=True,
+                                 forecasts_dir='', anomalies_dir='', diagnostics_dir='', remediation_dir='')
+                async with app.router.lifespan_context(app):
+                    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+                        response = await client.get('/api/v1/incidents/summary')
+                        self.assertEqual(response.status_code, 200, response.text)
+                        summary = response.json()
+                        self.assertEqual(summary['counts'], {'open': 1, 'resolved': 0})
+                        self.assertEqual(len(summary['signals']), 10)
+                        for url in ('/api/v1/decisions/summary', '/api/v1/decisions/1'):
+                            response = await client.get(url)
+                            self.assertEqual(response.status_code, 200, response.text)
+                            self.assertEqual(response.json()['mode'], 'simulation')
+        asyncio.run(check())
+        self.assert_sources_unchanged()
 
 
 if __name__ == '__main__':
