@@ -104,7 +104,7 @@ def main():
 
             pg = start('postgres', moodle['moodle_postgres_image'], '-e', 'POSTGRES_DB=moodle',
                        '-e', 'POSTGRES_PASSWORD=ci-admin-test-only')
-            wait_until(lambda: run('docker', 'exec', pg, 'pg_isready', '-U', 'postgres', '-d', 'moodle', check=False).returncode == 0)
+            wait_until(lambda: run('docker', 'exec', pg, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'moodle', check=False).returncode == 0)
 
             def sql(value, *, monitoring=False, check=True):
                 command = ['docker', 'exec', '-i']
