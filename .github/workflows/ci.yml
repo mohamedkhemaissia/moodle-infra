@@ -95,6 +95,9 @@ jobs:
     services:
       postgres:
         image: postgres:16.15-bookworm@sha256:efedf3595f1d6f415c08568ba171029bf54052e754cc9f030e3f2412b21f3d67
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         env:
           POSTGRES_DB: moodle_pilotage
           POSTGRES_USER: postgres
@@ -132,6 +135,21 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
+      - name: Se connecter a Docker Hub
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::error::Ajouter DOCKERHUB_USERNAME et DOCKERHUB_TOKEN aux secrets Actions du depot."
+            exit 1
+          fi
+          export DOCKER_CONFIG="$RUNNER_TEMP/moodle-docker"
+          install -d -m 700 "$DOCKER_CONFIG"
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+          printf 'DOCKER_CONFIG=%s\n' "$DOCKER_CONFIG" >> "$GITHUB_ENV"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
@@ -144,7 +162,17 @@ jobs:
           --timeout 120 --retries 5 -r control-plane/requirements-lock.txt
           -r diagnostics/requirements-lock.txt
       - name: Verifier le backend avec PostgreSQL PHP et HTTPS reels
-        run: sudo "$pythonLocation/bin/python" -B ci/run_recovery_moodle_test.py
+        run: sudo env "DOCKER_CONFIG=$DOCKER_CONFIG" "$pythonLocation/bin/python" -B ci/run_recovery_moodle_test.py
+      - name: Fermer la connexion Docker Hub
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/moodle-docker"
+          if [ -d "$config" ]; then
+            docker --config "$config" logout >/dev/null 2>&1 || true
+            rm -f "$config/config.json"
+          fi
 
   dashboard:
     name: Tests et build React
@@ -203,6 +231,21 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
+      - name: Se connecter a Docker Hub
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::error::Ajouter DOCKERHUB_USERNAME et DOCKERHUB_TOKEN aux secrets Actions du depot."
+            exit 1
+          fi
+          export DOCKER_CONFIG="$RUNNER_TEMP/moodle-docker"
+          install -d -m 700 "$DOCKER_CONFIG"
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+          printf 'DOCKER_CONFIG=%s\n' "$DOCKER_CONFIG" >> "$GITHUB_ENV"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
@@ -216,6 +259,16 @@ jobs:
           -r control-plane/requirements-lock.txt -r diagnostics/requirements-lock.txt
       - name: Verifier les acces limites et les metriques reelles
         run: python -B ci/run_application_metrics_tests.py
+      - name: Fermer la connexion Docker Hub
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/moodle-docker"
+          if [ -d "$config" ]; then
+            docker --config "$config" logout >/dev/null 2>&1 || true
+            rm -f "$config/config.json"
+          fi
 
   backup-catalog:
     name: Catalogue Restic - Python ${{ matrix.python-version }}
@@ -258,6 +311,21 @@ jobs:
       CI_IMAGE: moodle-ci/${{ matrix.component }}:${{ github.sha }}
       CI_CONTAINER: moodle-ci-${{ matrix.component }}
     steps:
+      - name: Se connecter a Docker Hub
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::error::Ajouter DOCKERHUB_USERNAME et DOCKERHUB_TOKEN aux secrets Actions du depot."
+            exit 1
+          fi
+          export DOCKER_CONFIG="$RUNNER_TEMP/moodle-docker"
+          install -d -m 700 "$DOCKER_CONFIG"
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+          printf 'DOCKER_CONFIG=%s\n' "$DOCKER_CONFIG" >> "$GITHUB_ENV"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
@@ -308,3 +376,13 @@ jobs:
         run: |
           docker logs --tail 40 "$CI_CONTAINER" || true
           docker rm --force "$CI_CONTAINER" || true
+      - name: Fermer la connexion Docker Hub
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/moodle-docker"
+          if [ -d "$config" ]; then
+            docker --config "$config" logout >/dev/null 2>&1 || true
+            rm -f "$config/config.json"
+          fi
