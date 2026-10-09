@@ -13,6 +13,7 @@ from unittest.mock import patch
 import uuid
 
 import yaml
+from registry_sources import docker_arguments, image_reference
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from recovery_tests import archives, moodle, operation, runtime
 from pilotage_backup.core import BackupError
@@ -21,6 +22,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 def run(*args,input=None):
+    args=tuple(docker_arguments(args))
     try:return subprocess.run(args,input=input,capture_output=True,check=True,timeout=300).stdout
     except subprocess.CalledProcessError as exc:
         # En CI les sorties ne contiennent que les fixtures, pas les sauvegardes d'entreprise.
@@ -36,7 +38,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='moodle-restore-native-ci-') as tmp:
         root=Path(tmp);payload=root/'payload';payload.mkdir();build=root/'build';build.mkdir()
         jobid=uuid.uuid4().hex;runs=root/'runs';runs.mkdir();directory=runs/jobid;directory.mkdir(mode=0o700)
-        (build/'Dockerfile').write_text('FROM '+defaults['moodle_php_base_image']+'\nRUN apt-get update && apt-get install -y --no-install-recommends libpq-dev && docker-php-ext-install pgsql && rm -rf /var/lib/apt/lists/*\n')
+        (build/'Dockerfile').write_text('FROM '+image_reference(defaults['moodle_php_base_image'])+'\nRUN apt-get update && apt-get install -y --no-install-recommends libpq-dev && docker-php-ext-install pgsql && rm -rf /var/lib/apt/lists/*\n')
         try:
             run('/usr/bin/docker','pull',pg);run('/usr/bin/docker','pull',httpd)
             run('/usr/bin/docker','build','--tag',tag,str(build))
@@ -80,7 +82,7 @@ $DB=new class {
                         name=args[-1].split('/')[-1];value=checks.encode() if name=='SHA256SUMS' else (payload/name).read_bytes()
                         if kwargs.get('output') is not None:kwargs['output'].write(value);return b''
                         return value
-                    return super().run(args,**kwargs)
+                    return super().run(docker_arguments(args),**kwargs)
             config=dict(moodle_project='moodle-pilote',moodle_base='/opt/moodle',run_seconds=600,min_free_mb=512)
             proof=operation.execute(config,job,root=runs,commands=FixtureCommands(600))
             if proof.get('status')!='restore_validated' or proof.get('login_check')!='passed' or not all(proof['cleanup'].values()):

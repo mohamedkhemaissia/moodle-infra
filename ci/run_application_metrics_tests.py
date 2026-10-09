@@ -19,11 +19,13 @@ import yaml
 
 from prepare_api import prepare
 from run_php_exporter_deadline_test import verify_deadline
+from registry_sources import docker_arguments
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def run(*args, input=None, check=True):
+    args = tuple(docker_arguments(args))
     try:
         return subprocess.run(args, input=input, text=True, capture_output=True, check=check, timeout=120)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
