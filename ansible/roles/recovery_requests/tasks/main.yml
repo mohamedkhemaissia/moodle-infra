@@ -1,0 +1,75 @@
+---
+- name: Valider les chemins du journal de demandes
+  ansible.builtin.assert:
+    that:
+      - recovery_requests_base_dir is match('^/opt/[a-zA-Z0-9_-]+$')
+      - pilotage_database_config_dir is match('^/etc/[a-zA-Z0-9_-]+$')
+
+- name: Verifier les composants necessaires sans lire les secrets
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - "{{ pilotage_database_config_dir }}/active"
+    - "{{ pilotage_database_config_dir }}/auth-active"
+    - "{{ pilotage_database_config_dir }}/database.json"
+    - "{{ recovery_requests_python }}"
+  register: recovery_requests_prerequisites
+
+- name: Exiger PostgreSQL et les comptes existants
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists | default(false)
+      - item.stat.isreg | default(false) or item.stat.islnk | default(false)
+    fail_msg: "Valider PostgreSQL et l authentification avant les demandes."
+    quiet: true
+  loop: "{{ recovery_requests_prerequisites.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Creer le repertoire du code partage
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ recovery_requests_base_dir }}"
+    - "{{ recovery_requests_base_dir }}/pilotage"
+    - "{{ recovery_requests_base_dir }}/pilotage/tests"
+
+- name: Installer le journal et ses validations sans duplication Git
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../pilotage/{{ item }}"
+    dest: "{{ recovery_requests_base_dir }}/pilotage/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [__init__.py, db.py, auth.py, passwords.py, recovery.py, recovery_cli.py, tests/test_recovery_policy.py]
+
+- name: Verifier les motifs et les validations du parcours
+  ansible.builtin.command:
+    argv: ["{{ recovery_requests_python }}", -B, -m, unittest, discover, -s, pilotage/tests, -p, test_recovery_policy.py, -q]
+    chdir: "{{ recovery_requests_base_dir }}"
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Initialiser le schema dedie en conservant les journaux existants
+  ansible.builtin.command:
+    argv: ["{{ recovery_requests_python }}", -B, -m, pilotage.recovery_cli, init]
+    chdir: "{{ recovery_requests_base_dir }}"
+  environment:
+    PILOTAGE_DATABASE_CONFIG: "{{ pilotage_database_config_dir }}/database.json"
+  register: recovery_requests_init
+  changed_when: (recovery_requests_init.stdout | from_json).changed | bool
+  when: not ansible_check_mode
+
+- name: Enregistrer l activation du parcours
+  ansible.builtin.copy:
+    content: "PostgreSQL v1 ; demandes de tests isoles ; aucune execution\n"
+    dest: "{{ pilotage_database_config_dir }}/recovery-requests-active"
+    owner: root
+    group: root
+    mode: '0644'
+  when: not ansible_check_mode

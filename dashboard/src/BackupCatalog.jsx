@@ -17,7 +17,7 @@ const reasons = {
   not_configured: 'Le catalogue de ces sauvegardes n’est pas activé.',
 };
 
-export function CatalogArea({ reading, now, scope, offset, onScope, onPage }) {
+export function CatalogArea({ reading, now, scope, offset, onScope, onPage, onRequest }) {
   const value = reading.data;
   const current = catalogCurrent(value, now);
   return <div className="backup-area backup-catalog">
@@ -37,12 +37,14 @@ export function CatalogArea({ reading, now, scope, offset, onScope, onPage }) {
       {value.total === 0 ? <p className="ops-empty">Aucun point de ce type n’a été trouvé dans le dépôt.</p> : <>
         <div className="ops-table-wrap"><table className="catalog-table">
           <caption className="catalog-caption">Points de reprise {scope === 'moodle' ? 'Moodle' : 'PostgreSQL du pilotage'}</caption>
-          <thead><tr><th>Référence</th><th>Début d’archivage</th><th>Instant des données</th><th>Hôte d’origine</th><th>Confirmation</th></tr></thead>
+          <thead><tr><th>Référence</th><th>Début d’archivage</th><th>Instant des données</th><th>Hôte d’origine</th><th>Confirmation</th>{onRequest && <th>Test isolé</th>}</tr></thead>
           <tbody>{value.items.map((point) => <tr key={point.id}>
             <td><details><summary><code>{point.id.slice(0, 12)}</code></summary>
               <span className="catalog-id" aria-label="Identifiant complet du point">{point.id}</span></details></td>
             <td>{date(point.archived_at)}</td><td>{date(point.recovery_at)}</td><td>{point.hostname}</td>
             <td>{point.success_recorded ? 'Dernière sauvegarde confirmée' : 'Présent dans le dépôt'}</td>
+            {onRequest && <td><button className="refresh-button" onClick={() => onRequest({ scope, point })}>
+              Demander un test</button></td>}
           </tr>)}</tbody>
         </table></div>
         <div className="catalog-pagination">
@@ -59,7 +61,7 @@ export function CatalogArea({ reading, now, scope, offset, onScope, onPage }) {
   </div>;
 }
 
-export default function BackupCatalog({ now, refreshToken }) {
+export default function BackupCatalog({ now, refreshToken, onRequest }) {
   const [selection, setSelection] = useState({ scope: 'moodle', offset: 0 });
   const { scope, offset } = selection;
   const readings = useReadings([{ key: 'catalog', kind: 'backup_catalog', path: catalogPath(scope, offset) }], refreshToken, now);
@@ -70,6 +72,7 @@ export default function BackupCatalog({ now, refreshToken }) {
     if (offset > last) setSelection((previous) => ({ ...previous, offset: last }));
   }, [readings.catalog.data, offset]);
   return <CatalogArea reading={readings.catalog} now={now} scope={scope} offset={offset}
+    onRequest={onRequest}
     onScope={(value) => setSelection({ scope: value, offset: 0 })}
     onPage={(value) => setSelection((previous) => ({ ...previous, offset: value }))} />;
 }

@@ -33,6 +33,18 @@ def valid_inventory():
                      'columns':[['id','int8','NO']]} for t in SOURCE_INVENTORY_TABLES}}
 
 
+def recovery_inventory():
+    value = valid_inventory()
+    value['schemas']['pilotage_recovery'] = [1, 0x4D525143]
+    for table in ('schema_info', 'requests', 'events'):
+        name = 'pilotage_recovery.' + table
+        value['table_names'].append(name)
+        value['tables'][name] = {'rows': 2, 'sha256': hashlib.sha256(name.encode()).hexdigest(),
+                                'columns': [['id', 'text' if table == 'requests' else 'int8', 'NO']]}
+    value['table_names'].sort()
+    return value
+
+
 class FakeSnapshot:
     active=False
     snapshot_id='00000003-00000010-1'
@@ -189,6 +201,20 @@ class Fixture(unittest.TestCase):
         result=self.restore();self.assertEqual(result['status'],'failed')
         self.assertEqual(result['reason'],'restored_file_checksum_mismatch')
         self.assertFalse(any(a[:2]==[run.DOCKER,'run'] for a in self.commands.calls))
+    def test_new_recovery_journal_is_backed_up_and_verified_without_invalidating_old_backups(self):
+        extended = type('ExtendedSnapshot', (FakeSnapshot,), {'inventory': recovery_inventory()})
+        result = run.backup(self.config, self.commands, extended)
+        self.assertEqual(result['tables'], 19)
+        self.commands.restored_inventory = recovery_inventory()
+        self.commands.identities['pilotage_recovery.events'] = True
+        restored = self.restore()
+        self.assertEqual(restored['status'], 'restore_validated')
+        self.assertEqual(restored['tables_verified'], 19)
+        queries = [a[-1] for a in self.commands.calls if 'psql' in a and '-c' in a]
+        self.assertTrue(any('FROM pilotage_recovery.requests t' in s for s in queries))
+        self.assertTrue(any('pilotage_recovery.events_id_seq' in s for s in queries))
+        ready = next(a for a in self.commands.calls if 'pg_isready' in a)
+        self.assertEqual(ready[ready.index('-h')+1], '127.0.0.1')
     def test_wrong_restic_scope_or_path_never_restores_foreign_snapshots(self):
         self.backup();self.commands.scope_tag='moodle-pilote-full'
         self.assertEqual(self.restore()['reason'],'wrong_snapshot_scope')
@@ -228,13 +254,13 @@ class Fixture(unittest.TestCase):
 
 
 class FormatsTests(unittest.TestCase):
-    def snapshot_connection(self,privileges=(False,)*5,snapshot='00000003-00000010-1',inventory=None):
+    def snapshot_connection(self,privileges=(False,)*5,snapshot='00000003-00000010-1',inventory=None,include_recovery=False):
         statements=[]
         connection=SimpleNamespace(closed=False)
         def execute(statement):
             statements.append(statement)
             value=privileges if 'rolsuper' in statement else (snapshot,) if 'pg_export_snapshot' in statement \
-                else ((inventory if inventory is not None else valid_inventory()),)
+                else ('pilotage_recovery' if include_recovery else None,) if 'to_regnamespace' in statement else ((inventory if inventory is not None else valid_inventory()),)
             return SimpleNamespace(fetchone=lambda:value)
         connection.execute=execute
         connection.close=lambda:setattr(connection,'closed',True)
@@ -248,6 +274,13 @@ class FormatsTests(unittest.TestCase):
                 self.assertEqual(capture.inventory,valid_inventory())
             self.assertTrue(connection.closed)
         self.assertEqual(statements[0],'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+    def test_source_detects_the_new_journal_inside_the_same_exported_snapshot(self):
+        connection,statements=self.snapshot_connection(inventory=recovery_inventory(),include_recovery=True)
+        with patch.dict('sys.modules',{'psycopg':SimpleNamespace(connect=lambda **_:connection)}):
+            with core.DatabaseSnapshot({'dbname':'moodle_pilotage'}) as capture:
+                self.assertEqual(capture.inventory,recovery_inventory())
+                self.assertIn('FROM pilotage_recovery.requests t',statements[-1])
+        self.assertTrue(connection.closed)
     def test_privileged_source_role_is_rejected_and_connection_closed(self):
         connection,_=self.snapshot_connection(privileges=(True,False,False,False,False))
         with patch.dict('sys.modules',{'psycopg':SimpleNamespace(connect=lambda **_:connection)}):
@@ -278,6 +311,20 @@ class FormatsTests(unittest.TestCase):
         value['table_names'].remove('pilotage_incidents.migration_info')
         del value['tables']['pilotage_incidents.migration_info']
         with self.assertRaises(ValueError):validate_inventory(value)
+    def test_recovery_inventory_requires_all_three_tables_and_known_schema_version(self):
+        value = recovery_inventory()
+        self.assertEqual(validate_inventory(value), value)
+        self.assertIn('FROM pilotage_recovery.events t', inventory_sql(True))
+        for kind in ('missing_table', 'wrong_schema', 'extra_schema'):
+            invalid = copy.deepcopy(value)
+            if kind == 'missing_table':
+                invalid['tables'].pop('pilotage_recovery.events')
+            elif kind == 'wrong_schema':
+                invalid['schemas']['pilotage_recovery'] = [2, 0x4D525143]
+            else:
+                invalid['schemas']['untracked'] = [1, 1]
+            with self.subTest(kind=kind), self.assertRaises(ValueError):
+                validate_inventory(invalid)
     def test_configuration_targets_only_the_dedicated_database_and_fixed_wrapper(self):
         with tempfile.TemporaryDirectory() as temporary:
             path=Path(temporary)/'config';path.chmod(0o600) if path.exists() else None

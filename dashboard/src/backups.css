@@ -24,3 +24,15 @@
 .catalog-table summary { cursor: pointer; color: #6fc7ff; }
 .catalog-id { display: block; max-width: 240px; overflow-wrap: anywhere; user-select: all; margin-top: 9px; }
 .catalog-warning { padding: 12px 16px; color: #ffd78e; border: 1px solid #765522; border-radius: 5px; background: #2a2318; }
+.recovery-form-card { padding: 22px; margin: 18px 0; border: 1px solid #2c2e33; background: #12151e; border-radius: 6px; }
+.recovery-form-card h4 { margin: 0 0 14px; color: #fff; font-weight: 500; }
+.recovery-reference { display: block; overflow-wrap: anywhere; color: #6fc7ff; user-select: all; line-height: 1.6; }
+.recovery-form { max-width: 760px; margin-top: 20px; }
+.recovery-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.recovery-confirm { display: flex; align-items: flex-start; gap: 12px; line-height: 1.6; }
+.recovery-form input[type="checkbox"] { width: 18px; height: 18px; margin: 4px 0 0; flex-shrink: 0; }
+.recovery-history-title { padding-top: 26px; }
+.recovery-history { margin: 12px 0 0; padding-left: 20px; color: #b5b9c6; line-height: 1.7; }
+.recovery-history li { padding: 6px 0; }
+.recovery-history strong { color: #e6e8ef; font-weight: 500; }
+.recovery-history span { display: block; }
