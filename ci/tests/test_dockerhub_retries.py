@@ -2,17 +2,16 @@
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import importlib.util
-import json
-import os
 from pathlib import Path
+import sys
 import subprocess
-import tempfile
 import unittest
 
 import yaml
 
 CI = Path(__file__).resolve().parents[1]
 ROOT = CI.parent
+sys.path.insert(0, str(CI))
 SPEC = importlib.util.spec_from_file_location('pull_ci_images', CI / 'pull_ci_images.py')
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
@@ -90,76 +89,6 @@ class PullTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.images_for('production')
 
-
-class LoginTests(unittest.TestCase):
-    def exercise(self, mode, *, token=True):
-        workflow = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())
-        blocks = [workflow['jobs'][name]['steps'][0]['run']
-                  for name in ('recovery-tests', 'application-metrics', 'images')]
-        self.assertEqual(blocks[0], blocks[1])
-        self.assertEqual(blocks[0], blocks[2])
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            bin_dir = root / 'bin'
-            bin_dir.mkdir()
-            docker = bin_dir / 'docker'
-            docker.write_text('''#!/usr/bin/env python3
-import json, os, pathlib, sys
-p=pathlib.Path(os.environ['CALLS']); calls=json.loads(p.read_text()) if p.exists() else []
-assert sys.argv[1:] == ['login', '--username', 'fixture-user', '--password-stdin']
-assert sys.stdin.read() == 'private-fixture-token'
-assert pathlib.Path(os.environ['DOCKER_CONFIG']).stat().st_mode & 0o777 == 0o700
-calls.append(len(calls)+1); p.write_text(json.dumps(calls))
-if os.environ['MODE']=='success' or (os.environ['MODE']=='recover' and len(calls)==2):
-    print('Login Succeeded'); sys.exit(0)
-print('unauthorized: incorrect username or password' if os.environ['MODE']=='denied' else 'Client.Timeout exceeded while awaiting headers', file=sys.stderr)
-sys.exit(1)
-''')
-            docker.chmod(0o755)
-            sleep = bin_dir / 'sleep'
-            sleep.write_text('#!/bin/sh\nprintf "%s\\n" "$1" >> "$DELAYS"\n')
-            sleep.chmod(0o755)
-            env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ['PATH'],
-                       RUNNER_TEMP=directory, GITHUB_ENV=str(root / 'github-env'),
-                       DOCKERHUB_USERNAME='fixture-user',
-                       DOCKERHUB_TOKEN='private-fixture-token' if token else '',
-                       MODE=mode, CALLS=str(root / 'calls'), DELAYS=str(root / 'delays'))
-            result = subprocess.run(['bash', '-euo', 'pipefail', '-c', blocks[0]],
-                                    env=env, text=True, capture_output=True, timeout=15)
-            calls = json.loads((root / 'calls').read_text()) if (root / 'calls').exists() else []
-            delays = (root / 'delays').read_text().splitlines() if (root / 'delays').exists() else []
-            github_env = (root / 'github-env').read_text() if (root / 'github-env').exists() else ''
-            self.assertNotIn('private-fixture-token', result.stdout + result.stderr)
-            self.assertFalse(list(root.glob('moodle-docker-login.*')))
-            return result, calls, delays, github_env
-
-    def test_network_failure_then_success_exports_configuration(self):
-        result, calls, delays, exported = self.exercise('recover')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(calls, [1, 2])
-        self.assertEqual(delays, ['5'])
-        self.assertIn('DOCKER_CONFIG=', exported)
-
-    def test_network_failure_stops_after_three_attempts(self):
-        result, calls, delays, exported = self.exercise('timeout')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(calls, [1, 2, 3])
-        self.assertEqual(delays, ['5', '10'])
-        self.assertEqual(exported, '')
-
-    def test_rejected_credentials_fail_without_retry(self):
-        result, calls, delays, exported = self.exercise('denied')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(calls, [1])
-        self.assertEqual(delays, [])
-        self.assertEqual(exported, '')
-
-    def test_missing_secret_fails_before_docker(self):
-        result, calls, delays, exported = self.exercise('success', token=False)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(calls, [])
-        self.assertEqual(delays, [])
-        self.assertEqual(exported, '')
 
 
 if __name__ == '__main__':

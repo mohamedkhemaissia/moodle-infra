@@ -9,6 +9,7 @@ import sys
 import time
 
 import yaml
+from registry_sources import image_reference
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_ATTEMPTS = 3
@@ -44,7 +45,7 @@ def images_for(profile: str, root: Path = ROOT) -> list[str]:
     if any(not isinstance(value, str) or not value or value.startswith('-') or
            any(character.isspace() for character in value) for value in images):
         raise ValueError('Reference image invalide dans les valeurs du projet.')
-    return list(dict.fromkeys(images))
+    return list(dict.fromkeys(image_reference(value) for value in images))
 
 
 def output_text(value):
