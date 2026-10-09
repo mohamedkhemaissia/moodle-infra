@@ -169,7 +169,8 @@ class DatabaseSnapshot:
             self.snapshot_id=self.connection.execute('SELECT pg_export_snapshot()').fetchone()[0]
             if not re.fullmatch('[0-9A-F]+-[0-9A-F]+-[0-9]+',self.snapshot_id,re.I):
                 raise BackupError('invalid_database_snapshot')
-            self.inventory=validate_inventory(self.connection.execute(inventory_sql()).fetchone()[0],database=self.config['dbname'])
+            include_recovery = self.connection.execute("SELECT to_regnamespace('pilotage_recovery')").fetchone()[0] is not None
+            self.inventory=validate_inventory(self.connection.execute(inventory_sql(include_recovery)).fetchone()[0],database=self.config['dbname'])
             return self
         except Exception:
             if hasattr(self,'connection'):self.connection.close()

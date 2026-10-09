@@ -121,6 +121,26 @@ def read_document(path):
         os.close(descriptor)
 
 
+def select_point(path, now: datetime, scope, identifier):
+    """Revalider une reference complete sur une seule lecture du catalogue public."""
+    if scope not in SCOPES or not isinstance(identifier, str) or not common.SNAPSHOT.fullmatch(identifier):
+        raise ValueError("Selection invalide.")
+    try:
+        document = read_document(path)
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError, RecursionError):
+        raise ValueError("Catalogue indisponible ou incompatible.") from None
+    age = (now - common.utc(document["observed_at"])).total_seconds()
+    if not 0 <= age <= MAX_AGE_SECONDS:
+        raise ValueError("Le catalogue doit etre actualise avant cette decision.")
+    selected = document["scopes"][scope]
+    if selected["status"] != "available":
+        raise ValueError("Le depot choisi est indisponible.")
+    for point in selected["items"]:
+        if point["id"] == identifier:
+            return {"scope": scope, "point": dict(point), "catalog_observed_at": document["observed_at"]}
+    raise ValueError("Le point choisi n'est plus present dans le catalogue.")
+
+
 def summary(path, now: datetime, scope="moodle", limit=20, offset=0):
     if scope not in SCOPES or type(limit) is not int or not 1 <= limit <= 50:
         raise ValueError("Selection invalide.")

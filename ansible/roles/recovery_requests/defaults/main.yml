@@ -1,0 +1,4 @@
+---
+recovery_requests_base_dir: /opt/moodle-recovery-requests
+recovery_requests_python: /opt/moodle-diagnostics/venv/bin/python
+pilotage_database_config_dir: /etc/moodle-pilotage

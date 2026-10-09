@@ -15,7 +15,7 @@ import uuid
 from .core import (BackupError, Commands, CONFIG_FILES, SERVER_FILES, DatabaseSnapshot,
                    IMAGE_RE, SNAPSHOT_RE, atomic_json, database_config, json_value,
                    load_config, lock, parse_utc, read_file, sha_file, utc_now)
-from .inventory import IDENTITIES, TABLES, fingerprint, identity_check_sql, inventory_sql, validate_inventory
+from .inventory import identities as expected_identities, fingerprint, identity_check_sql, inventory_sql, validate_inventory
 
 FORMAT='moodle-pilotage-backup-v1'
 TAG='moodle-pilotage-database'
@@ -137,7 +137,7 @@ def backup(config,commands=None,snapshot_factory=DatabaseSnapshot):
         commands.run([config['restic'],'check'])
         result={'status':'backed_up','format':FORMAT,'snapshot':sid,'started_at':started,
                 'captured_at':captured,'completed_at':utc_now(),'source_path':str(directory),
-                'manifest_sha256':sha_file(directory/'manifest.json'),'tables':len(TABLES),
+                'manifest_sha256':sha_file(directory/'manifest.json'),'tables':len(inventory['tables']),
                 'rows':sum(t['rows'] for t in inventory['tables'].values()),
                 'repository_check':'passed','restoration':'not_tested'}
         # Publication uniquement apres confirmation du point distant et du check.
@@ -196,7 +196,7 @@ def restore_test(config,snapshot,commands=None,*,sleep=time.sleep,monotonic=time
         deadline=monotonic()+min(180,config['timeout_seconds'])
         while True:
             try:
-                commands.run([DOCKER,'exec','--user','999:999',name,'pg_isready','-U','postgres','-d','moodle_pilotage'],timeout=15)
+                commands.run([DOCKER,'exec','--user','999:999',name,'pg_isready','-h','127.0.0.1','-U','postgres','-d','moodle_pilotage'],timeout=15)
                 break
             except BackupError:
                 if monotonic()>=deadline:raise BackupError('isolated_database_not_ready') from None
@@ -221,13 +221,14 @@ def restore_test(config,snapshot,commands=None,*,sleep=time.sleep,monotonic=time
             lines=[line for line in raw.decode().splitlines() if line.strip() and line.strip()!='SET']
             if len(lines)!=1:raise BackupError('invalid_restore_query_response')
             return json_value(lines[0])
-        actual=validate_inventory(query(inventory_sql()))
+        include_recovery = 'pilotage_recovery' in expected['schemas']
+        actual=validate_inventory(query(inventory_sql(include_recovery)))
         if actual!=expected:raise BackupError('restored_tables_do_not_match_snapshot')
-        identities=query(identity_check_sql())
-        if not isinstance(identities,dict) or set(identities)!=set(IDENTITIES) or not all(v is True for v in identities.values()):
+        identities=query(identity_check_sql(include_recovery))
+        if not isinstance(identities,dict) or set(identities)!=set(expected_identities(include_recovery)) or not all(v is True for v in identities.values()):
             raise BackupError('restored_sequences_invalid')
         result.update(status='restore_validated',captured_at=manifest['captured_at'],
-            tables_verified=len(TABLES),rows_verified=sum(v['rows'] for v in actual['tables'].values()),
+            tables_verified=len(actual['tables']),rows_verified=sum(v['rows'] for v in actual['tables'].values()),
             inventory_sha256=fingerprint(actual),sequence_check='passed',
             duration_seconds=round(monotonic()-start_clock,3))
     except (BackupError,ValueError,OSError,TypeError,KeyError) as exc:

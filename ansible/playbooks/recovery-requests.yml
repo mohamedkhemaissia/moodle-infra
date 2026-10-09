@@ -1,0 +1,13 @@
+---
+- name: Enregistrer les demandes de test de restauration et leur approbation
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    # Installer la prise en charge du nouveau journal avant sa creation.
+    - pilotage_backup
+    - recovery_requests
+    - backup_status
+    - backup_catalog
+    - control_plane
+    - dashboard
