@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { validateBackupDocument, backupView } from '../src/backups.js';
+import { readFile } from 'node:fs/promises';
+import { validateBackupDocument, validatePilotageBackupDocument, backupView, pilotageRestoreView } from '../src/backups.js';
 import { validateDocument, freshResult } from '../src/operations.js';
 
 const now = Date.parse('2026-10-08T21:00:00Z');
@@ -71,4 +72,126 @@ test('a point reaching the age threshold changes state between polls', () => {
   data.policy.max_age_hours = 12;
   assert.equal(backupView(data, now).state, 'recent');
   assert.equal(backupView(data, now + 1000).state, 'overdue');
+});
+
+export const pilotageDocument = () => ({
+  ...document(), scope: 'pilotage_postgresql', restoration_state: 'validated',
+  restore_collection_status: 'recorded', same_snapshot: true,
+  latest_success: { ...document().latest_success, tables: 16, rows: 415, repository_check: 'passed' },
+  latest_restore: { status: 'restore_validated', run_id: 'c'.repeat(32), snapshot: 'a'.repeat(64),
+    started_at: '2026-10-08T09:15:00Z', completed_at: '2026-10-08T09:16:17Z',
+    captured_at: '2026-10-08T09:00:00Z', duration_seconds: 76.819, tables_verified: 16,
+    rows_verified: 415, sequence_check: 'passed', cleanup: { container_removed: true, temporary_files_removed: true } },
+});
+
+test('both backup routes are forwarded by the dashboard proxy with GET only', async () => {
+  const template = await readFile(new URL('../nginx.conf.template', import.meta.url), 'utf8');
+  const match = template.match(/location ~ "([^"]+)" \{([\s\S]*?)\n        \}/);
+  assert.ok(match, 'Read proxy location must exist');
+  const route = new RegExp(match[1]);
+  for (const path of ['/api/v1/backups/summary', '/api/v1/backups/pilotage/summary']) {
+    assert.equal(route.test(path), true, 'Dashboard route must be forwarded: ' + path);
+  }
+  for (const path of ['/api/v1/backups/pilotage/restore', '/api/v1/backups/pilotage/summary/extra',
+    '/api/v1/backups/anything/summary', '/api/v1/unknown']) {
+    assert.equal(route.test(path), false, 'Unexpected route must remain denied: ' + path);
+  }
+  assert.match(match[2], /limit_except GET \{ deny all; \}/);
+  assert.match(match[2], /proxy_pass \$\{API_ORIGIN\};/);
+  assert.match(template, /location \/api\/ \{ return 404; \}/);
+});
+
+test('a restore validates exactly the same snapshot and inventory', () => {
+  const data = validateDocument('pilotage_backup', pilotageDocument());
+  assert.equal(pilotageRestoreView(data, now).state, 'validated');
+  for (const mutate of [
+    (d) => { d.latest_success.snapshot = 'b'.repeat(64); },
+    (d) => { d.latest_restore.rows_verified = 414; },
+    (d) => { d.latest_restore.captured_at = '2026-10-08T08:59:59Z'; },
+    (d) => { d.latest_restore.cleanup.temporary_files_removed = false; },
+    (d) => { d.latest_success.tables = true; },
+    (d) => { d.latest_restore.duration_seconds = Infinity; },
+    (d) => { d.latest_restore.sequence_check = 'not_verified'; },
+    (d) => { d.latest_restore.completed_at = '2026-10-09T09:00:00Z'; },
+  ]) {
+    const value = pilotageDocument();
+    mutate(value);
+    assert.throws(() => validatePilotageBackupDocument(value));
+  }
+});
+
+test('a successful test on a different point remains historical', () => {
+  const data = pilotageDocument();
+  data.latest_success.snapshot = 'b'.repeat(64);
+  data.same_snapshot = false;
+  data.restoration_state = 'not_tested';
+  const view = pilotageRestoreView(validatePilotageBackupDocument(data), now);
+  assert.equal(view.state, 'not_tested');
+  assert.equal(view.test.status, 'restore_validated');
+  assert.equal(view.sameSnapshot, false);
+});
+
+test('a failed current test remains failed and cannot be shown as validated', () => {
+  const data = pilotageDocument();
+  data.latest_restore.status = 'failed';
+  data.latest_restore.tables_verified = null;
+  data.latest_restore.rows_verified = null;
+  data.latest_restore.duration_seconds = null;
+  data.latest_restore.captured_at = null;
+  data.latest_restore.sequence_check = 'not_verified';
+  data.restoration_state = 'failed';
+  assert.equal(pilotageRestoreView(validatePilotageBackupDocument(data), now).state, 'failed');
+  data.restoration_state = 'validated';
+  assert.throws(() => validatePilotageBackupDocument(data));
+});
+
+test('missing and invalid restore reports stay distinct', () => {
+  const data = pilotageDocument();
+  data.latest_restore = null;
+  data.same_snapshot = null;
+  data.restore_collection_status = 'missing';
+  data.restoration_state = 'not_tested';
+  assert.equal(pilotageRestoreView(validatePilotageBackupDocument(data), now).state, 'not_tested');
+  data.restore_collection_status = 'invalid';
+  data.restoration_state = 'unknown';
+  assert.equal(pilotageRestoreView(validatePilotageBackupDocument(data), now).state, 'unknown');
+});
+
+test('stale responses hide the restoration proof as well as the backup health', () => {
+  const data = validatePilotageBackupDocument(pilotageDocument());
+  assert.equal(pilotageRestoreView(data, now + 61_000).state, 'unknown');
+  assert.equal(pilotageRestoreView(data, now + 61_000).test, null);
+  data.collection.age_seconds = 140;
+  assert.equal(pilotageRestoreView(data, now + 11_000).test, null);
+});
+
+test('the panel distinguishes current validation, old success and unavailable readings', async (t) => {
+  const { createServer } = await import('vite');
+  const React = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' });
+  t.after(() => server.close());
+  const { BackupArea } = await server.ssrLoadModule('/src/Backups.jsx');
+  function markup(data, moment = now) {
+    return renderToStaticMarkup(React.createElement(BackupArea, {
+      reading: { data, pending: false }, now: moment, pilotage: true }));
+  }
+  const data = pilotageDocument();
+  const current = markup(data);
+  assert.match(current, /PostgreSQL du pilotage/);
+  assert.match(current, /Point actuel validé/);
+  assert.match(current, /415 enregistrements/);
+  assert.match(current, /76,8 s/);
+  assert.doesNotMatch(current, /<button|<input|mot de passe|\/var\/lib/);
+  data.latest_success.snapshot = 'b'.repeat(64);
+  data.restoration_state = 'not_tested';
+  data.same_snapshot = false;
+  const old = markup(data);
+  assert.match(old, /Test réussi/);
+  assert.match(old, /Point actuel non testé/);
+  assert.match(old, /un autre point/);
+  assert.doesNotMatch(old, /Point actuel validé/);
+  const stale = markup(data, now + 61_000);
+  assert.match(stale, /état actuel est inconnu/);
+  assert.doesNotMatch(stale, /Test réussi|415 enregistrements/);
 });

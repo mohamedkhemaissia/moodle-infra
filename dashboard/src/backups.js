@@ -49,3 +49,56 @@ export function backupView(value, now) {
   const state = value.backup_state === 'overdue' || ageHours > value.policy.max_age_hours ? 'overdue' : 'recent';
   return { state, ageHours, reason: null };
 }
+
+const count = (value, minimum = 0) => Number.isSafeInteger(value) && value >= minimum;
+const hash = (value, length) => typeof value === 'string' &&
+  new RegExp('^[a-f0-9]{' + length + '}$').test(value);
+
+export function validatePilotageBackupDocument(value) {
+  validateBackupDocument(value);
+  if (value.scope !== 'pilotage_postgresql' ||
+      !['unknown', 'recorded', 'missing', 'invalid'].includes(value.restore_collection_status) ||
+      !['unknown', 'validated', 'not_tested', 'failed', 'inconclusive'].includes(value.restoration_state) ||
+      (value.same_snapshot !== null && typeof value.same_snapshot !== 'boolean')) fail();
+  if (value.status !== 'available') {
+    if (value.latest_restore !== null || value.restoration_state !== 'unknown' || value.same_snapshot !== null) fail();
+    return value;
+  }
+  const p = value.latest_success;
+  if (p && (!count(p.tables, 1) || !count(p.rows) || p.repository_check !== 'passed')) fail();
+  const t = value.latest_restore;
+  if (value.restore_collection_status === 'recorded') {
+    if (!t || !hash(t.run_id, 32) || !hash(t.snapshot, 64) ||
+        !['restore_validated', 'failed', 'inconclusive'].includes(t.status) ||
+        !date(t.started_at) || !date(t.completed_at) ||
+        Date.parse(t.started_at) > Date.parse(t.completed_at) ||
+        Date.parse(t.completed_at) > Date.parse(value.collection.observed_at) ||
+        (t.captured_at !== null && (!date(t.captured_at) || Date.parse(t.captured_at) > Date.parse(t.started_at))) ||
+        (t.duration_seconds !== null && (!finite(t.duration_seconds) || t.duration_seconds < 0)) ||
+        (t.tables_verified !== null && !count(t.tables_verified, 1)) ||
+        (t.rows_verified !== null && !count(t.rows_verified)) ||
+        !['passed', 'not_verified'].includes(t.sequence_check) ||
+        typeof t.cleanup?.container_removed !== 'boolean' ||
+        typeof t.cleanup?.temporary_files_removed !== 'boolean') fail();
+    if (t.status === 'restore_validated' && (!date(t.captured_at) || !finite(t.duration_seconds) ||
+        !count(t.tables_verified, 1) || !count(t.rows_verified) || t.sequence_check !== 'passed' ||
+        !t.cleanup.container_removed || !t.cleanup.temporary_files_removed)) fail();
+  } else if (t !== null) fail();
+  const same = p && t ? p.snapshot === t.snapshot : null;
+  let state = p && value.restore_collection_status !== 'invalid' ? 'not_tested' : 'unknown';
+  if (same) {
+    state = t.status === 'restore_validated' ?
+      (t.captured_at === p.frozen_at_utc && t.tables_verified === p.tables && t.rows_verified === p.rows ?
+        'validated' : 'unknown') : t.status;
+  }
+  if (value.same_snapshot !== same || value.restoration_state !== state) fail();
+  return value;
+}
+
+export function pilotageRestoreView(value, now) {
+  const view = backupView(value, now);
+  if (!value || value.status !== 'available' || view.reason === 'collection_stale') {
+    return { state: 'unknown', test: null, sameSnapshot: null };
+  }
+  return { state: value.restoration_state, test: value.latest_restore, sameSnapshot: value.same_snapshot };
+}

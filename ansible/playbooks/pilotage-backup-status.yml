@@ -1,0 +1,9 @@
+---
+- name: Afficher les sauvegardes PostgreSQL et les tests de restauration du pilotage
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - backup_status
+    - control_plane
+    - dashboard
