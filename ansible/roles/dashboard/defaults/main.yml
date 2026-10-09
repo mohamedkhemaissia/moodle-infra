@@ -28,6 +28,8 @@ dashboard_source_files:
   - src/Backups.jsx
   - src/BackupCatalog.jsx
   - src/backupCatalog.js
+  - src/RecoveryRequests.jsx
+  - src/recoveryRequests.js
   - src/ApplicationServices.jsx
   - src/applicationMetrics.js
   - src/backups.js
@@ -47,4 +49,5 @@ dashboard_source_files:
   - tests/auth.test.js
   - tests/backups.test.js
   - tests/backupCatalog.test.js
+  - tests/recoveryRequests.test.js
   - tests/applications.test.js

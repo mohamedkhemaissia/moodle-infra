@@ -2,6 +2,10 @@ import { useReadings } from './useReadings.js';
 import { backupView, pilotageRestoreView } from './backups.js';
 import './backups.css';
 import BackupCatalog from './BackupCatalog.jsx';
+import { useState } from 'react';
+import { useAuth } from './Auth.jsx';
+import { canManageRecovery } from './recoveryRequests.js';
+import RecoveryRequests from './RecoveryRequests.jsx';
 
 const requests = [
   { key: 'backup', kind: 'backup', path: '/api/v1/backups/summary' },
@@ -80,6 +84,8 @@ export function BackupArea({ reading, now, pilotage = false }) {
 }
 
 export default function Backups({ now, refreshToken }) {
+  const auth = useAuth();
+  const [selection, setSelection] = useState(null);
   const readings = useReadings(requests, refreshToken, now);
   return <section id="backups" className="panel ops-panel" aria-labelledby="backups-heading">
     <div className="panel-heading"><div><h2 id="backups-heading">Sauvegardes</h2>
@@ -87,7 +93,8 @@ export default function Backups({ now, refreshToken }) {
     <div className="ops-body">
       <BackupArea reading={readings.backup} now={now} />
       <BackupArea reading={readings.pilotage} now={now} pilotage />
-      <BackupCatalog now={now} refreshToken={refreshToken} />
+      <BackupCatalog now={now} refreshToken={refreshToken} onRequest={canManageRecovery(auth) ? setSelection : null} />
+      <RecoveryRequests now={now} refreshToken={refreshToken} selection={selection} onCloseSelection={() => setSelection(null)} />
     </div>
   </section>;
 }

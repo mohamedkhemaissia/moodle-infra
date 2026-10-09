@@ -13,21 +13,36 @@ SCHEMAS = {
 TABLES = tuple(f'{schema}.{table}' for schema, (_, tables) in SCHEMAS.items() for table in tables)
 IDENTITIES = ('pilotage_incidents.incidents', 'pilotage_incidents.events',
               'pilotage_auth.users', 'pilotage_auth.events')
+RECOVERY_SCHEMA = {'pilotage_recovery': (0x4D525143, ('schema_info', 'requests', 'events'))}
 
 
-def inventory_sql():
+def schemas(include_recovery=False):
+    if type(include_recovery) is not bool:
+        raise ValueError('Profil de sauvegarde invalide.')
+    return {**SCHEMAS, **(RECOVERY_SCHEMA if include_recovery else {})}
+
+
+def identities(include_recovery=False):
+    schemas(include_recovery)
+    return IDENTITIES + (('pilotage_recovery.events',) if include_recovery else ())
+
+
+def inventory_sql(include_recovery=False):
     """Le meme SQL sur l'instantane source et sur la copie PostgreSQL 16.
 
     Les empreintes portent sur les lignes JSON ordonnees en collation C. Les
     comptes, hash de mots de passe, preuves et sessions ne sortent pas en clair.
-    Cette premiere version borne les tables a celles du schema applicatif v1.
+    Les anciennes sauvegardes restent verificables avec leur profil de 16 tables.
+    Le nouveau journal ajoute trois tables lorsque present dans l'instantane.
     """
-    schema_names = ','.join("'" + name + "'" for name in SCHEMAS)
+    selected = schemas(include_recovery)
+    table_names = tuple(f'{schema}.{table}' for schema, (_, tables) in selected.items() for table in tables)
+    schema_names = ','.join("'" + name + "'" for name in selected)
     versions = ','.join(
         "'" + schema + "', (SELECT json_build_array(version,application_id) FROM "
-        + schema + '.schema_info WHERE id=1)' for schema in SCHEMAS)
+        + schema + '.schema_info WHERE id=1)' for schema in selected)
     tables = []
-    for name in TABLES:
+    for name in table_names:
         schema, table = name.split('.')
         tables.extend(["'" + name + "'", "(SELECT json_build_object("
             "'rows',count(*),'sha256',encode(sha256(convert_to(coalesce("
@@ -47,10 +62,12 @@ def validate_inventory(value, database='moodle_pilotage'):
         raise ValueError('Inventaire incomplet.')
     if value['database'] != database or value['server_major'] != 16:
         raise ValueError('PostgreSQL 16 et base de pilotage requis.')
-    expected = {name: [1, app] for name, (app, _) in SCHEMAS.items()}
-    if value['schemas'] != expected or sorted(value['table_names'] or []) != sorted(TABLES):
+    selected = schemas(isinstance(value['schemas'], dict) and 'pilotage_recovery' in value['schemas'])
+    tables = tuple(f'{schema}.{table}' for schema, (_, names) in selected.items() for table in names)
+    expected = {name: [1, app] for name, (app, _) in selected.items()}
+    if value['schemas'] != expected or sorted(value['table_names'] or []) != sorted(tables):
         raise ValueError('Schemas du pilotage absents ou incompatibles.')
-    if not isinstance(value['tables'],dict) or set(value['tables']) != set(TABLES):
+    if not isinstance(value['tables'],dict) or set(value['tables']) != set(tables):
         raise ValueError('Tables du pilotage incompatibles.')
     for entry in value['tables'].values():
         if not isinstance(entry,dict) or set(entry) != {'rows','sha256','columns'}:
@@ -66,9 +83,9 @@ def validate_inventory(value, database='moodle_pilotage'):
     return value
 
 
-def identity_check_sql():
+def identity_check_sql(include_recovery=False):
     checks = []
-    for name in IDENTITIES:
+    for name in identities(include_recovery):
         schema, table = name.split('.')
         checks.extend(["'"+name+"'", "(SELECT CASE WHEN COALESCE((SELECT max(id) FROM " + name + "),0)=0 "
             "THEN true ELSE last_value>(SELECT max(id) FROM " + name + ") OR "
