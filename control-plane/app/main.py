@@ -11,8 +11,11 @@ from typing import Literal
 from .models import MetricsSummary
 from .application_metrics import summary as application_metrics_summary, queries as application_queries
 from .auth import Settings as AuthSettings, install as install_auth
+from .recovery_requests import install as install_recovery_requests
+from .backup_catalog_status import select_point
 from .backups import read_summary as read_backup_summary, read_pilotage_summary, read_catalog
 from pilotage.auth import AuthStore, AuthStorageError
+from pilotage.recovery import RecoveryStore, RecoveryStorageError
 from .diagnostics_store import DiagnosticStore, DiagnosticStorageError
 from .remediation_store import RemediationStore
 from .incidents import IncidentStore, IncidentStorageError
@@ -44,12 +47,21 @@ def create_app(
     pilotage_backup_status_file: str | None = None,
     application_metrics_enabled: bool | None = None,
     backup_catalog_file: str | None = None,
+    recovery_requests_enabled: bool | None = None,
+    recovery_store=None,
 ) -> FastAPI:
     authentication = AuthSettings.load(auth_enabled, auth_origins, auth_secure_cookie, auth_worker_hash_file)
     backup_file = backup_status_file if backup_status_file is not None else os.getenv("BACKUP_STATUS_FILE", "")
     pilotage_backup_file = (pilotage_backup_status_file if pilotage_backup_status_file is not None
                            else os.getenv("PILOTAGE_BACKUP_STATUS_FILE", ""))
     catalog_file = backup_catalog_file if backup_catalog_file is not None else os.getenv("BACKUP_CATALOG_FILE", "")
+    if recovery_requests_enabled is None:
+        setting = os.getenv("RECOVERY_REQUESTS_ENABLED", "false")
+        if setting not in ("true", "false"):
+            raise ValueError("RECOVERY_REQUESTS_ENABLED doit valoir true ou false.")
+        recovery_requests_enabled = setting == "true"
+    if type(recovery_requests_enabled) is not bool or (recovery_requests_enabled and (not authentication.enabled or not catalog_file)):
+        raise ValueError("Les demandes exigent l'authentification et un catalogue configure.")
     url = prometheus_url or os.getenv("PROMETHEUS_URL", "http://127.0.0.1:9090")
     max_age = float(os.getenv("MAX_SCRAPE_AGE_SECONDS", "60"))
     if application_metrics_enabled is None:
@@ -84,6 +96,11 @@ def create_app(
         application.state.auth_password_slots = asyncio.Semaphore(2)
         if authentication.enabled:
             await asyncio.to_thread(application.state.auth_store.check)
+        application.state.recovery_requests = None
+        if recovery_requests_enabled:
+            application.state.recovery_requests = recovery_store or RecoveryStore(
+                selector=lambda scope, snapshot, now: select_point(catalog_file, now, scope, snapshot))
+            await asyncio.to_thread(application.state.recovery_requests.check)
         async with httpx.AsyncClient(
             base_url=url.rstrip("/") + "/",
             timeout=5,
@@ -114,14 +131,15 @@ def create_app(
     application = FastAPI(
         title="Pilotage Moodle",
         description="Supervision, analyses experimentales et historique des incidents observes du pilote Moodle.",
-        version="0.12.0",
+        version="0.13.0",
         lifespan=lifespan,
     )
     install_auth(application, authentication)
+    install_recovery_requests(application)
 
     @application.get("/api/v1/health", tags=["Sante"])
     async def health():
-        return {"status": "ok", "service": "moodle-control-plane", "version": "0.12.0"}
+        return {"status": "ok", "service": "moodle-control-plane", "version": "0.13.0"}
 
     @application.get("/api/v1/metrics/applications", tags=["Supervision"])
     async def application_metrics(request: Request, response: Response):
@@ -179,10 +197,13 @@ def create_app(
             if request.app.state.auth_store is not None:
                 request.app.state.auth_store.check()
                 result["accounts"] = {"status": "available", "schema_version": 1, "backend": "postgresql"}
+            if request.app.state.recovery_requests is not None:
+                request.app.state.recovery_requests.check()
+                result["recovery_requests"] = {"status": "available", "schema_version": 1, "backend": "postgresql"}
             return result
         try:
             stores = await asyncio.to_thread(inspect_storage)
-        except (IncidentStorageError, DiagnosticStorageError, AuthStorageError) as exc:
+        except (IncidentStorageError, DiagnosticStorageError, AuthStorageError, RecoveryStorageError) as exc:
             raise HTTPException(503, detail="Le stockage du pilotage est indisponible.") from exc
         if not stores:
             raise HTTPException(503, detail="Aucun historique du pilotage n'est configure.")
