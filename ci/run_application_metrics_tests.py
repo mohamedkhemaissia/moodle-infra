@@ -24,7 +24,21 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def run(*args, input=None, check=True):
-    return subprocess.run(args, input=input, text=True, capture_output=True, check=check, timeout=120)
+    try:
+        return subprocess.run(args, input=input, text=True, capture_output=True, check=check, timeout=120)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        # capture_output garde la cause Docker hors de la trace Python : la
+        # publier avant le nettoyage, tout en conservant l'echec du test.
+        status = ('code ' + str(exc.returncode) if isinstance(exc, subprocess.CalledProcessError)
+                  else 'delai de ' + str(exc.timeout) + 's depasse')
+        print('Commande CI en echec (' + status + ') : ' + ' '.join(args[:2]),
+              file=sys.stderr, flush=True)
+        for stream, output in (('stdout', exc.stdout), ('stderr', exc.stderr)):
+            if output:
+                if isinstance(output, bytes):
+                    output = output.decode('utf-8', errors='replace')
+                print(stream + ':\n' + output[-8000:], file=sys.stderr, flush=True)
+        raise
 
 
 def wait_until(check, timeout=60):
