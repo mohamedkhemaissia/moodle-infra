@@ -33,6 +33,22 @@ class RecoveryConfigurationTests(unittest.TestCase):
                     result=subprocess.run(command,cwd=target,env=environment,text=True,capture_output=True,timeout=20)
                     self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
+    def test_execution_role_installed_files_import_and_test_without_repository_fallback(self):
+        tasks=yaml.safe_load((ROOT/'ansible/roles/recovery_tests/tasks/main.yml').read_text())
+        copy_task=next(task for task in tasks if task.get('ansible.builtin.copy',{}).get('dest')=='{{ recovery_tests_base_dir }}/{{ item }}')
+        with tempfile.TemporaryDirectory(prefix='moodle-execution-installed-') as temporary:
+            target=Path(temporary)
+            for relative in copy_task['loop']:
+                destination=target/relative;destination.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copyfile(ROOT/relative,destination)
+            environment=dict(os.environ,PYTHONPATH='',PILOTAGE_DATABASE_CONFIG='')
+            command=[sys.executable,'-B','-m','unittest','discover','-s','recovery_tests/tests','-q']
+            result=subprocess.run(command,cwd=target,env=environment,text=True,capture_output=True,timeout=30)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        playbook=yaml.safe_load((ROOT/'ansible/playbooks/recovery-tests.yml').read_text())[0]
+        self.assertEqual(playbook['roles'][:3],['pilotage_backup','recovery_requests','recovery_tests'])
+        self.assertIn('recovery_tests',__import__('run_python_tests').COMPONENTS)
+        self.assertIn('pilotage/recovery_execution.py',SHARED)
     def test_deployment_orders_backup_compatibility_before_new_journal_and_has_no_restore_command(self):
         value=yaml.safe_load((ROOT/'ansible/playbooks/recovery-requests.yml').read_text())[0]
         self.assertEqual(value['roles'],['pilotage_backup','recovery_requests','backup_status','backup_catalog','control_plane','dashboard'])

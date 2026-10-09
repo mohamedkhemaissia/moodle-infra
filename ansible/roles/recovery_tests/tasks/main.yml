@@ -1,0 +1,155 @@
+---
+- name: Valider les chemins fixes du worker isole
+  ansible.builtin.assert:
+    that:
+      - recovery_tests_base_dir == '/opt/moodle-recovery-tests'
+      - recovery_tests_python == '/opt/moodle-diagnostics/venv/bin/python'
+      - recovery_tests_moodle_base is match('^/opt/[a-zA-Z0-9_-]+$')
+      - recovery_tests_moodle_project is match('^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,80}$')
+      - pilotage_database_config_dir is match('^/etc/[a-zA-Z0-9_-]+$')
+      - recovery_tests_catalog_file is match('^/var/lib/[a-zA-Z0-9_./-]+$')
+      - recovery_tests_backup_config is match('^/opt/[a-zA-Z0-9_./-]+$')
+      - recovery_tests_run_seconds | int >= 60
+      - recovery_tests_run_seconds | int <= 960
+      - recovery_tests_min_free_mb | int >= 512
+      - recovery_tests_min_free_mb | int <= 16384
+
+- name: Verifier les composants existants sans afficher les secrets
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - "{{ pilotage_database_config_dir }}/recovery-requests-active"
+    - "{{ recovery_tests_python }}"
+    - "{{ recovery_tests_backup_config }}"
+    - "/usr/local/sbin/{{ recovery_tests_moodle_project }}-restic"
+    - /usr/bin/openssl
+    - /usr/bin/docker
+  register: recovery_tests_prerequisites
+
+- name: Exiger les composants du pilote deja deployes
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists | default(false)
+      - item.stat.isreg | default(false) or item.stat.islnk | default(false)
+    quiet: true
+    fail_msg: "Deployer les demandes, la sauvegarde du pilotage et Runner avant les tests."
+  loop: "{{ recovery_tests_prerequisites.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Creer le code partage et les repertoires prives du test
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /opt/moodle-recovery-tests, mode: '0755'}
+    - {path: /opt/moodle-recovery-tests/pilotage, mode: '0755'}
+    - {path: /opt/moodle-recovery-tests/pilotage_backup, mode: '0755'}
+    - {path: /opt/moodle-recovery-tests/backup_status, mode: '0755'}
+    - {path: /opt/moodle-recovery-tests/recovery_tests, mode: '0755'}
+    - {path: /opt/moodle-recovery-tests/recovery_tests/project, mode: '0755'}
+    - {path: /opt/moodle-recovery-tests/recovery_tests/tests, mode: '0755'}
+    - {path: /var/lib/moodle-recovery-tests, mode: '0700'}
+    - {path: /var/lib/moodle-recovery-tests/runs, mode: '0700'}
+    - {path: /var/lib/moodle-recovery-tests/results, mode: '0700'}
+    - {path: /var/lib/moodle-recovery-tests/runner, mode: '0700'}
+
+- name: Installer le worker et ses dependances internes depuis les sources canoniques
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../{{ item }}"
+    dest: "{{ recovery_tests_base_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - pilotage/__init__.py
+    - pilotage/db.py
+    - pilotage/schemas.py
+    - pilotage/auth.py
+    - pilotage/passwords.py
+    - pilotage/recovery.py
+    - pilotage/recovery_execution.py
+    - pilotage/execution_cli.py
+    - pilotage_backup/__init__.py
+    - pilotage_backup/core.py
+    - pilotage_backup/inventory.py
+    - pilotage_backup/run.py
+    - backup_status/__init__.py
+    - backup_status/status.py
+    - backup_status/pilotage.py
+    - backup_status/collector.py
+    - backup_status/catalog.py
+    - backup_status/catalog_collector.py
+    - recovery_tests/__init__.py
+    - recovery_tests/runtime.py
+    - recovery_tests/archives.py
+    - recovery_tests/moodle.py
+    - recovery_tests/operation.py
+    - recovery_tests/worker.py
+    - recovery_tests/project/ansible.cfg
+    - recovery_tests/project/test-restore.yml
+    - recovery_tests/tests/test_execution.py
+
+- name: Verifier les protections du worker avec des fixtures
+  ansible.builtin.command:
+    argv: ["{{ recovery_tests_python }}", -B, -m, unittest, discover, -s, recovery_tests/tests, -q]
+    chdir: "{{ recovery_tests_base_dir }}"
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Installer la configuration du worker sans recopier les secrets
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ recovery_tests_base_dir }}/config.json"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Initialiser le journal des executions en conservant demandes et comptes
+  ansible.builtin.command:
+    argv: ["{{ recovery_tests_python }}", -B, -m, pilotage.execution_cli, init]
+    chdir: "{{ recovery_tests_base_dir }}"
+  environment:
+    PILOTAGE_DATABASE_CONFIG: "{{ pilotage_database_config_dir }}/database.json"
+  register: recovery_tests_init
+  changed_when: (recovery_tests_init.stdout | from_json).changed | bool
+  when: not ansible_check_mode
+
+- name: Installer la planification du worker
+  ansible.builtin.template:
+    src: "moodle-recovery-test.{{ item }}.j2"
+    dest: "/etc/systemd/system/moodle-recovery-test.{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [service, timer]
+  notify: Recharger le worker de tests isoles
+
+- name: Valider les unites du worker
+  ansible.builtin.command:
+    argv: [/usr/bin/systemd-analyze, verify, /etc/systemd/system/moodle-recovery-test.service, /etc/systemd/system/moodle-recovery-test.timer]
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Appliquer la configuration du worker
+  ansible.builtin.meta: flush_handlers
+
+- name: Activer la lecture de la file sans lancer de demande automatiquement
+  ansible.builtin.systemd_service:
+    name: moodle-recovery-test.timer
+    daemon_reload: true
+    enabled: true
+    state: started
+
+- name: Enregistrer l activation du journal et du worker
+  ansible.builtin.copy:
+    content: "Tests isoles v1 ; lancement humain ; preuve PostgreSQL\n"
+    dest: "{{ pilotage_database_config_dir }}/recovery-tests-active"
+    owner: root
+    group: root
+    mode: '0644'
+  when: not ansible_check_mode

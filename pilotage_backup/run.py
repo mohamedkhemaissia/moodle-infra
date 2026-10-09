@@ -165,10 +165,12 @@ def restored_files(config,commands,snapshot,directory):
     return manifest,inventory
 
 
-def restore_test(config,snapshot,commands=None,*,sleep=time.sleep,monotonic=time.monotonic):
+def restore_test(config,snapshot,commands=None,*,sleep=time.sleep,monotonic=time.monotonic,run_id=None,work_root=None):
     commands=commands or Commands(config['timeout_seconds'])
-    root=Path(config['output_dir']);started=utc_now();start_clock=monotonic()
-    run_id=uuid.uuid4().hex;name='moodle-pilotage-restore-'+run_id;created=False
+    root=Path(work_root or config['output_dir']);started=utc_now();start_clock=monotonic()
+    run_id=run_id or uuid.uuid4().hex
+    if not re.fullmatch('[0-9a-f]{32}',run_id):raise BackupError('invalid_restore_run')
+    name='moodle-pilotage-restore-'+run_id;created=False
     directory=Path(tempfile.mkdtemp(prefix='restore-',dir=root/'staging'))
     result={'status':'failed','mode':'isolated_restore_test','run_id':run_id,'snapshot':snapshot,
             'started_at':started,'production_changed':False}
@@ -181,7 +183,7 @@ def restore_test(config,snapshot,commands=None,*,sleep=time.sleep,monotonic=time
         # Le reseau none rend l'authentification locale de cette fixture inaccessible.
         try:
             commands.run([DOCKER,'run','--detach','--pull','never','--name',name,
-                '--label','moodle.pfe.restore-run='+run_id,'--network','none','--user','999:999',
+                '--label','moodle.pfe.restore-run='+run_id,'--label','moodle.pfe.recovery-test='+run_id,'--network','none','--user','999:999',
                 '--memory','256m','--cpus','0.50','--pids-limit','128','--read-only',
                 '--cap-drop','ALL','--security-opt','no-new-privileges:true',
                 '--tmpfs','/tmp:rw,noexec,nosuid,size=32m,uid=999,gid=999,mode=1777',
@@ -222,10 +224,11 @@ def restore_test(config,snapshot,commands=None,*,sleep=time.sleep,monotonic=time
             if len(lines)!=1:raise BackupError('invalid_restore_query_response')
             return json_value(lines[0])
         include_recovery = 'pilotage_recovery' in expected['schemas']
-        actual=validate_inventory(query(inventory_sql(include_recovery)))
+        include_execution = 'pilotage_recovery.executions' in expected['tables']
+        actual=validate_inventory(query(inventory_sql(include_recovery,include_execution)))
         if actual!=expected:raise BackupError('restored_tables_do_not_match_snapshot')
-        identities=query(identity_check_sql(include_recovery))
-        if not isinstance(identities,dict) or set(identities)!=set(expected_identities(include_recovery)) or not all(v is True for v in identities.values()):
+        identities=query(identity_check_sql(include_recovery,include_execution))
+        if not isinstance(identities,dict) or set(identities)!=set(expected_identities(include_recovery,include_execution)) or not all(v is True for v in identities.values()):
             raise BackupError('restored_sequences_invalid')
         result.update(status='restore_validated',captured_at=manifest['captured_at'],
             tables_verified=len(actual['tables']),rows_verified=sum(v['rows'] for v in actual['tables'].values()),

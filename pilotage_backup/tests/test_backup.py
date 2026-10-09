@@ -260,7 +260,7 @@ class FormatsTests(unittest.TestCase):
         def execute(statement):
             statements.append(statement)
             value=privileges if 'rolsuper' in statement else (snapshot,) if 'pg_export_snapshot' in statement \
-                else ('pilotage_recovery' if include_recovery else None,) if 'to_regnamespace' in statement else ((inventory if inventory is not None else valid_inventory()),)
+                else (None,) if 'to_regclass' in statement else ('pilotage_recovery' if include_recovery else None,) if 'to_regnamespace' in statement else ((inventory if inventory is not None else valid_inventory()),)
             return SimpleNamespace(fetchone=lambda:value)
         connection.execute=execute
         connection.close=lambda:setattr(connection,'closed',True)
@@ -325,6 +325,16 @@ class FormatsTests(unittest.TestCase):
                 invalid['schemas']['untracked'] = [1, 1]
             with self.subTest(kind=kind), self.assertRaises(ValueError):
                 validate_inventory(invalid)
+    def test_execution_inventory_preserves_both_new_tables_and_their_sequence(self):
+        value=recovery_inventory()
+        for table in ('executions','execution_events'):
+            name='pilotage_recovery.'+table
+            value['table_names'].append(name);value['tables'][name]={'rows':1,'sha256':'a'*64,'columns':[['id','text','NO']]}
+        value['table_names'].sort()
+        self.assertEqual(len(validate_inventory(value)['tables']),21)
+        self.assertIn('pilotage_recovery.execution_events',inventory_sql(True,True))
+        value['table_names'].remove('pilotage_recovery.execution_events');value['tables'].pop('pilotage_recovery.execution_events')
+        with self.assertRaises(ValueError):validate_inventory(value)
     def test_configuration_targets_only_the_dedicated_database_and_fixed_wrapper(self):
         with tempfile.TemporaryDirectory() as temporary:
             path=Path(temporary)/'config';path.chmod(0o600) if path.exists() else None

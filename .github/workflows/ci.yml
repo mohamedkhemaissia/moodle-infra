@@ -16,6 +16,7 @@ on:
       - 'pilotage/**'
       - 'backup_status/**'
       - 'pilotage_backup/**'
+      - 'recovery_tests/**'
       - 'tests/postgresql/**'
   pull_request:
     paths:
@@ -32,6 +33,7 @@ on:
       - 'pilotage/**'
       - 'backup_status/**'
       - 'pilotage_backup/**'
+      - 'recovery_tests/**'
       - 'tests/postgresql/**'
   workflow_dispatch:
 
@@ -124,6 +126,25 @@ jobs:
           sudo apt-get install --yes --no-install-recommends postgresql-client-16
       - name: Verifier pg_dump et pg_restore sur une base de test isolee
         run: python -B ci/run_backup_postgresql_tests.py
+
+  recovery-tests:
+    name: Restauration isolee - conteneurs reels et donnees fictives
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.15'
+      - name: Installer les dependances du test isole
+        run: >-
+          python -m pip install --disable-pip-version-check --only-binary=:all:
+          --timeout 120 --retries 5 -r control-plane/requirements-lock.txt
+          -r diagnostics/requirements-lock.txt
+      - name: Verifier le backend avec PostgreSQL PHP et HTTPS reels
+        run: sudo "$pythonLocation/bin/python" -B ci/run_recovery_moodle_test.py
 
   dashboard:
     name: Tests et build React
@@ -222,7 +243,7 @@ jobs:
 
   images:
     name: Image ${{ matrix.component }}
-    needs: [python, postgresql, dashboard, ansible, application-metrics, backup-catalog]
+    needs: [python, postgresql, dashboard, ansible, application-metrics, backup-catalog, recovery-tests]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:

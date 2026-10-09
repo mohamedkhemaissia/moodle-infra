@@ -16,6 +16,7 @@ from .backup_catalog_status import select_point
 from .backups import read_summary as read_backup_summary, read_pilotage_summary, read_catalog
 from pilotage.auth import AuthStore, AuthStorageError
 from pilotage.recovery import RecoveryStore, RecoveryStorageError
+from pilotage.recovery_execution import RecoveryExecutionStore
 from .diagnostics_store import DiagnosticStore, DiagnosticStorageError
 from .remediation_store import RemediationStore
 from .incidents import IncidentStore, IncidentStorageError
@@ -49,6 +50,7 @@ def create_app(
     backup_catalog_file: str | None = None,
     recovery_requests_enabled: bool | None = None,
     recovery_store=None,
+    recovery_execution_enabled: bool | None = None,
 ) -> FastAPI:
     authentication = AuthSettings.load(auth_enabled, auth_origins, auth_secure_cookie, auth_worker_hash_file)
     backup_file = backup_status_file if backup_status_file is not None else os.getenv("BACKUP_STATUS_FILE", "")
@@ -62,6 +64,13 @@ def create_app(
         recovery_requests_enabled = setting == "true"
     if type(recovery_requests_enabled) is not bool or (recovery_requests_enabled and (not authentication.enabled or not catalog_file)):
         raise ValueError("Les demandes exigent l'authentification et un catalogue configure.")
+    if recovery_execution_enabled is None:
+        setting = os.getenv("RECOVERY_EXECUTION_ENABLED", "false")
+        if setting not in ("true", "false"):
+            raise ValueError("RECOVERY_EXECUTION_ENABLED doit valoir true ou false.")
+        recovery_execution_enabled = setting == "true"
+    if type(recovery_execution_enabled) is not bool or (recovery_execution_enabled and not recovery_requests_enabled):
+        raise ValueError("L execution isolee exige le parcours de demandes active.")
     url = prometheus_url or os.getenv("PROMETHEUS_URL", "http://127.0.0.1:9090")
     max_age = float(os.getenv("MAX_SCRAPE_AGE_SECONDS", "60"))
     if application_metrics_enabled is None:
@@ -96,9 +105,10 @@ def create_app(
         application.state.auth_password_slots = asyncio.Semaphore(2)
         if authentication.enabled:
             await asyncio.to_thread(application.state.auth_store.check)
+        application.state.recovery_execution_enabled = recovery_execution_enabled
         application.state.recovery_requests = None
         if recovery_requests_enabled:
-            application.state.recovery_requests = recovery_store or RecoveryStore(
+            application.state.recovery_requests = recovery_store or (RecoveryExecutionStore if recovery_execution_enabled else RecoveryStore)(
                 selector=lambda scope, snapshot, now: select_point(catalog_file, now, scope, snapshot))
             await asyncio.to_thread(application.state.recovery_requests.check)
         async with httpx.AsyncClient(
@@ -131,7 +141,7 @@ def create_app(
     application = FastAPI(
         title="Pilotage Moodle",
         description="Supervision, analyses experimentales et historique des incidents observes du pilote Moodle.",
-        version="0.13.0",
+        version="0.14.0",
         lifespan=lifespan,
     )
     install_auth(application, authentication)
@@ -139,7 +149,7 @@ def create_app(
 
     @application.get("/api/v1/health", tags=["Sante"])
     async def health():
-        return {"status": "ok", "service": "moodle-control-plane", "version": "0.13.0"}
+        return {"status": "ok", "service": "moodle-control-plane", "version": "0.14.0"}
 
     @application.get("/api/v1/metrics/applications", tags=["Supervision"])
     async def application_metrics(request: Request, response: Response):

@@ -8,6 +8,7 @@
       - not (control_plane_pilotage_backup_status_enabled | bool) or (control_plane_backup_status_enabled | bool)
       - not (control_plane_backup_catalog_enabled | bool) or (control_plane_backup_status_enabled | bool)
       - not (control_plane_recovery_requests_enabled | bool) or (control_plane_backup_catalog_enabled | bool)
+      - not (control_plane_recovery_execution_enabled | bool) or (control_plane_recovery_requests_enabled | bool)
     fail_msg: "Activer les incidents avant le moteur de decision."
 
 - name: Creer les repertoires de l API
@@ -31,7 +32,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'pilotage/recovery.py', 'pilotage/recovery_cli.py', 'app/backup_status.py', 'app/pilotage_backup_status.py', 'app/backup_catalog_status.py']) }}"
+  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'pilotage/recovery.py', 'pilotage/recovery_cli.py', 'pilotage/recovery_execution.py', 'app/backup_status.py', 'app/pilotage_backup_status.py', 'app/backup_catalog_status.py']) }}"
 
 - name: Copier le lecteur partage du suivi des sauvegardes
   ansible.builtin.copy:
@@ -130,7 +131,7 @@
     owner: root
     group: root
     mode: '0644'
-  loop: [__init__.py, db.py, schemas.py, migrate.py, auth.py, auth_cli.py, passwords.py, worker_auth.py, recovery.py, recovery_cli.py]
+  loop: [__init__.py, db.py, schemas.py, migrate.py, auth.py, auth_cli.py, passwords.py, worker_auth.py, recovery.py, recovery_cli.py, recovery_execution.py]
 
 - name: Verifier si PostgreSQL a ete active pour le pilotage
   ansible.builtin.stat:
@@ -245,6 +246,21 @@
     owner: root
     group: root
     mode: "0644"
+
+- name: Verifier l activation du worker de tests isoles
+  ansible.builtin.stat:
+    path: "{{ pilotage_database_config_dir }}/recovery-tests-active"
+    follow: false
+  register: control_plane_test_activation
+  when: control_plane_recovery_execution_enabled | bool
+
+- name: Exiger le journal et le worker deja installes
+  ansible.builtin.assert:
+    that:
+      - control_plane_test_activation.stat.isreg | default(false)
+      - not (control_plane_test_activation.stat.islnk | default(false))
+    fail_msg: "Installer recovery_tests avant l execution des demandes."
+  when: control_plane_recovery_execution_enabled | bool
 
 - name: Valider la configuration Docker Compose
   ansible.builtin.command:

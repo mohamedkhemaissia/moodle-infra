@@ -1,0 +1,4 @@
+---
+- name: Recharger le worker de tests isoles
+  ansible.builtin.systemd_service:
+    daemon_reload: true

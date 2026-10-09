@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from './Auth.jsx';
 import { useReadings } from './useReadings.js';
 import { jsonRequest } from './authClient.js';
-import { canManageRecovery, approvalCurrent, requestLabels, requestKey, requestPath, validateRecoveryMutation } from './recoveryRequests.js';
+import { canManageRecovery, approvalCurrent, canStartTest, canCancelRequest, executionLabels, requestLabels, requestKey, requestPath, validateRecoveryMutation } from './recoveryRequests.js';
 
 const dates = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'medium' });
 const date = (v) => dates.format(Date.parse(v));
@@ -55,11 +55,20 @@ export function RequestDetail({ value, now, admin, busy, onDecision, onClose }) 
     <p>{scopeName(row.scope)} · Test isolé</p><code className="recovery-reference">{row.snapshot_id}</code>
     <p>{row.reason}</p><p className="ops-caption">Demandée par {row.requested_by.username} le {date(row.created_at)}.</p>
     {row.decision && <p className="ops-caption">Décision de {row.decision.by.username} le {date(row.decision.at)} : {row.decision.reason}</p>}
-    {row.status === 'approved' && <p className="ops-caption">{approvalCurrent(row, now)
+    {row.status === 'approved' && ['not_dispatched','queued'].includes(row.execution.status) && <p className="ops-caption">{approvalCurrent(row, now)
       ? `Approbation valable jusqu’au ${date(row.decision.valid_until)}.`
       : 'Approbation expirée : une nouvelle demande est nécessaire.'}</p>}
-    <p className="ops-section-note">Aucun test n’a été lancé par cette demande. L’exécution sera proposée dans une étape suivante.</p>
-    {admin && ['pending', 'approved'].includes(row.status) && <div className="auth-form recovery-form">
+    <p className="ops-section-note">{executionLabels[row.execution.status]}. {row.execution.status === 'not_dispatched'
+      ? 'Le test exige un lancement explicite après approbation.' : 'Le test utilise une copie séparée de la sauvegarde.'}</p>
+    {row.execution.started_at && <p className="ops-caption">Démarrage : {date(row.execution.started_at)}{row.execution.finished_at && ` · Fin : ${date(row.execution.finished_at)}`}</p>}
+    {row.execution.reason_code && <p className="catalog-warning">{resultReasons[row.execution.reason_code] || 'Le test n’a pas apporté toutes les preuves nécessaires. Consultez son historique.'}</p>}
+    {row.execution.report && <ExecutionReport report={row.execution.report} />}
+    {admin && canStartTest(row,now) && <div className="auth-form recovery-form">
+      <label className="recovery-confirm"><input type="checkbox" checked={confirmation} disabled={busy}
+        onChange={(e)=>setConfirmation(e.target.checked)} />Je confirme le point affiché et le lancement du test isolé.</label>
+      <button className="auth-primary" disabled={busy || !confirmation} onClick={()=>onDecision(row,'execute')}>Lancer le test isolé</button>
+    </div>}
+    {admin && canCancelRequest(row) && <div className="auth-form recovery-form">
       <label>Motif de la décision<input minLength={15} maxLength={500} value={reason} disabled={busy}
         onChange={(e) => setReason(e.target.value)} /></label>
       {row.status === 'pending' && <label className="recovery-confirm">
@@ -81,13 +90,17 @@ export function RequestDetail({ value, now, admin, busy, onDecision, onClose }) 
       <strong>{eventLabels[event.action]}</strong> · {event.by.username} · {date(event.at)}
       {event.evidence.reason && <span>{event.evidence.reason}</span>}
     </li>)}</ol>
+    {value.execution_events?.length > 0 && <><h4 className="recovery-history-title">Historique du test</h4>
+      <ol className="recovery-history">{value.execution_events.map((event)=><li key={event.id}>
+        <strong>{executionEventLabels[event.action]}</strong> · {event.by.kind === 'worker' ? 'Service de restauration' : event.by.username} · {date(event.at)}
+      </li>)}</ol></>}
   </div>;
 }
 
 function Detail({ identifier, now, refreshToken, admin, busy, onDecision, onClose }) {
   const readings = useReadings([{ key: 'detail', kind: 'recovery_request', path: requestPath(identifier) }], refreshToken, now);
   const reading = readings.detail;
-  return reading.data ? <RequestDetail key={reading.data.request.revision} value={reading.data} now={now} admin={admin}
+  return reading.data ? <RequestDetail key={reading.data.request.revision+':'+reading.data.request.execution.status} value={reading.data} now={now} admin={admin}
     busy={busy} onDecision={onDecision} onClose={onClose} /> : <p className="ops-empty" role="status">
     {reading.pending ? 'Lecture du détail…' : reading.error || 'Détail indisponible. Actualiser avant une décision.'}</p>;
 }
@@ -98,10 +111,11 @@ export function RequestsArea({ reading, onOpen, offset, onPage, now }) {
     {!value ? <p className="ops-empty" role="status">{reading.pending ? 'Lecture des demandes…' : reading.error || 'Journal des demandes indisponible.'}</p>
       : value.total === 0 ? <p className="ops-empty">Aucune demande enregistrée.</p> : <>
         <div className="ops-table-wrap"><table className="catalog-table"><thead><tr>
-          <th>Création</th><th>Sauvegarde</th><th>Demandeur</th><th>Décision</th><th>Détail</th>
+          <th>Création</th><th>Sauvegarde</th><th>Demandeur</th><th>Décision</th><th>Test</th><th>Détail</th>
         </tr></thead><tbody>{value.items.map((row) => <tr key={row.id}>
           <td>{date(row.created_at)}</td><td>{scopeName(row.scope)}<br /><code>{row.snapshot_id.slice(0, 12)}</code></td>
-          <td>{row.requested_by.username}</td><td>{row.status === 'approved' && !approvalCurrent(row, now) ? 'Approbation expirée' : requestLabels[row.status]}</td>
+          <td>{row.requested_by.username}</td><td>{row.status === 'approved' && row.execution.status === 'not_dispatched' && !approvalCurrent(row, now) ? 'Approbation expirée' : requestLabels[row.status]}</td>
+          <td>{executionLabels[row.execution.status]}</td>
           <td><button className="refresh-button" onClick={() => onOpen(row.id)}>Consulter</button></td>
         </tr>)}</tbody></table></div>
         <div className="catalog-pagination"><button disabled={offset === 0} onClick={() => onPage(Math.max(0, offset-10))}>Précédent</button>
@@ -126,8 +140,8 @@ export default function RecoveryRequests({ now, refreshToken, selection, onClose
     setBusy(true); setNotice(null);
     try {
       await write(requestPath(row.id) + '/' + action, { csrfToken: auth.csrfToken,
-        body: { revision: row.revision, reason, ...(action === 'approve' ? { confirmed_snapshot_id: row.snapshot_id } : {}) } });
-      setNotice('Décision enregistrée.');
+        body: action === 'execute' ? {revision:row.revision,confirmed_snapshot_id:row.snapshot_id} : { revision: row.revision, reason, ...(action === 'approve' ? { confirmed_snapshot_id: row.snapshot_id } : {}) } });
+      setNotice(action === 'execute' ? 'Test placé en attente. Son résultat apparaîtra ici.' : 'Décision enregistrée.');
     } catch (error) { setNotice(error.name === 'AbortError' ? 'Délai dépassé. Consultez l’historique avant de renouveler la décision.' : error.message); }
     finally { setBusy(false); setChanged((value) => value+1); }
   }
@@ -141,5 +155,22 @@ export default function RecoveryRequests({ now, refreshToken, selection, onClose
     <RequestsArea reading={readings.requests} offset={offset} now={now} onPage={setOffset} onOpen={(id) => { setSelected(id); onCloseSelection(); }} />
     {selected && <Detail key={selected} identifier={selected} now={now} refreshToken={token} admin={admin} busy={busy}
       onDecision={decision} onClose={() => setSelected(null)} />}
+  </div>;
+}
+
+const executionEventLabels = {queued:'Lancement demandé',started:'Test démarré',blocked:'Démarrage bloqué',finished:'Résultat enregistré',cancelled:'Test annulé',interrupted:'Exécution interrompue'};
+const resultReasons = {authorization_or_catalog_unusable:'L’autorisation ou le catalogue ne permet plus le démarrage. Créez une nouvelle demande.',
+  isolated_test_cleanup_incomplete:'Le nettoyage du test doit être terminé avant une nouvelle exécution.',
+  execution_interrupted_or_deadline:'Le test a été interrompu ou a dépassé sa durée autorisée.',
+  cancelled_before_start:'Test annulé avant son démarrage.',insufficient_test_space:'Espace insuffisant pour créer la copie de test.'};
+export function ExecutionReport({report}) {
+  const labels={files_verified:'Fichiers vérifiés',tables_verified:'Tables vérifiées',rows_verified:'Lignes vérifiées',courses:'Cours restaurés',users:'Comptes restaurés',quizzes:'Quiz restaurés'};
+  return <div className="recovery-result"><h4>Vérifications du test</h4>
+    <p>{report.status === 'restore_validated' ? 'Les contrôles de restauration ont réussi.' : 'La restauration n’est pas validée.'}</p>
+    <dl>{Object.entries(labels).filter(([key])=>key in report).map(([key,label])=><div key={key}><dt>{label}</dt><dd>{report[key]}</dd></div>)}</dl>
+    {report.login_check === 'passed' && <p>Page de connexion Moodle vérifiée en HTTPS.</p>}
+    {report.database_check === 'passed' && <p>Base restaurée vérifiée.</p>}
+    <p>{Object.values(report.cleanup).every(Boolean) ? 'Environnement de test supprimé.' : 'Nettoyage incomplet.'}</p>
+    <p className="ops-caption">La plateforme en service n’a pas été modifiée par ce test.</p>
   </div>;
 }

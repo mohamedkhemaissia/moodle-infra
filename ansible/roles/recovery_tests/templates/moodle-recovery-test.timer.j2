@@ -1,0 +1,11 @@
+[Unit]
+Description=Traiter les demandes de tests isoles approuvees
+
+[Timer]
+OnBootSec=15s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+Unit=moodle-recovery-test.service
+
+[Install]
+WantedBy=timers.target
