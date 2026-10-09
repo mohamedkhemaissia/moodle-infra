@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import subprocess
 import unittest
+from unittest.mock import patch
 
 import yaml
 
@@ -18,7 +19,7 @@ SPEC.loader.exec_module(MODULE)
 
 
 class PullTests(unittest.TestCase):
-    def exercise(self, outcomes):
+    def exercise(self, outcomes, image=None):
         calls, delays = [], []
 
         def run(command, **options):
@@ -30,7 +31,7 @@ class PullTests(unittest.TestCase):
 
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             try:
-                MODULE.pull_image('postgres:fixture@sha256:' + 'a' * 64, run=run, sleep=delays.append)
+                MODULE.pull_image(image or 'postgres:fixture@sha256:' + 'a' * 64, run=run, sleep=delays.append)
                 error = None
             except BaseException as exc:
                 error = exc
@@ -77,6 +78,45 @@ class PullTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertFalse(delays)
         self.assertIsInstance(error, subprocess.CalledProcessError)
+
+    def test_ecr_rate_limit_recovers_with_exact_image_and_increasing_delays(self):
+        image = 'public.ecr.aws/docker/library/php:fixture@sha256:' + 'a' * 64
+        for message in ('toomanyrequests: Rate exceeded', '429: Too Many Requests'):
+            with self.subTest(message=message):
+                calls, delays, error = self.exercise(
+                    [self.failure(message), self.failure(message), None], image)
+                self.assertIsNone(error)
+                self.assertEqual(delays, [20, 40])
+                self.assertEqual([command for command, _ in calls], [['docker', 'pull', image]] * 3)
+
+    def test_ecr_rate_limit_still_fails_after_the_third_attempt(self):
+        image = 'public.ecr.aws/docker/library/php:fixture@sha256:' + 'a' * 64
+        outcomes = [self.failure('toomanyrequests: Rate exceeded') for _ in range(3)]
+        calls, delays, error = self.exercise(outcomes, image)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(delays, [20, 40])
+        self.assertIs(error, outcomes[-1])
+
+    def test_ecr_throttling_does_not_override_access_or_manifest_failures(self):
+        image = 'public.ecr.aws/docker/library/php:fixture@sha256:' + 'a' * 64
+        for message in ('unauthorized: Rate exceeded', 'manifest unknown: 429'):
+            with self.subTest(message=message):
+                calls, delays, error = self.exercise([self.failure(message)], image)
+                self.assertEqual(len(calls), 1)
+                self.assertFalse(delays)
+                self.assertIsInstance(error, subprocess.CalledProcessError)
+
+    def test_ecr_pulls_are_spaced_without_replaying_the_functional_tests(self):
+        images = ['public.ecr.aws/docker/library/postgres:fixture',
+                  'public.ecr.aws/docker/library/httpd:fixture',
+                  'public.ecr.aws/docker/library/php:fixture']
+        with patch.object(sys, 'argv', ['pull_ci_images.py', 'recovery-tests']), \
+                patch.object(MODULE, 'images_for', return_value=images), \
+                patch.object(MODULE, 'pull_image') as pull, \
+                patch.object(MODULE.time, 'sleep') as sleep:
+            self.assertEqual(MODULE.main(), 0)
+        self.assertEqual([call.args[0] for call in pull.call_args_list], images)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [2, 2])
 
     def test_selected_images_keep_the_references_from_the_project(self):
         moodle = yaml.safe_load((ROOT / 'ansible/roles/moodle/defaults/main.yml').read_text())

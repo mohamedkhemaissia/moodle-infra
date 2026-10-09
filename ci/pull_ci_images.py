@@ -14,10 +14,15 @@ from registry_sources import image_reference
 ROOT = Path(__file__).resolve().parents[1]
 MAX_ATTEMPTS = 3
 ATTEMPT_TIMEOUT_SECONDS = 120
+ECR_RATE_BACKOFF_SECONDS = (20, 40)
+ECR_PULL_INTERVAL_SECONDS = 2
 PERMANENT = re.compile(
     r"unauthorized|incorrect username|authentication required|access denied|denied:|"
-    r"too ?many ?requests|toomanyrequests|pull rate limit|manifest unknown|not found|"
+    r"manifest unknown|not found|"
     r"invalid reference format|no matching manifest", re.IGNORECASE)
+RATE_LIMIT = re.compile(
+    r"too ?many ?requests|toomanyrequests|pull rate limit|rate exceeded|"
+    r"ThrottleException|\b429\b", re.IGNORECASE)
 TRANSIENT = re.compile(
     r"deadline exceeded|Client\.Timeout|i/o timeout|TLS handshake timeout|"
     r"connection (?:reset|refused|timed out)|unexpected EOF|temporary failure|"
@@ -66,13 +71,21 @@ def pull_image(image: str, *, run=subprocess.run, sleep=time.sleep):
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             output = '\n'.join(output_text(value) for value in (exc.stdout, exc.stderr))
             print(output[-8000:], file=sys.stderr, flush=True)
+            # ECR Public limite les pulls anonymes par seconde. Ses refus de
+            # debit sont temporaires ; le quota Docker Hub reste bloquant.
+            rate_limited = RATE_LIMIT.search(output) is not None
+            ecr_rate_limited = image.startswith('public.ecr.aws/') and rate_limited
             # Ne jamais rejouer un test, un docker run ou une erreur permanente.
             retryable = (not PERMANENT.search(output) and
-                         (isinstance(exc, subprocess.TimeoutExpired) or
-                          TRANSIENT.search(output) is not None))
+                         (ecr_rate_limited or
+                          (not rate_limited and
+                           (isinstance(exc, subprocess.TimeoutExpired) or
+                            TRANSIENT.search(output) is not None))))
             if not retryable or attempt == MAX_ATTEMPTS:
                 raise
-            sleep(attempt * 5)
+            delay = ECR_RATE_BACKOFF_SECONDS[attempt - 1] if ecr_rate_limited else attempt * 5
+            print(f'Nouvelle tentative dans {delay} secondes.', flush=True)
+            sleep(delay)
 
 
 def main():
@@ -80,7 +93,11 @@ def main():
     parser.add_argument('profile', choices=['recovery-tests', 'application-metrics'])
     args = parser.parse_args()
     try:
-        for image in images_for(args.profile):
+        images = images_for(args.profile)
+        for index, image in enumerate(images):
+            if index and (image.startswith('public.ecr.aws/') or
+                          images[index - 1].startswith('public.ecr.aws/')):
+                time.sleep(ECR_PULL_INTERVAL_SECONDS)
             pull_image(image)
     except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         print('::error::Images CI indisponibles ; les tests restent bloquants.', file=sys.stderr)
