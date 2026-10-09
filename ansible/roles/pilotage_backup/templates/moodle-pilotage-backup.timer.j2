@@ -1,0 +1,11 @@
+[Unit]
+Description=Sauvegarde quotidienne de la base du pilotage
+
+[Timer]
+OnCalendar={{ pilotage_backup_calendar }}
+Persistent=true
+AccuracySec=1min
+Unit=moodle-pilotage-backup.service
+
+[Install]
+WantedBy=timers.target

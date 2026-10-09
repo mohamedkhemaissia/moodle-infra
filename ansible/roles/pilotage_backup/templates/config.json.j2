@@ -1,0 +1,7 @@
+{{ {'source_base': pilotage_backup_database_dir,
+    'source_config': pilotage_backup_database_config_dir,
+    'output_dir': pilotage_backup_output_dir,
+    'restic': pilotage_backup_restic,
+    'moodle_project': pilotage_backup_moodle_project,
+    'timeout_seconds': pilotage_backup_timeout_seconds | int,
+    'min_free_mb': pilotage_backup_min_free_mb | int} | to_nice_json }}

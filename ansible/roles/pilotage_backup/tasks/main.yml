@@ -1,0 +1,118 @@
+---
+- name: Valider les chemins dedies a la sauvegarde du pilotage
+  ansible.builtin.assert:
+    that:
+      - pilotage_backup_base_dir is match('^/opt/[a-zA-Z0-9_-]+$')
+      - pilotage_backup_output_dir is match('^/var/lib/[a-zA-Z0-9_-]+$')
+      - pilotage_backup_database_dir is match('^/opt/[a-zA-Z0-9_-]+$')
+      - pilotage_backup_database_config_dir is match('^/etc/[a-zA-Z0-9_-]+$')
+      - pilotage_backup_base_dir != pilotage_backup_database_dir
+      - pilotage_backup_base_dir != (moodle_base_dir | default('/opt/moodle'))
+      - pilotage_backup_timeout_seconds | int >= 30
+      - pilotage_backup_timeout_seconds | int <= 1800
+      - pilotage_backup_min_free_mb | int >= 128
+      - pilotage_backup_min_free_mb | int <= 16384
+      - pilotage_backup_moodle_project is match('^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,80}$')
+
+- name: Valider le calendrier de sauvegarde
+  ansible.builtin.command:
+    argv: [/usr/bin/systemd-analyze, calendar, "{{ pilotage_backup_calendar }}"]
+  changed_when: false
+
+- name: Verifier les prealables sans lire de secret dans Ansible
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - "{{ pilotage_backup_python }}"
+    - "{{ pilotage_backup_restic }}"
+    - "{{ pilotage_backup_database_dir }}/compose.yml"
+    - "{{ pilotage_backup_database_config_dir }}/active"
+    - "{{ pilotage_backup_database_config_dir }}/auth-active"
+  register: pilotage_backup_prerequisites
+
+- name: Exiger les composants deja valides
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists | default(false)
+      - item.stat.isreg | default(false) or item.stat.islnk | default(false)
+    fail_msg: "Valider PostgreSQL, l authentification et Restic avant ce playbook."
+    quiet: true
+  loop: "{{ pilotage_backup_prerequisites.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Creer les repertoires du code et des preuves privees
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ pilotage_backup_base_dir }}", mode: '0755'}
+    - {path: "{{ pilotage_backup_base_dir }}/pilotage_backup", mode: '0755'}
+    - {path: "{{ pilotage_backup_base_dir }}/pilotage_backup/tests", mode: '0755'}
+    - {path: "{{ pilotage_backup_output_dir }}", mode: '0700'}
+    - {path: "{{ pilotage_backup_output_dir }}/staging", mode: '0700'}
+    - {path: "{{ pilotage_backup_output_dir }}/reports", mode: '0700'}
+    - {path: "{{ pilotage_backup_output_dir }}/cache", mode: '0700'}
+
+- name: Installer les commandes et tests du pilotage
+  ansible.builtin.copy:
+    src: "{{ pilotage_backup_source_dir }}/{{ item }}"
+    dest: "{{ pilotage_backup_base_dir }}/pilotage_backup/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [__init__.py, core.py, inventory.py, run.py, tests/test_backup.py]
+
+- name: Verifier les protections et les preuves avec des fixtures
+  ansible.builtin.command:
+    argv: ["{{ pilotage_backup_python }}", -B, -m, unittest, discover, -s, pilotage_backup/tests, -q]
+    chdir: "{{ pilotage_backup_base_dir }}"
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Installer la configuration sans recopier les secrets
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ pilotage_backup_base_dir }}/config.json"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Installer la commande operateur
+  ansible.builtin.template:
+    src: moodle-pilotage-backup.j2
+    dest: /usr/local/sbin/moodle-pilotage-backup
+    owner: root
+    group: root
+    mode: '0750'
+    validate: /bin/sh -n %s
+
+- name: Installer les unites de sauvegarde
+  ansible.builtin.template:
+    src: "moodle-pilotage-backup.{{ item }}.j2"
+    dest: "/etc/systemd/system/moodle-pilotage-backup.{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [service, timer]
+  notify: Recharger la sauvegarde du pilotage
+
+- name: Valider les unites systemd
+  ansible.builtin.command:
+    argv: [/usr/bin/systemd-analyze, verify, /etc/systemd/system/moodle-pilotage-backup.service, /etc/systemd/system/moodle-pilotage-backup.timer]
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Appliquer la configuration de planification
+  ansible.builtin.meta: flush_handlers
+
+- name: Activer la sauvegarde quotidienne au demarrage
+  ansible.builtin.systemd_service:
+    name: moodle-pilotage-backup.timer
+    daemon_reload: true
+    enabled: true
+    state: started

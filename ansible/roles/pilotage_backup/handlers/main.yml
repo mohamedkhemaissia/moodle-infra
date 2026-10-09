@@ -1,0 +1,6 @@
+---
+- name: Recharger la sauvegarde du pilotage
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    name: moodle-pilotage-backup.timer
+    state: restarted

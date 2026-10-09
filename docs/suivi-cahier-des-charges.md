@@ -7,7 +7,8 @@ aux encadrants est la reference et n'est pas modifie par les changements de code
 |---|---|---|
 | Deploiement reproductible Moodle et HTTPS | Roles Ansible `moodle`, `runtime`, `linux` | Deploiements et secondes executions sans changement observes sur le pilote. |
 | Sauvegarde coherente et PRA | Roles `operations`, `recovery`, Restic et rclone | Scripts presents et sauvegarde du 08/10 reussie ; conserver les preuves des restaurations completes et des RTO/RPO. |
-| Suivi des sauvegardes | Collecteur backup_status, API et interface React | Tests locaux ; recette sur le pilote a confirmer. La fraicheur ne prouve pas l'integrite du depot. |
+| Suivi des sauvegardes | Collecteur backup_status, API et interface React | Deploiement et affichage verifies par l'operateur le 08/10 ; seconde execution sans changement ; fusion main a04e5cb. La fraicheur ne prouve pas l'integrite du depot. |
+| Protection de PostgreSQL du pilotage | Collecteur pilotage_backup, role Ansible et Restic | Export coherent des quatre schemas et test de restauration isole implements ; tests avec fixtures locaux ; premiere sauvegarde et restauration depuis le depot reel a valider. |
 | Supervision centralisee | Role `monitoring`, `app/prometheus.py` | Ressources Linux et controle HTTPS disponibles. Ajouter les indicateurs de conteneurs, PHP-FPM et PostgreSQL. |
 | Tableau de bord React et API | `dashboard`, `control-plane` | Interface et API deployees ; ce lot ajoute le suivi des sauvegardes en lecture seule. Catalogue, politiques et restaurations a completer. |
 | Historique PostgreSQL separe de Moodle | `pilotage`, role `control_plane_database` | Migration activee sur le pilote ; resume des incidents, observateur et ancienne correction PHP consultables apres la bascule. |
@@ -18,8 +19,8 @@ aux encadrants est la reference et n'est pas modifie par les changements de code
 | Verification continue | `.github/workflows/ci.yml`, `ci` | Tests Python, React, syntaxe Ansible et images. Ce lot ajoute la verification du stockage sur PostgreSQL 16 reel. |
 | Validation finale et livrables | Tests de charge, scenarios documentes, rapport | Completer les charges authentifiees, deux familles de corrections repetees, deux PRA complets, UML, runbooks, rapport et presentation. |
 
-Ordre restant : deployer le suivi des sauvegardes ;
-observabilite applicative ; catalogue, politiques et reprise du pilotage ; modes et seconde famille
+Ordre restant : valider la protection PostgreSQL du pilotage ;
+observabilite applicative ; catalogue, politiques et reprise applicative ; modes et seconde famille
 de corrections ; validation mesuree ; rapport et presentation. Les interruptions
 locales de collecte sont conservees comme donnees manquantes, sans interpolation
 pour rendre artificiellement disponibles les modeles.

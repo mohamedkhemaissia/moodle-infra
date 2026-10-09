@@ -1,0 +1,12 @@
+---
+pilotage_backup_base_dir: /opt/moodle-pilotage-backup
+pilotage_backup_output_dir: /var/lib/moodle-pilotage-backup
+pilotage_backup_source_dir: "{{ playbook_dir }}/../../pilotage_backup"
+pilotage_backup_database_dir: /opt/moodle-control-plane-db
+pilotage_backup_database_config_dir: /etc/moodle-pilotage
+pilotage_backup_python: /opt/moodle-diagnostics/venv/bin/python
+pilotage_backup_moodle_project: "{{ moodle_compose_project | default('moodle-pilote') }}"
+pilotage_backup_restic: "/usr/local/sbin/{{ pilotage_backup_moodle_project }}-restic"
+pilotage_backup_timeout_seconds: 300
+pilotage_backup_min_free_mb: 512
+pilotage_backup_calendar: '*-*-* 03:15:00 UTC'
