@@ -46,7 +46,7 @@
     owner: root
     group: root
     mode: '0644'
-  loop: [__init__.py, db.py, auth.py, passwords.py, recovery.py, recovery_cli.py, tests/test_recovery_policy.py]
+  loop: [__init__.py, db.py, schemas.py, auth.py, passwords.py, recovery.py, recovery_cli.py, tests/test_recovery_policy.py]
 
 - name: Verifier les motifs et les validations du parcours
   ansible.builtin.command:

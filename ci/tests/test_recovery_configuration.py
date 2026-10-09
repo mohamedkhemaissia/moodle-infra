@@ -1,5 +1,10 @@
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
 import jinja2
 import yaml
@@ -9,6 +14,25 @@ ROOT=Path(__file__).resolve().parents[2]
 
 
 class RecoveryConfigurationTests(unittest.TestCase):
+    def test_role_installed_files_run_without_imports_from_the_repository(self):
+        tasks=yaml.safe_load((ROOT/'ansible/roles/recovery_requests/tasks/main.yml').read_text())
+        copy_task=next(task for task in tasks if task.get('ansible.builtin.copy',{}).get('dest')=='{{ recovery_requests_base_dir }}/pilotage/{{ item }}')
+        with tempfile.TemporaryDirectory(prefix='moodle-recovery-installed-') as temporary:
+            target=Path(temporary)
+            for relative in copy_task['loop']:
+                destination=target/'pilotage'/relative
+                destination.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copyfile(ROOT/'pilotage'/relative,destination)
+            environment=dict(os.environ,PYTHONPATH='',PILOTAGE_DATABASE_CONFIG='')
+            commands=(
+                [sys.executable,'-B','-m','unittest','discover','-s','pilotage/tests','-p','test_recovery_policy.py','-q'],
+                [sys.executable,'-B','-m','pilotage.recovery_cli','--help'],
+            )
+            for command in commands:
+                with self.subTest(command=command):
+                    result=subprocess.run(command,cwd=target,env=environment,text=True,capture_output=True,timeout=20)
+                    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
     def test_deployment_orders_backup_compatibility_before_new_journal_and_has_no_restore_command(self):
         value=yaml.safe_load((ROOT/'ansible/playbooks/recovery-requests.yml').read_text())[0]
         self.assertEqual(value['roles'],['pilotage_backup','recovery_requests','backup_status','backup_catalog','control_plane','dashboard'])
