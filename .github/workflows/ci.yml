@@ -15,6 +15,7 @@ on:
       - 'scripts/**'
       - 'pilotage/**'
       - 'backup_status/**'
+      - 'pilotage_backup/**'
       - 'tests/postgresql/**'
   pull_request:
     paths:
@@ -30,6 +31,7 @@ on:
       - 'scripts/**'
       - 'pilotage/**'
       - 'backup_status/**'
+      - 'pilotage_backup/**'
       - 'tests/postgresql/**'
   workflow_dispatch:
 
@@ -116,6 +118,12 @@ jobs:
           --timeout 120 --retries 5 -r control-plane/requirements-lock.txt
       - name: Verifier la migration et les transitions avec le compte sans superuser
         run: python -B ci/run_postgresql_tests.py
+      - name: Installer le client PostgreSQL 16 pour les tests de sauvegarde
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --yes --no-install-recommends postgresql-client-16
+      - name: Verifier pg_dump et pg_restore sur une base de test isolee
+        run: python -B ci/run_backup_postgresql_tests.py
 
   dashboard:
     name: Tests et build React

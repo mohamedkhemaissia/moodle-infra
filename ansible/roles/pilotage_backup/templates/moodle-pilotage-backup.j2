@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+umask 077
+cd {{ pilotage_backup_base_dir | quote }}
+exec {{ pilotage_backup_python | quote }} -B -m pilotage_backup.run "$@" --config {{ (pilotage_backup_base_dir ~ '/config.json') | quote }}

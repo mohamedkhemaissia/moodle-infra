@@ -1,0 +1,7 @@
+---
+- name: Proteger la base PostgreSQL du pilotage avec Restic
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - pilotage_backup

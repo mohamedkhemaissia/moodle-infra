@@ -1,0 +1,25 @@
+[Unit]
+Description=Sauvegarde chiffree de PostgreSQL du pilotage Moodle
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/local/sbin/moodle-pilotage-backup backup
+TimeoutStartSec=15min
+TimeoutStopSec=30s
+KillMode=control-group
+Nice=10
+CPUQuota=50%
+MemoryMax=512M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+Environment=RESTIC_CACHE_DIR={{ pilotage_backup_output_dir }}/cache
+ReadWritePaths={{ pilotage_backup_output_dir }} /run/lock
+StandardOutput=journal
+StandardError=journal
