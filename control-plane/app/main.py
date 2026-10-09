@@ -10,7 +10,7 @@ from typing import Literal
 
 from .models import MetricsSummary
 from .auth import Settings as AuthSettings, install as install_auth
-from .backups import read_summary as read_backup_summary
+from .backups import read_summary as read_backup_summary, read_pilotage_summary
 from pilotage.auth import AuthStore, AuthStorageError
 from .diagnostics_store import DiagnosticStore, DiagnosticStorageError
 from .remediation_store import RemediationStore
@@ -40,9 +40,12 @@ def create_app(
     auth_secure_cookie: bool | None = None,
     auth_worker_hash_file: str | None = None,
     backup_status_file: str | None = None,
+    pilotage_backup_status_file: str | None = None,
 ) -> FastAPI:
     authentication = AuthSettings.load(auth_enabled, auth_origins, auth_secure_cookie, auth_worker_hash_file)
     backup_file = backup_status_file if backup_status_file is not None else os.getenv("BACKUP_STATUS_FILE", "")
+    pilotage_backup_file = (pilotage_backup_status_file if pilotage_backup_status_file is not None
+                           else os.getenv("PILOTAGE_BACKUP_STATUS_FILE", ""))
     url = prometheus_url or os.getenv("PROMETHEUS_URL", "http://127.0.0.1:9090")
     max_age = float(os.getenv("MAX_SCRAPE_AGE_SECONDS", "60"))
     model_directory = forecasts_dir if forecasts_dir is not None else os.getenv("FORECASTS_DIR", "")
@@ -112,6 +115,13 @@ def create_app(
         if not backup_file:
             raise HTTPException(503, detail="Le suivi des sauvegardes n'est pas configure.")
         return await read_backup_summary(backup_file)
+
+    @application.get("/api/v1/backups/pilotage/summary", tags=["Sauvegardes"])
+    async def pilotage_backup_summary(response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        if not pilotage_backup_file:
+            raise HTTPException(503, detail="Le suivi des sauvegardes du pilotage n'est pas configure.")
+        return await read_pilotage_summary(pilotage_backup_file)
 
     @application.get("/api/v1/storage/health", tags=["Sante"])
     async def storage_health(request: Request, response: Response):
