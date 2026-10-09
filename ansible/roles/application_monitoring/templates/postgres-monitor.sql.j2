@@ -1,0 +1,36 @@
+DO $monitor$
+DECLARE existing record;
+BEGIN
+  SELECT * INTO existing FROM pg_roles WHERE rolname = '{{ application_monitoring_database_user }}';
+  IF NOT FOUND THEN
+    CREATE ROLE {{ application_monitoring_database_user }} LOGIN
+      NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS
+      CONNECTION LIMIT 5
+      PASSWORD '{{ application_monitoring_database_password.content | b64decode | trim }}';
+    RAISE NOTICE 'MONITORING_CHANGED';
+  ELSE
+    IF {{ 'true' if not application_monitoring_password_file.stat.exists else 'false' }} THEN
+      RAISE EXCEPTION 'Compte preexistant sans son secret local : intervention administrative requise';
+    END IF;
+    IF existing.rolsuper OR existing.rolcreatedb OR existing.rolcreaterole OR
+       existing.rolreplication OR existing.rolbypassrls OR NOT existing.rolcanlogin OR
+       existing.rolconnlimit <> 5 THEN
+      RAISE EXCEPTION 'Compte preexistant incompatible : aucun privilege modifie';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.roleid
+               WHERE m.member = existing.oid AND r.rolname <> 'pg_monitor') THEN
+      RAISE EXCEPTION 'Autres appartenances de role refusees';
+    END IF;
+  END IF;
+  IF NOT pg_has_role('{{ application_monitoring_database_user }}', 'pg_monitor', 'MEMBER') THEN
+    GRANT pg_monitor TO {{ application_monitoring_database_user }};
+    RAISE NOTICE 'MONITORING_CHANGED';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{{ application_monitoring_database_user }}'
+                 AND rolconfig @> ARRAY['default_transaction_read_only=on','statement_timeout=3s']) THEN
+    ALTER ROLE {{ application_monitoring_database_user }} SET default_transaction_read_only = on;
+    ALTER ROLE {{ application_monitoring_database_user }} SET statement_timeout = '3s';
+    RAISE NOTICE 'MONITORING_CHANGED';
+  END IF;
+END;
+$monitor$;

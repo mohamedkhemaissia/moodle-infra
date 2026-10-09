@@ -1,4 +1,5 @@
 import { validateBackupDocument, validatePilotageBackupDocument } from './backups.js';
+import { validateApplications } from './applicationMetrics.js';
 export const FRESH_MS = 60_000;
 export const RESOURCES = [
   ['cpu_usage_percent', 'CPU utilisé'],
@@ -13,6 +14,7 @@ const percent = (x) => finite(x) && x >= 0 && x <= 100;
 const fail = () => { throw new Error('La réponse reçue est inexploitable.'); };
 
 export function validateDocument(kind, value) {
+  if (kind === 'applications') return validateApplications(value);
   if (kind === 'backup') return validateBackupDocument(value);
   if (kind === 'pilotage_backup') return validatePilotageBackupDocument(value);
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail();

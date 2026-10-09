@@ -1,0 +1,281 @@
+---
+- name: Valider les identites et les ports de supervision applicative
+  tags: [php-exporter-fix]
+  ansible.builtin.assert:
+    that:
+      - application_monitoring_database is match('^[a-z_][a-z_0-9]{0,62}$')
+      - application_monitoring_database_user is match('^moodle_metrics[a-z_0-9]{0,40}$')
+      - application_monitoring_moodle_project is match('^[a-z][a-z0-9-]{0,40}$')
+      - application_monitoring_php_status_path is match('^/[a-zA-Z0-9_-]{1,40}$')
+      - application_monitoring_php_port | int > 1024
+      - application_monitoring_php_port | int < 65536
+      - application_monitoring_postgres_port | int > 1024
+      - application_monitoring_postgres_port | int < 65536
+      - application_monitoring_php_port | int != application_monitoring_postgres_port | int
+      - application_monitoring_php_status_port | int > 1024
+      - application_monitoring_php_status_port | int < 65536
+      - application_monitoring_php_status_port | int != 9000
+      - application_monitoring_php_scrape_timeout_seconds | int >= 1
+      - application_monitoring_php_scrape_timeout_seconds | int <= 5
+
+- name: Verifier qu une restauration Moodle n est pas active
+  tags: [php-exporter-fix]
+  ansible.builtin.stat:
+    path: "{{ application_monitoring_moodle_base_dir }}/backups/restoration-active"
+  register: application_monitoring_restore
+
+- name: Exiger un environnement Moodle hors restauration
+  tags: [php-exporter-fix]
+  ansible.builtin.assert:
+    that: not application_monitoring_restore.stat.exists
+
+- name: Verifier les services Moodle avant la configuration
+  tags: [php-exporter-fix]
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{json .}}' }}"
+      - "{{ application_monitoring_moodle_project }}-{{ item }}-1"
+  loop: [php, postgres]
+  register: application_monitoring_services
+  changed_when: false
+
+- name: Exiger les bons services Moodle en fonctionnement
+  tags: [php-exporter-fix]
+  ansible.builtin.assert:
+    that:
+      - (item.stdout | from_json).State.Running
+      - not (item.stdout | from_json).State.Paused
+      - not (item.stdout | from_json).State.Restarting
+      - (item.stdout | from_json).Config.Labels['com.docker.compose.project'] == application_monitoring_moodle_project
+      - (item.stdout | from_json).Config.Labels['com.docker.compose.service'] == item.item
+  loop: "{{ application_monitoring_services.results }}"
+  loop_control: {label: "{{ item.item }}"}
+
+- name: Retenir l image PHP deja deployee
+  ansible.builtin.set_fact:
+    application_monitoring_running_php_image: "{{ (application_monitoring_services.results[0].stdout | from_json).Config.Image }}"
+
+- name: Rechercher les images des exporteurs avant tout changement PHP
+  tags: [php-exporter-fix]
+  ansible.builtin.command:
+    argv: [docker, image, inspect, "{{ item }}"]
+  loop: ["{{ application_monitoring_php_image }}", "{{ application_monitoring_postgres_image }}"]
+  register: application_monitoring_images
+  changed_when: false
+  failed_when: application_monitoring_images.rc not in [0, 1]
+
+- name: Telecharger uniquement les images absentes
+  tags: [php-exporter-fix]
+  ansible.builtin.command:
+    argv: [docker, pull, "{{ item.item }}"]
+  loop: "{{ application_monitoring_images.results }}"
+  loop_control: {label: "{{ item.item }}"}
+  when: item.rc != 0
+  changed_when: true
+
+- name: Verifier le delai FastCGI de l image PHP avant toute intervention
+  tags: [php-exporter-fix]
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - --network
+      - none
+      - --read-only
+      - --user
+      - '65534:65534'
+      - --cap-drop
+      - ALL
+      - --entrypoint
+      - /php-fpm_exporter
+      - "{{ application_monitoring_php_image }}"
+      - server
+      - --help
+  register: application_monitoring_php_capabilities
+  changed_when: false
+  failed_when: >-
+    application_monitoring_php_capabilities.rc != 0 or
+    '--phpfpm.scrape-timeout' not in
+    (application_monitoring_php_capabilities.stdout ~ application_monitoring_php_capabilities.stderr)
+
+- name: Creer les repertoires de supervision applicative
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ application_monitoring_base_dir }}", mode: '0755'}
+    - {path: "{{ application_monitoring_base_dir }}/secrets", mode: '0700'}
+
+- name: Rechercher le secret du compte de supervision PostgreSQL
+  ansible.builtin.stat:
+    path: "{{ application_monitoring_base_dir }}/secrets/postgres_exporter_password"
+  register: application_monitoring_password_file
+
+- name: Generer le secret uniquement a la premiere installation
+  ansible.builtin.command:
+    argv: [python3, -c, "import secrets; print(secrets.token_hex(32))"]
+  register: application_monitoring_new_password
+  when: not application_monitoring_password_file.stat.exists
+  changed_when: false
+  no_log: true
+
+- name: Conserver le secret local du compte de supervision
+  ansible.builtin.copy:
+    content: "{{ application_monitoring_new_password.stdout | trim }}"
+    dest: "{{ application_monitoring_base_dir }}/secrets/postgres_exporter_password"
+    owner: root
+    group: '65534'
+    mode: '0440'
+  when: not application_monitoring_password_file.stat.exists
+  no_log: true
+
+- name: Maintenir les permissions du secret de supervision
+  ansible.builtin.file:
+    path: "{{ application_monitoring_base_dir }}/secrets/postgres_exporter_password"
+    owner: root
+    group: '65534'
+    mode: '0440'
+
+- name: Lire le secret pour creer le compte de supervision
+  ansible.builtin.slurp:
+    src: "{{ application_monitoring_base_dir }}/secrets/postgres_exporter_password"
+  register: application_monitoring_database_password
+  no_log: true
+
+- name: Verifier le format du secret local
+  ansible.builtin.assert:
+    that: (application_monitoring_database_password.content | b64decode | trim) is match('^[a-f0-9]{64}$')
+  no_log: true
+
+- name: Creer ou verifier le compte PostgreSQL limite a la supervision
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - -p
+      - "{{ application_monitoring_moodle_project }}"
+      - -f
+      - "{{ application_monitoring_moodle_base_dir }}/compose.yml"
+      - exec
+      - -T
+      - postgres
+      - psql
+      - -U
+      - postgres
+      - -d
+      - "{{ application_monitoring_database }}"
+      - -v
+      - ON_ERROR_STOP=1
+    stdin: "{{ lookup('ansible.builtin.template', 'postgres-monitor.sql.j2') }}"
+  register: application_monitoring_role
+  changed_when: "'MONITORING_CHANGED' in application_monitoring_role.stderr"
+  no_log: true
+
+- name: Activer le statut PHP sur un port FastCGI interne distinct
+  ansible.builtin.blockinfile:
+    path: "{{ application_monitoring_moodle_base_dir }}/config/php/zz-moodle.conf"
+    marker: '; {mark} PFE_APPLICATION_MONITORING'
+    block: |
+      [www]
+      pm.status_path = {{ application_monitoring_php_status_path }}
+      pm.status_listen = {{ application_monitoring_php_status_port }}
+    backup: true
+    validate: >-
+      /usr/bin/docker run --rm --network none
+      --volume %s:/usr/local/etc/php-fpm.d/zz-moodle.conf:ro
+      --entrypoint php-fpm {{ application_monitoring_running_php_image }} -t
+  register: application_monitoring_php_status
+  when: application_monitoring_enable_php_status | bool
+
+- name: Memoriser un changement PHP restant a appliquer
+  ansible.builtin.copy:
+    content: "pending\n"
+    dest: "{{ application_monitoring_base_dir }}/php-restart-pending"
+    owner: root
+    group: root
+    mode: '0600'
+  when: application_monitoring_php_status.changed | default(false)
+
+- name: Lire les changements PHP restant a appliquer
+  ansible.builtin.stat:
+    path: "{{ application_monitoring_base_dir }}/php-restart-pending"
+  register: application_monitoring_php_pending
+
+- name: Redemarrer PHP hors sauvegarde et hors tache Moodle
+  ansible.builtin.command:
+    argv:
+      - flock
+      - --nonblock
+      - "/run/lock/{{ application_monitoring_moodle_project }}-backup.lock"
+      - flock
+      - --wait
+      - '30'
+      - "/run/lock/{{ application_monitoring_moodle_project }}-cron.lock"
+      - docker
+      - compose
+      - -p
+      - "{{ application_monitoring_moodle_project }}"
+      - -f
+      - "{{ application_monitoring_moodle_base_dir }}/compose.yml"
+      - restart
+      - --no-deps
+      - php
+  when: application_monitoring_php_pending.stat.exists
+  changed_when: true
+
+- name: Attendre le retour de PHP en bonne sante
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{.State.Health.Status}}' }}", "{{ application_monitoring_moodle_project }}-php-1"]
+  register: application_monitoring_php_health
+  changed_when: false
+  until: application_monitoring_php_health.stdout | trim == 'healthy'
+  retries: 24
+  delay: 5
+
+- name: Confirmer l application du changement PHP
+  ansible.builtin.file:
+    path: "{{ application_monitoring_base_dir }}/php-restart-pending"
+    state: absent
+  when: application_monitoring_php_pending.stat.exists
+
+- name: Installer la pile des exporteurs applicatifs
+  tags: [php-exporter-fix]
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ application_monitoring_base_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: '0644'
+    validate: '/usr/bin/docker compose -f %s config --quiet'
+
+- name: Demarrer les exporteurs applicatifs
+  community.docker.docker_compose_v2:
+    project_src: "{{ application_monitoring_base_dir }}"
+    project_name: "{{ application_monitoring_project_name }}"
+    state: present
+    pull: missing
+    build: never
+    recreate: auto
+    wait: true
+    wait_timeout: 120
+
+- name: Remplacer uniquement l exporteur PHP lors du correctif cible
+  tags: [never, php-exporter-fix]
+  community.docker.docker_compose_v2:
+    project_src: "{{ application_monitoring_base_dir }}"
+    project_name: "{{ application_monitoring_project_name }}"
+    state: present
+    services: [php-exporter]
+    dependencies: false
+    pull: never
+    build: never
+    recreate: auto
+    wait: true
+    wait_timeout: 120

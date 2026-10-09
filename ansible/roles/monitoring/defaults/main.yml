@@ -11,6 +11,9 @@ monitoring_node_exporter_port: 9100
 monitoring_scrape_interval: 15s
 monitoring_retention_time: 7d
 monitoring_retention_size: 1GB
+monitoring_application_metrics_enabled: false
+monitoring_application_php_port: "{{ application_monitoring_php_port | default(9253) }}"
+monitoring_application_postgres_port: "{{ application_monitoring_postgres_port | default(9187) }}"
 
 monitoring_blackbox_image: prom/blackbox-exporter:v0.28.0
 monitoring_blackbox_port: 9115

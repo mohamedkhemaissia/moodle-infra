@@ -1,0 +1,6 @@
+---
+monitoring_application_metrics_enabled: true
+control_plane_application_metrics_enabled: true
+moodle_fpm_status_enabled: true
+moodle_fpm_status_port: 9001
+moodle_fpm_status_path: /fpm-status

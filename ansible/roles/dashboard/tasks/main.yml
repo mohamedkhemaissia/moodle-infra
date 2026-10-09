@@ -201,3 +201,22 @@
   retries: 6
   delay: 5
   when: control_plane_pilotage_backup_status_enabled | default(false) | bool
+
+- name: Verifier les indicateurs applicatifs via le proxy du tableau de bord
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ dashboard_port }}/api/v1/metrics/applications"
+    headers: "{{ dashboard_read_headers }}"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+  no_log: "{{ dashboard_auth_activation.stat.exists }}"
+  register: dashboard_applications_response
+  until: >-
+    dashboard_applications_response.status | default(0) == 200 and
+    dashboard_applications_response.json is defined and
+    dashboard_applications_response.json.mode | default('') == 'read_only' and
+    dashboard_applications_response.json.status | default('') == 'available'
+  retries: 6
+  delay: 5
+  when: control_plane_application_metrics_enabled | default(false) | bool

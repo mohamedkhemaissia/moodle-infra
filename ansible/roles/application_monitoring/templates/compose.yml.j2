@@ -1,0 +1,56 @@
+services:
+  php-exporter:
+    image: {{ application_monitoring_php_image | to_json }}
+    entrypoint: ["/php-fpm_exporter"]
+    command:
+      - server
+      - --web.listen-address=:9253
+      - {{ ('--phpfpm.scrape-uri=tcp://php:' ~ (application_monitoring_php_status_port | string) ~ application_monitoring_php_status_path) | to_json }}
+      - {{ ('--phpfpm.scrape-timeout=' ~ (application_monitoring_php_scrape_timeout_seconds | int | string) ~ 's') | to_json }}
+      - --log.level=warn
+    user: "65534:65534"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports: ["127.0.0.1:{{ application_monitoring_php_port }}:9253"]
+    networks: [moodle_private, observability]
+    mem_limit: 96m
+    cpus: "0.20"
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}
+
+  postgres-exporter:
+    image: {{ application_monitoring_postgres_image | to_json }}
+    command: ["--web.listen-address=:9187"]
+    environment:
+      DATA_SOURCE_URI: {{ ('postgres:5432/' ~ application_monitoring_database ~ '?sslmode=disable&connect_timeout=3') | to_json }}
+      DATA_SOURCE_USER: {{ application_monitoring_database_user | to_json }}
+      DATA_SOURCE_PASS_FILE: /run/secrets/postgres_exporter_password
+    secrets: [postgres_exporter_password]
+    user: "65534:65534"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports: ["127.0.0.1:{{ application_monitoring_postgres_port }}:9187"]
+    networks: [moodle_private, observability]
+    mem_limit: 96m
+    cpus: "0.20"
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}
+
+networks:
+  observability:
+    name: {{ (application_monitoring_project_name ~ '_observability') | to_json }}
+    driver: bridge
+    internal: false
+  moodle_private:
+    external: true
+    name: {{ (application_monitoring_moodle_project ~ '_private') | to_json }}
+
+secrets:
+  postgres_exporter_password:
+    file: {{ (application_monitoring_base_dir ~ '/secrets/postgres_exporter_password') | to_json }}

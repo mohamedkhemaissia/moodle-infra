@@ -14,3 +14,11 @@ catch_workers_output = yes
 decorate_workers_output = no
 security.limit_extensions = .php
 request_terminate_timeout = 300s
+{% if moodle_fpm_status_enabled | bool %}
+
+; BEGIN PFE_APPLICATION_MONITORING
+[www]
+pm.status_path = {{ moodle_fpm_status_path }}
+pm.status_listen = {{ moodle_fpm_status_port }}
+; END PFE_APPLICATION_MONITORING
+{% endif %}
