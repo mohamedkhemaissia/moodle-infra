@@ -1,0 +1,3 @@
+---
+control_plane_backup_catalog_enabled: true
+backup_catalog_pilotage_enabled: true
