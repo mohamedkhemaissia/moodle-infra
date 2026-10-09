@@ -1,6 +1,7 @@
 import { useReadings } from './useReadings.js';
 import { backupView, pilotageRestoreView } from './backups.js';
 import './backups.css';
+import BackupCatalog from './BackupCatalog.jsx';
 
 const requests = [
   { key: 'backup', kind: 'backup', path: '/api/v1/backups/summary' },
@@ -86,6 +87,7 @@ export default function Backups({ now, refreshToken }) {
     <div className="ops-body">
       <BackupArea reading={readings.backup} now={now} />
       <BackupArea reading={readings.pilotage} now={now} pilotage />
+      <BackupCatalog now={now} refreshToken={refreshToken} />
     </div>
   </section>;
 }

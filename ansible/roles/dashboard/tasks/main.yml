@@ -220,3 +220,22 @@
   retries: 6
   delay: 5
   when: control_plane_application_metrics_enabled | default(false) | bool
+
+- name: Verifier le catalogue via le meme proxy que le navigateur
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ dashboard_port }}/api/v1/backups/catalog?scope=moodle&limit=1"
+    headers: "{{ dashboard_read_headers }}"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+  no_log: "{{ dashboard_auth_activation.stat.exists }}"
+  register: dashboard_catalog_response
+  until: >-
+    dashboard_catalog_response.status | default(0) == 200 and
+    dashboard_catalog_response.json is defined and
+    dashboard_catalog_response.json.mode | default('') == 'read_only' and
+    dashboard_catalog_response.json.scope | default('') == 'moodle'
+  retries: 6
+  delay: 5
+  when: control_plane_backup_catalog_enabled | default(false) | bool
