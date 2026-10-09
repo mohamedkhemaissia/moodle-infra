@@ -1,4 +1,4 @@
-import { validateBackupDocument } from './backups.js';
+import { validateBackupDocument, validatePilotageBackupDocument } from './backups.js';
 export const FRESH_MS = 60_000;
 export const RESOURCES = [
   ['cpu_usage_percent', 'CPU utilisé'],
@@ -14,6 +14,7 @@ const fail = () => { throw new Error('La réponse reçue est inexploitable.'); }
 
 export function validateDocument(kind, value) {
   if (kind === 'backup') return validateBackupDocument(value);
+  if (kind === 'pilotage_backup') return validatePilotageBackupDocument(value);
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail();
   if (kind === 'forecast' || kind === 'anomaly') {
     if (!['available', 'unavailable'].includes(value.status) || value.experimental !== true ||

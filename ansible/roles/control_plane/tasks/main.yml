@@ -5,6 +5,7 @@
       - not (control_plane_decisions_enabled | bool) or (control_plane_incidents_enabled | bool)
       - not (control_plane_diagnostics_enabled | bool) or (control_plane_decisions_enabled | bool)
       - not (control_plane_remediation_enabled | bool) or (control_plane_decisions_enabled | bool)
+      - not (control_plane_pilotage_backup_status_enabled | bool) or (control_plane_backup_status_enabled | bool)
     fail_msg: "Activer les incidents avant le moteur de decision."
 
 - name: Creer les repertoires de l API
@@ -28,7 +29,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'app/backup_status.py']) }}"
+  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'app/backup_status.py', 'app/pilotage_backup_status.py']) }}"
 
 - name: Copier le lecteur partage du suivi des sauvegardes
   ansible.builtin.copy:
@@ -43,6 +44,28 @@
     path: "{{ control_plane_backup_status_dir }}/status.json"
   register: control_plane_backup_status
   when: control_plane_backup_status_enabled | bool
+
+- name: Copier le lecteur public partage du suivi PostgreSQL
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../backup_status/pilotage.py"
+    dest: "{{ control_plane_base_dir }}/build/app/pilotage_backup_status.py"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Verifier le statut public PostgreSQL
+  ansible.builtin.stat:
+    path: "{{ control_plane_backup_status_dir }}/pilotage.json"
+  register: control_plane_pilotage_backup_status
+  when: control_plane_pilotage_backup_status_enabled | bool
+
+- name: Exiger la collecte PostgreSQL avant le demarrage de l API
+  ansible.builtin.assert:
+    that:
+      - control_plane_pilotage_backup_status.stat.isreg | default(false)
+      - not (control_plane_pilotage_backup_status.stat.islnk | default(false))
+    fail_msg: "Deployer backup_status avec le suivi PostgreSQL avant l API."
+  when: control_plane_pilotage_backup_status_enabled | bool
 
 - name: Exiger la collecte des sauvegardes avant le demarrage de l API
   ansible.builtin.assert:
@@ -466,3 +489,21 @@
   retries: 6
   delay: 5
   when: control_plane_backup_status_enabled | bool
+
+- name: Verifier la lecture protegee du suivi des sauvegardes PostgreSQL
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/backups/pilotage/summary"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+    headers: "{{ control_plane_read_headers }}"
+  no_log: "{{ pilotage_auth_activation.stat.exists }}"
+  register: control_plane_pilotage_backup_response
+  until: >-
+    control_plane_pilotage_backup_response.status | default(0) == 200 and
+    control_plane_pilotage_backup_response.json is defined and
+    control_plane_pilotage_backup_response.json.scope | default('') == 'pilotage_postgresql'
+  retries: 6
+  delay: 5
+  when: control_plane_pilotage_backup_status_enabled | bool

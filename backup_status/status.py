@@ -116,8 +116,8 @@ def validate_document(value):
     return value
 
 
-def summary(path, now):
-    result = {
+def empty_summary(now):
+    return {
         "status": "unavailable", "mode": "read_only", "evaluated_at": encoded_time(now),
         "backup_state": "unknown", "latest_success": None, "policy": None,
         "schedule": {"state": "unknown", "enabled": None},
@@ -127,6 +127,10 @@ def summary(path, now):
         "reason": "status_file_missing",
         "verification": {"repository_integrity": "not_checked", "restoration": "not_checked"},
     }
+
+
+def summary(path, now):
+    result = empty_summary(now)
     try:
         value = validate_document(json.loads(bounded_text(Path(path)),
             object_pairs_hook=_pairs, parse_constant=_constant))

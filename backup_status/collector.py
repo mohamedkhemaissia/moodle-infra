@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 
 from .status import age_limit, encoded_time, marker, validate_document
+from . import pilotage
 
 PROPERTIES = ("Id", "LoadState", "ActiveState", "UnitFileState", "Result",
               "ExecMainStatus", "ExecMainStartTimestamp")
@@ -72,8 +73,8 @@ def collect(marker_path, project, max_age_hours, now, run=subprocess.run):
     return validate_document(value)
 
 
-def publish(path, value):
-    validate_document(value)
+def publish(path, value, validator=validate_document):
+    validator(value)
     path = Path(path)
     if path.is_symlink():
         raise ValueError("La destination est un lien.")
@@ -97,10 +98,17 @@ def main():
     parser.add_argument("--output", required=True)
     parser.add_argument("--project", required=True)
     parser.add_argument("--max-age-hours", type=float, default=24)
+    parser.add_argument("--pilotage-root")
+    parser.add_argument("--pilotage-max-age-hours", type=float, default=24)
     args = parser.parse_args()
     try:
-        value = collect(args.marker, args.project, args.max_age_hours, datetime.now(timezone.utc))
+        now = datetime.now(timezone.utc)
+        value = collect(args.marker, args.project, args.max_age_hours, now)
         publish(args.output, value)
+        if args.pilotage_root:
+            schedule, job = unit_states("moodle-pilotage")
+            pg = pilotage.collect(args.pilotage_root, args.pilotage_max_age_hours, now, schedule, job)
+            publish(Path(args.output).with_name("pilotage.json"), pg, pilotage.validate_document)
     except (OSError, ValueError):
         parser.exit(1, "Publication du suivi impossible.\n")
     print(json.dumps({"status": "published", "marker_status": value["marker"]["status"]}))
