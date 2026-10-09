@@ -101,7 +101,7 @@
   retries: 12
   delay: 5
 
-- name: Verifier la collecte des quatre cibles
+- name: Verifier la collecte des cibles attendues
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ monitoring_prometheus_port }}/api/v1/targets"
     return_content: true
@@ -111,9 +111,10 @@
   until: >-
     monitoring_targets.json is defined and
     monitoring_targets.json.status == 'success' and
-    (monitoring_targets.json.data.activeTargets | length) == 4 and
-    (monitoring_targets.json.data.activeTargets
-    | selectattr('health', 'equalto', 'up') | list | length) == 4
+    ((['prometheus', 'linux', 'blackbox_exporter', 'moodle_https']
+    + (['moodle_phpfpm', 'moodle_postgres'] if monitoring_application_metrics_enabled | bool else []))
+    | difference(monitoring_targets.json.data.activeTargets
+    | selectattr('health', 'equalto', 'up') | map(attribute='labels.job') | list) | length) == 0
   retries: 12
   delay: 5
 

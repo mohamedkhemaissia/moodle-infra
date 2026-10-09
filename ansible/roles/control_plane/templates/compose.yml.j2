@@ -24,6 +24,9 @@ services:
       PILOTAGE_DATABASE_CONFIG: {{ (pilotage_database_config_dir ~ '/database.json') | to_json }}
 {% endif %}
       PROMETHEUS_URL: {{ control_plane_prometheus_url | to_json }}
+      APPLICATION_METRICS_ENABLED: {{ (control_plane_application_metrics_enabled | bool) | ternary('true', 'false') | to_json }}
+      APPLICATION_PHP_POOL: {{ control_plane_application_php_pool | to_json }}
+      APPLICATION_PG_DATABASE: {{ control_plane_application_pg_database | to_json }}
       MAX_SCRAPE_AGE_SECONDS: {{ control_plane_max_scrape_age_seconds | string | to_json }}
 {% if control_plane_backup_status_enabled | bool %}
       BACKUP_STATUS_FILE: /var/lib/moodle-backup-status/status.json

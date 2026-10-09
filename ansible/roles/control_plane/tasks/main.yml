@@ -507,3 +507,22 @@
   retries: 6
   delay: 5
   when: control_plane_pilotage_backup_status_enabled | bool
+
+- name: Verifier les indicateurs PHP-FPM et PostgreSQL dans l API
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/metrics/applications"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+    headers: "{{ control_plane_read_headers }}"
+  no_log: "{{ pilotage_auth_activation.stat.exists }}"
+  register: control_plane_applications_response
+  until: >-
+    control_plane_applications_response.status | default(0) == 200 and
+    control_plane_applications_response.json is defined and
+    control_plane_applications_response.json.status | default('') == 'available' and
+    control_plane_applications_response.json.mode | default('') == 'read_only'
+  retries: 24
+  delay: 5
+  when: control_plane_application_metrics_enabled | bool

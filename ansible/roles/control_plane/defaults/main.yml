@@ -6,6 +6,9 @@ control_plane_source_dir: "{{ playbook_dir }}/../../control-plane"
 control_plane_port: 8000
 control_plane_prometheus_url: http://127.0.0.1:9090
 control_plane_max_scrape_age_seconds: 60
+control_plane_application_metrics_enabled: false
+control_plane_application_php_pool: www
+control_plane_application_pg_database: "{{ application_monitoring_database | default('moodle') }}"
 control_plane_memory_limit: 256m
 control_plane_cpu_limit: "0.50"
 control_plane_backup_status_enabled: false
@@ -66,6 +69,8 @@ control_plane_source_files:
   - app/remediation_store.py
   - app/models.py
   - app/prometheus.py
+  - app/application_metrics.py
+  - tests/test_application_metrics.py
   - tests/test_api.py
   - tests/test_auth_api.py
   - tests/test_backups_api.py

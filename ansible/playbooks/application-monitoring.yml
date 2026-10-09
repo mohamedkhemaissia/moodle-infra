@@ -1,0 +1,10 @@
+---
+- name: Collecter et afficher les indicateurs PHP-FPM et PostgreSQL Moodle
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - application_monitoring
+    - monitoring
+    - control_plane
+    - dashboard

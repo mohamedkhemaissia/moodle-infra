@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Request, Response, Query, Path as Ap
 from typing import Literal
 
 from .models import MetricsSummary
+from .application_metrics import summary as application_metrics_summary, queries as application_queries
 from .auth import Settings as AuthSettings, install as install_auth
 from .backups import read_summary as read_backup_summary, read_pilotage_summary
 from pilotage.auth import AuthStore, AuthStorageError
@@ -41,6 +42,7 @@ def create_app(
     auth_worker_hash_file: str | None = None,
     backup_status_file: str | None = None,
     pilotage_backup_status_file: str | None = None,
+    application_metrics_enabled: bool | None = None,
 ) -> FastAPI:
     authentication = AuthSettings.load(auth_enabled, auth_origins, auth_secure_cookie, auth_worker_hash_file)
     backup_file = backup_status_file if backup_status_file is not None else os.getenv("BACKUP_STATUS_FILE", "")
@@ -48,6 +50,16 @@ def create_app(
                            else os.getenv("PILOTAGE_BACKUP_STATUS_FILE", ""))
     url = prometheus_url or os.getenv("PROMETHEUS_URL", "http://127.0.0.1:9090")
     max_age = float(os.getenv("MAX_SCRAPE_AGE_SECONDS", "60"))
+    if application_metrics_enabled is None:
+        setting = os.getenv("APPLICATION_METRICS_ENABLED", "false")
+        if setting not in ("true", "false"):
+            raise ValueError("APPLICATION_METRICS_ENABLED doit valoir true ou false.")
+        application_metrics_enabled = setting == "true"
+    if type(application_metrics_enabled) is not bool:
+        raise ValueError("Activation des indicateurs applicatifs invalide.")
+    application_pool = os.getenv("APPLICATION_PHP_POOL", "www")
+    application_database = os.getenv("APPLICATION_PG_DATABASE", "moodle")
+    application_queries(application_pool, application_database)
     model_directory = forecasts_dir if forecasts_dir is not None else os.getenv("FORECASTS_DIR", "")
 
     anomaly_directory = anomalies_dir if anomalies_dir is not None else os.getenv("ANOMALIES_DIR", "")
@@ -100,14 +112,27 @@ def create_app(
     application = FastAPI(
         title="Pilotage Moodle",
         description="Supervision, analyses experimentales et historique des incidents observes du pilote Moodle.",
-        version="0.10.0",
+        version="0.11.0",
         lifespan=lifespan,
     )
     install_auth(application, authentication)
 
     @application.get("/api/v1/health", tags=["Sante"])
     async def health():
-        return {"status": "ok", "service": "moodle-control-plane", "version": "0.10.0"}
+        return {"status": "ok", "service": "moodle-control-plane", "version": "0.11.0"}
+
+    @application.get("/api/v1/metrics/applications", tags=["Supervision"])
+    async def application_metrics(request: Request, response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        if not application_metrics_enabled:
+            raise HTTPException(503, detail="Les indicateurs applicatifs ne sont pas configures.")
+        try:
+            return await application_metrics_summary(request.app.state.prometheus, datetime.now(timezone.utc),
+                                                     application_pool, application_database)
+        except PrometheusUnavailable as exc:
+            raise HTTPException(503, detail="Prometheus est indisponible.") from exc
+        except PrometheusInvalidResponse as exc:
+            raise HTTPException(502, detail="Les indicateurs applicatifs sont inexploitables.") from exc
 
     @application.get("/api/v1/backups/summary", tags=["Sauvegardes"])
     async def backup_summary(response: Response):

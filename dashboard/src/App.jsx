@@ -4,6 +4,7 @@ import { useMetrics } from './useMetrics.js';
 import { useAuth } from './Auth.jsx';
 import Accounts from './Accounts.jsx';
 import Backups from './Backups.jsx';
+import ApplicationServices from './ApplicationServices.jsx';
 import { initials, canManageUsers } from './authClient.js';
 
 // Sidebar structure adapted from BootstrapDash Corona React (MIT).
@@ -116,6 +117,7 @@ function MetricCard({ label, value, icon, hint, color }) {
 
 const navigation = [
   { id: 'main', title: 'Tableau de bord', icon: 'grid', color: '#8f5fe8' },
+  { id: 'applications', title: 'Services Moodle', icon: 'server', color: '#0090e7' },
   { id: 'analysis', title: 'Prévisions', icon: 'chart', color: '#00d25b' },
   { id: 'incidents', title: 'Incidents et décisions', icon: 'alert', color: '#ffab00' },
   { id: 'audits', title: 'Journaux d’exécution', icon: 'clock', color: '#0090e7' },
@@ -179,6 +181,7 @@ export default function App() {
           <MetricCard label="Mémoire utilisée" value={metrics.memory_usage_percent} icon="memory" color="#00d25b" hint="Part de la mémoire utilisée" />
           <MetricCard label="Disque disponible" value={metrics.disk_available_percent} icon="disk" color="#8f5fe8" hint="Espace disponible sur le disque racine" />
         </section>
+        <ApplicationServices now={now} refreshToken={operationsRefresh} />
         <Operations now={now} refreshToken={operationsRefresh} />
         <Backups now={now} refreshToken={operationsRefresh} />
         <Accounts />

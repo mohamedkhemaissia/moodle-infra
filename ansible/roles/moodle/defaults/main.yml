@@ -22,3 +22,6 @@ moodle_https_port: 8443
 moodle_wwwroot: "https://{{ moodle_hostname }}:{{ moodle_https_port }}"
 moodle_php_memory_limit: 256M
 moodle_fpm_max_children: 5
+moodle_fpm_status_enabled: false
+moodle_fpm_status_port: 9001
+moodle_fpm_status_path: /fpm-status

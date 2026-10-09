@@ -1,0 +1,15 @@
+---
+application_monitoring_base_dir: /opt/moodle-application-monitoring
+application_monitoring_project_name: moodle-application-monitoring
+application_monitoring_moodle_base_dir: /opt/moodle
+application_monitoring_moodle_project: moodle-pilote
+application_monitoring_database: moodle
+application_monitoring_database_user: moodle_metrics
+application_monitoring_php_image: ghcr.io/hackthebox/php-fpm_exporter:2.5.0@sha256:ebb9849b919cc7096ce810b42e82ea73cf719ac6615aad6416ed409a7da80983
+application_monitoring_php_scrape_timeout_seconds: 3
+application_monitoring_postgres_image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+application_monitoring_php_port: 9253
+application_monitoring_postgres_port: 9187
+application_monitoring_php_status_port: "{{ moodle_fpm_status_port | default(9001) }}"
+application_monitoring_php_status_path: "{{ moodle_fpm_status_path | default('/fpm-status') }}"
+application_monitoring_enable_php_status: true
