@@ -6,6 +6,7 @@
       - not (control_plane_diagnostics_enabled | bool) or (control_plane_decisions_enabled | bool)
       - not (control_plane_remediation_enabled | bool) or (control_plane_decisions_enabled | bool)
       - not (control_plane_pilotage_backup_status_enabled | bool) or (control_plane_backup_status_enabled | bool)
+      - not (control_plane_backup_catalog_enabled | bool) or (control_plane_backup_status_enabled | bool)
     fail_msg: "Activer les incidents avant le moteur de decision."
 
 - name: Creer les repertoires de l API
@@ -29,7 +30,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'app/backup_status.py', 'app/pilotage_backup_status.py']) }}"
+  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'app/backup_status.py', 'app/pilotage_backup_status.py', 'app/backup_catalog_status.py']) }}"
 
 - name: Copier le lecteur partage du suivi des sauvegardes
   ansible.builtin.copy:
@@ -38,6 +39,28 @@
     owner: root
     group: root
     mode: "0644"
+
+- name: Copier le lecteur public du catalogue de reprise
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../backup_status/catalog.py"
+    dest: "{{ control_plane_base_dir }}/build/app/backup_catalog_status.py"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Verifier le catalogue public a monter en lecture seule
+  ansible.builtin.stat:
+    path: "{{ control_plane_backup_status_dir }}/catalog.json"
+  register: control_plane_backup_catalog
+  when: control_plane_backup_catalog_enabled | bool
+
+- name: Exiger le catalogue avant le demarrage de l API
+  ansible.builtin.assert:
+    that:
+      - control_plane_backup_catalog.stat.isreg | default(false)
+      - not (control_plane_backup_catalog.stat.islnk | default(false))
+    fail_msg: "Deployer backup_catalog avant l API."
+  when: control_plane_backup_catalog_enabled | bool
 
 - name: Verifier le statut public a monter en lecture seule
   ansible.builtin.stat:

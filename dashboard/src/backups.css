@@ -10,3 +10,17 @@
 .backup-association { color: #b5b9c6; font-size: .9rem; line-height: 1.6; margin: 12px 0 18px; }
 @media (max-width: 900px) { .backup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .backup-grid { grid-template-columns: 1fr; } }
+.catalog-tabs, .catalog-pagination { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+.catalog-tabs button, .catalog-pagination button { border: 1px solid #2c2e33; border-radius: 5px; background: #12151e; color: #d7dbe5; padding: 9px 14px; cursor: pointer; font: inherit; }
+.catalog-tabs button[aria-pressed="true"] { border-color: #0090e7; background: #143451; color: #fff; }
+.catalog-pagination button:disabled { opacity: .45; cursor: default; }
+.catalog-tabs button:focus-visible, .catalog-pagination button:focus-visible, .catalog-table summary:focus-visible { outline: 2px solid #49b9ff; outline-offset: 3px; }
+.catalog-pagination { justify-content: flex-end; color: #b5b9c6; font-size: .85rem; }
+.catalog-table { width: 100%; border-collapse: collapse; text-align: left; }
+.catalog-table th, .catalog-table td { padding: 14px 12px; border-bottom: 1px solid #2c2e33; font-size: .85rem; vertical-align: top; }
+.catalog-table th { color: #b5b9c6; font-weight: 500; }
+.catalog-table td { color: #e6e8ef; }
+.catalog-caption { text-align: left; color: #b5b9c6; margin: 8px 0; }
+.catalog-table summary { cursor: pointer; color: #6fc7ff; }
+.catalog-id { display: block; max-width: 240px; overflow-wrap: anywhere; user-select: all; margin-top: 9px; }
+.catalog-warning { padding: 12px 16px; color: #ffd78e; border: 1px solid #765522; border-radius: 5px; background: #2a2318; }

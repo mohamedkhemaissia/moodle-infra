@@ -1,0 +1,9 @@
+---
+backup_catalog_base_dir: /opt/moodle-backup-catalog
+backup_catalog_source_dir: "{{ playbook_dir }}/../../backup_status"
+backup_catalog_output_dir: "{{ control_plane_backup_status_dir | default('/var/lib/moodle-backup-status') }}"
+backup_catalog_project: "{{ moodle_compose_project | default('moodle-pilote') }}"
+backup_catalog_marker: "{{ moodle_base_dir | default('/opt/moodle') }}/backups/last-success.txt"
+backup_catalog_moodle_staging: "{{ moodle_base_dir | default('/opt/moodle') }}/backups/staging"
+backup_catalog_pilotage_enabled: false
+backup_catalog_pilotage_root: "{{ pilotage_backup_output_dir | default('/var/lib/moodle-pilotage-backup') }}"

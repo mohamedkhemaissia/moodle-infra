@@ -1,0 +1,98 @@
+---
+- name: Valider les chemins du catalogue
+  ansible.builtin.assert:
+    that:
+      - backup_catalog_base_dir is match('^/opt/[a-zA-Z0-9_-]+$')
+      - backup_catalog_output_dir is match('^/var/lib/[a-zA-Z0-9_-]+$')
+      - backup_catalog_project is match('^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,80}$')
+      - "'..' not in backup_catalog_project"
+      - backup_catalog_marker is match('^/[a-zA-Z0-9_./-]+$')
+      - backup_catalog_moodle_staging is match('^/[a-zA-Z0-9_./-]+$')
+      - "'..' not in backup_catalog_marker"
+      - "'..' not in backup_catalog_moodle_staging"
+      - backup_catalog_pilotage_root is match('^/var/lib/[a-zA-Z0-9_-]+$')
+
+- name: Verifier le lecteur Restic existant sans afficher ses secrets
+  ansible.builtin.stat:
+    path: "/usr/local/sbin/{{ backup_catalog_project }}-restic"
+  register: backup_catalog_restic
+
+- name: Exiger le lecteur Restic protege deja installe
+  ansible.builtin.assert:
+    that:
+      - backup_catalog_restic.stat.isreg | default(false)
+      - not (backup_catalog_restic.stat.islnk | default(false))
+      - backup_catalog_restic.stat.uid | default(-1) == 0
+      - backup_catalog_restic.stat.mode | default('') == '0750'
+    fail_msg: "Deployer le lecteur Restic existant du role operations avant le catalogue."
+
+- name: Creer les repertoires du catalogue
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ backup_catalog_base_dir }}"
+    - "{{ backup_catalog_base_dir }}/backup_status"
+    - "{{ backup_catalog_base_dir }}/backup_status/tests"
+    - "{{ backup_catalog_output_dir }}"
+
+- name: Installer le collecteur et les contrats publics
+  ansible.builtin.copy:
+    src: "{{ backup_catalog_source_dir }}/{{ item }}"
+    dest: "{{ backup_catalog_base_dir }}/backup_status/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - __init__.py
+    - status.py
+    - pilotage.py
+    - collector.py
+    - catalog.py
+    - catalog_collector.py
+    - tests/test_catalog.py
+    - tests/test_catalog_collector.py
+
+- name: Verifier les contrats et les rapprochements de points
+  ansible.builtin.command:
+    argv: [/usr/bin/python3, -B, -m, unittest, discover, -s, backup_status/tests, -p, 'test_catalog*.py', -q]
+    chdir: "{{ backup_catalog_base_dir }}"
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Installer les unites du catalogue
+  ansible.builtin.template:
+    src: "moodle-backup-catalog.{{ item }}.j2"
+    dest: "/etc/systemd/system/moodle-backup-catalog.{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [service, timer]
+  notify: Recharger le catalogue des sauvegardes
+
+- name: Valider les unites du catalogue
+  ansible.builtin.command:
+    argv: [/usr/bin/systemd-analyze, verify, /etc/systemd/system/moodle-backup-catalog.service,
+           /etc/systemd/system/moodle-backup-catalog.timer]
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Appliquer les unites du catalogue
+  ansible.builtin.meta: flush_handlers
+
+- name: Activer la planification du catalogue
+  ansible.builtin.systemd_service:
+    name: moodle-backup-catalog.timer
+    daemon_reload: true
+    enabled: true
+    state: started
+
+- name: Publier un premier catalogue avec le meme service protege
+  ansible.builtin.systemd_service:
+    name: moodle-backup-catalog.service
+    state: started
+  changed_when: false
+  when: not ansible_check_mode

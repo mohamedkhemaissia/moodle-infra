@@ -1,0 +1,12 @@
+[Unit]
+Description=Actualiser le catalogue des points de reprise toutes les cinq minutes
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=5min
+AccuracySec=5s
+RandomizedDelaySec=15s
+Unit=moodle-backup-catalog.service
+
+[Install]
+WantedBy=timers.target

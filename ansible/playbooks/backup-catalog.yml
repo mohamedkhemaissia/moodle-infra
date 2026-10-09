@@ -1,0 +1,10 @@
+---
+- name: Publier le catalogue des points de reprise
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - backup_status
+    - backup_catalog
+    - control_plane
+    - dashboard

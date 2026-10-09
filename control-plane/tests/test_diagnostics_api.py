@@ -23,7 +23,7 @@ class DiagnosticAPITests(unittest.TestCase):
         self.store.finish("a" * 32, "completed", 2, report={"checks": {"collection": "warning"}})
         before = self.store.path.read_bytes()
         with self.client() as client:
-            self.assertEqual(client.get("/api/v1/health").json()["version"], "0.11.0")
+            self.assertEqual(client.get("/api/v1/health").json()["version"], "0.12.0")
             summary = client.get("/api/v1/diagnostics/summary")
             self.assertEqual(summary.status_code, 200)
             self.assertEqual(summary.json()["counts"], {"completed": 1})
