@@ -12,7 +12,7 @@ import unittest
 
 from prepare_api import prepare
 
-COMPONENTS = ('ci', 'ml', 'control-plane', 'diagnostics', 'remediation', 'scripts', 'pilotage', 'backup_status', 'pilotage_backup')
+COMPONENTS = ('ci', 'ml', 'control-plane', 'diagnostics', 'remediation', 'scripts', 'pilotage', 'backup_status', 'pilotage_backup', 'recovery_tests')
 
 
 def run_suites(root: Path, context: Path, output: Path | None = None, preparation: dict | None = None) -> int:

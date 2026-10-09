@@ -1,0 +1,13 @@
+---
+- name: Executer les tests approuves dans des environnements isoles
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - pilotage_backup
+    - recovery_requests
+    - recovery_tests
+    - backup_status
+    - backup_catalog
+    - control_plane
+    - dashboard

@@ -13,6 +13,7 @@ from psycopg import sql
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from pilotage.auth import DDL as AUTH_DDL, APPLICATION_ID
 from pilotage.recovery import DDL as RECOVERY_DDL, APPLICATION_ID as RECOVERY_ID
+from pilotage.recovery_execution import DDL as EXECUTION_DDL
 from pilotage.schemas import DDL, SCHEMAS, APP_IDS
 from pilotage_backup.core import DatabaseSnapshot
 from pilotage_backup.inventory import inventory_sql, identity_check_sql, validate_inventory, TABLES
@@ -25,7 +26,7 @@ def main():
     suffix=uuid.uuid4().hex[:12]
     role='backup_ci_'+suffix
     source='backup_source_'+suffix
-    targets=('backup_restored_'+suffix, 'backup_recovery_'+suffix)
+    targets=('backup_restored_'+suffix, 'backup_recovery_'+suffix, 'backup_execution_'+suffix)
     password='b'*64
     admin=psycopg.connect(host='127.0.0.1',port=port,dbname='postgres',user='postgres',
                          password=admin_password,autocommit=True,connect_timeout=5)
@@ -56,8 +57,9 @@ def main():
                                "VALUES('test','Compte CI','admin','hash-fixture-only',1,1)")
             connection.execute("INSERT INTO pilotage_auth.events(actor_id,target_id,action,observed_at) VALUES(1,1,'created',1)")
         env={**os.environ,'PGPASSWORD':password}
-        for include_recovery,target in zip((False, True),targets):
-            if include_recovery:
+        for profile,target in zip((0,1,2),targets):
+            include_recovery=profile>=1;include_execution=profile==2
+            if profile==1:
                 with psycopg.connect(**config,autocommit=True) as connection:
                     connection.execute("DELETE FROM pilotage_incidents.metadata WHERE key='after_snapshot'")
                     connection.execute('CREATE SCHEMA pilotage_recovery')
@@ -69,6 +71,14 @@ def main():
                         VALUES(%s,'pilotage',%s,'isolated_test','Verifier la copie isolee',1,'test',%s,%s,'pending',1,1,1,'{}')""",
                         ('a'*32,'d'*64,'b'*32,'e'*64))
                     connection.execute("INSERT INTO events(request_id,actor_id,actor_name,action,observed_at,revision,evidence_json) VALUES(%s,1,'test','created',1,1,'{}')", ('a'*32,))
+            if include_execution:
+                with psycopg.connect(**config,autocommit=True) as connection:
+                    connection.execute("DELETE FROM pilotage_incidents.metadata WHERE key='after_snapshot'")
+                    connection.execute('SET search_path TO pilotage_recovery,pg_catalog')
+                    for statement in EXECUTION_DDL:connection.execute(statement)
+                    connection.execute("""INSERT INTO executions(id,request_id,scope,snapshot_id,status,actor_id,actor_name,credential_json,approver_version,queued_at,updated_at)
+                        VALUES(%s,%s,'pilotage',%s,'queued',1,'test','{}',1,1,1)""",('c'*32,'a'*32,'d'*64))
+                    connection.execute("INSERT INTO execution_events(execution_id,actor_id,actor_name,action,observed_at,revision,evidence_json) VALUES(%s,1,'test','queued',1,1,'{}')",('c'*32,))
             with tempfile.TemporaryDirectory(prefix='pilotage-backup-pg-ci-') as temporary:
                 archive=Path(temporary)/('pilotage-recovery.pgdump' if include_recovery else 'pilotage.pgdump')
                 with DatabaseSnapshot(config) as capture:
@@ -84,13 +94,13 @@ def main():
                     '-U',role,'-d',target,'--no-owner','--no-acl','--single-transaction','--exit-on-error',str(archive)],
                     env=env,check=True,timeout=120,capture_output=True)
                 with psycopg.connect(**{**config,'dbname':target},autocommit=True) as connection:
-                    actual=validate_inventory(connection.execute(inventory_sql(include_recovery)).fetchone()[0],database=target)
+                    actual=validate_inventory(connection.execute(inventory_sql(include_recovery,include_execution)).fetchone()[0],database=target)
                     actual['database']=source
                     if actual!=expected:raise RuntimeError('La copie ne correspond pas a l instantane exporte.')
                     if connection.execute('SELECT source_sha256,counts_json FROM '
                             'pilotage_incidents.migration_info WHERE id=1').fetchone()!=('a'*64,'{}'):
                         raise RuntimeError('La preuve de migration n a pas ete restauree.')
-                    if not all(v is True for v in connection.execute(identity_check_sql(include_recovery)).fetchone()[0].values()):
+                    if not all(v is True for v in connection.execute(identity_check_sql(include_recovery,include_execution)).fetchone()[0].values()):
                         raise RuntimeError('Identites restaurees incorrectes.')
                     if connection.execute("SELECT count(*) FROM pilotage_incidents.metadata WHERE key='after_snapshot'").fetchone()[0]!=0:
                         raise RuntimeError('Une ecriture future a fuit dans le dump.')
@@ -102,7 +112,11 @@ def main():
                         connection.execute("INSERT INTO pilotage_recovery.events(request_id,actor_id,actor_name,action,observed_at,revision,evidence_json) VALUES(%s,1,'test','approved',2,2,'{}')", ('a'*32,))
                         if connection.execute('SELECT max(id) FROM pilotage_recovery.events').fetchone()[0]!=2:
                             raise RuntimeError('La sequence des decisions de restauration a ete perdue.')
-                print(json.dumps({'status':'passed','scope':'real_postgresql_16_ci_fixture',
+                    if include_execution:
+                        connection.execute("INSERT INTO pilotage_recovery.execution_events(execution_id,actor_name,action,observed_at,revision,evidence_json) VALUES(%s,'worker','started',2,2,'{}')",('c'*32,))
+                        if connection.execute('SELECT max(id) FROM pilotage_recovery.execution_events').fetchone()[0]!=2:
+                            raise RuntimeError('La sequence des executions a ete perdue.')
+                print(json.dumps({'status':'passed' ,'scope':'real_postgresql_16_ci_fixture',
                     'tables_verified':len(expected['tables']), 'recovery_journal_included':include_recovery,'consistent_exported_snapshot':True,'pg_dump_restore':True,
                     'sequences_preserved':True,'migration_proof_preserved':True,'production_data_used':False},indent=2))
     finally:

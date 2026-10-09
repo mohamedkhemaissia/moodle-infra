@@ -14,6 +14,7 @@ control_plane_cpu_limit: "0.50"
 control_plane_backup_status_enabled: false
 control_plane_backup_catalog_enabled: false
 control_plane_recovery_requests_enabled: false
+control_plane_recovery_execution_enabled: false
 control_plane_pilotage_backup_status_enabled: false
 control_plane_backup_status_dir: /var/lib/moodle-backup-status
 # Acces local au laboratoire par le port du tableau de bord ou un tunnel SSH.
@@ -55,6 +56,7 @@ control_plane_source_files:
   - pilotage/worker_auth.py
   - pilotage/recovery.py
   - pilotage/recovery_cli.py
+  - pilotage/recovery_execution.py
   - app/__init__.py
   - app/main.py
   - app/auth.py

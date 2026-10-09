@@ -1,0 +1,1 @@
+{{ {'database_config': pilotage_database_config_dir ~ '/database.json', 'catalog_file': recovery_tests_catalog_file, 'moodle_base': recovery_tests_moodle_base, 'moodle_project': recovery_tests_moodle_project, 'pilotage_backup_config': recovery_tests_backup_config, 'run_seconds': recovery_tests_run_seconds | int, 'min_free_mb': recovery_tests_min_free_mb | int} | to_nice_json }}
