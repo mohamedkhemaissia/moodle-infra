@@ -1,0 +1,6 @@
+---
+- name: Recharger le catalogue des sauvegardes
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    name: moodle-backup-catalog.timer
+    state: restarted

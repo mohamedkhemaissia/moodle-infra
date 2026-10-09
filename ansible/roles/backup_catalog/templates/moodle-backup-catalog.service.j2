@@ -1,0 +1,26 @@
+[Unit]
+Description=Catalogue en lecture seule des points Restic Moodle
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory={{ backup_catalog_base_dir }}
+ExecStart=/usr/bin/python3 -B -m backup_status.catalog_collector --project {{ backup_catalog_project }} --moodle-staging {{ backup_catalog_moodle_staging }} --marker {{ backup_catalog_marker }} --output {{ backup_catalog_output_dir }}/catalog.json{{ (' --pilotage-root ' ~ backup_catalog_pilotage_root) if backup_catalog_pilotage_enabled | bool else '' }}
+TimeoutStartSec=65
+KillMode=control-group
+User=root
+Group=root
+UMask=0022
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={{ backup_catalog_output_dir }}
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+Nice=10
+CPUQuota=30%
+MemoryMax=256M
+TasksMax=64
+
