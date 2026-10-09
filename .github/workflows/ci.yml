@@ -148,7 +148,31 @@ jobs:
           fi
           export DOCKER_CONFIG="$RUNNER_TEMP/moodle-docker"
           install -d -m 700 "$DOCKER_CONFIG"
-          printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+          login_log="$(mktemp "$RUNNER_TEMP/moodle-docker-login.XXXXXX")"
+          trap 'rm -f "$login_log"' EXIT
+          connected=0
+          for attempt in 1 2 3; do
+            echo "Connexion Docker Hub : tentative $attempt/3"
+            if printf '%s' "$DOCKERHUB_TOKEN" | timeout --kill-after=5s 45s docker login --username "$DOCKERHUB_USERNAME" --password-stdin >"$login_log" 2>&1; then
+              connected=1
+              break
+            else
+              rc=$?
+            fi
+            cat "$login_log"
+            if grep -Eiq 'unauthorized|incorrect username|authentication required|access denied|denied:|too ?many ?requests|toomanyrequests|pull rate limit' "$login_log"; then
+              exit "$rc"
+            fi
+            if [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] && ! grep -Eiq 'deadline exceeded|Client.Timeout|i/o timeout|TLS handshake timeout|connection (reset|refused|timed out)|unexpected EOF|temporary failure|no such host|request canceled|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout' "$login_log"; then
+              exit "$rc"
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Docker Hub reste inaccessible apres trois tentatives reseau."
+              exit "$rc"
+            fi
+            sleep "$((attempt * 5))"
+          done
+          test "$connected" -eq 1
           printf 'DOCKER_CONFIG=%s\n' "$DOCKER_CONFIG" >> "$GITHUB_ENV"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -161,6 +185,8 @@ jobs:
           python -m pip install --disable-pip-version-check --only-binary=:all:
           --timeout 120 --retries 5 -r control-plane/requirements-lock.txt
           -r diagnostics/requirements-lock.txt
+      - name: Telecharger les images de test avec tentatives reseau bornees
+        run: python -B ci/pull_ci_images.py recovery-tests
       - name: Verifier le backend avec PostgreSQL PHP et HTTPS reels
         run: sudo env "DOCKER_CONFIG=$DOCKER_CONFIG" "$pythonLocation/bin/python" -B ci/run_recovery_moodle_test.py
       - name: Fermer la connexion Docker Hub
@@ -244,7 +270,31 @@ jobs:
           fi
           export DOCKER_CONFIG="$RUNNER_TEMP/moodle-docker"
           install -d -m 700 "$DOCKER_CONFIG"
-          printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+          login_log="$(mktemp "$RUNNER_TEMP/moodle-docker-login.XXXXXX")"
+          trap 'rm -f "$login_log"' EXIT
+          connected=0
+          for attempt in 1 2 3; do
+            echo "Connexion Docker Hub : tentative $attempt/3"
+            if printf '%s' "$DOCKERHUB_TOKEN" | timeout --kill-after=5s 45s docker login --username "$DOCKERHUB_USERNAME" --password-stdin >"$login_log" 2>&1; then
+              connected=1
+              break
+            else
+              rc=$?
+            fi
+            cat "$login_log"
+            if grep -Eiq 'unauthorized|incorrect username|authentication required|access denied|denied:|too ?many ?requests|toomanyrequests|pull rate limit' "$login_log"; then
+              exit "$rc"
+            fi
+            if [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] && ! grep -Eiq 'deadline exceeded|Client.Timeout|i/o timeout|TLS handshake timeout|connection (reset|refused|timed out)|unexpected EOF|temporary failure|no such host|request canceled|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout' "$login_log"; then
+              exit "$rc"
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Docker Hub reste inaccessible apres trois tentatives reseau."
+              exit "$rc"
+            fi
+            sleep "$((attempt * 5))"
+          done
+          test "$connected" -eq 1
           printf 'DOCKER_CONFIG=%s\n' "$DOCKER_CONFIG" >> "$GITHUB_ENV"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -257,6 +307,8 @@ jobs:
           python -m pip install --disable-pip-version-check --only-binary=:all:
           --timeout 120 --retries 5
           -r control-plane/requirements-lock.txt -r diagnostics/requirements-lock.txt
+      - name: Telecharger les images de test avec tentatives reseau bornees
+        run: python -B ci/pull_ci_images.py application-metrics
       - name: Verifier les acces limites et les metriques reelles
         run: python -B ci/run_application_metrics_tests.py
       - name: Fermer la connexion Docker Hub
@@ -324,7 +376,31 @@ jobs:
           fi
           export DOCKER_CONFIG="$RUNNER_TEMP/moodle-docker"
           install -d -m 700 "$DOCKER_CONFIG"
-          printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+          login_log="$(mktemp "$RUNNER_TEMP/moodle-docker-login.XXXXXX")"
+          trap 'rm -f "$login_log"' EXIT
+          connected=0
+          for attempt in 1 2 3; do
+            echo "Connexion Docker Hub : tentative $attempt/3"
+            if printf '%s' "$DOCKERHUB_TOKEN" | timeout --kill-after=5s 45s docker login --username "$DOCKERHUB_USERNAME" --password-stdin >"$login_log" 2>&1; then
+              connected=1
+              break
+            else
+              rc=$?
+            fi
+            cat "$login_log"
+            if grep -Eiq 'unauthorized|incorrect username|authentication required|access denied|denied:|too ?many ?requests|toomanyrequests|pull rate limit' "$login_log"; then
+              exit "$rc"
+            fi
+            if [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] && ! grep -Eiq 'deadline exceeded|Client.Timeout|i/o timeout|TLS handshake timeout|connection (reset|refused|timed out)|unexpected EOF|temporary failure|no such host|request canceled|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout' "$login_log"; then
+              exit "$rc"
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Docker Hub reste inaccessible apres trois tentatives reseau."
+              exit "$rc"
+            fi
+            sleep "$((attempt * 5))"
+          done
+          test "$connected" -eq 1
           printf 'DOCKER_CONFIG=%s\n' "$DOCKER_CONFIG" >> "$GITHUB_ENV"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
