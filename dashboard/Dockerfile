@@ -2,7 +2,7 @@ FROM node:24.21.0-alpine3.24 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
-COPY index.html vite.config.js ./
+COPY index.html vite.config.js nginx.conf.template ./
 COPY src ./src
 COPY public ./public
 COPY tests ./tests

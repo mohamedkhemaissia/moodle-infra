@@ -182,3 +182,22 @@
   retries: 6
   delay: 5
   when: control_plane_backup_status_enabled | default(false) | bool
+
+- name: Verifier le suivi PostgreSQL depuis le meme proxy que le navigateur
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ dashboard_port }}/api/v1/backups/pilotage/summary"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+    headers: "{{ dashboard_read_headers }}"
+  no_log: "{{ dashboard_auth_activation.stat.exists }}"
+  register: dashboard_pilotage_backup_summary
+  until: >-
+    dashboard_pilotage_backup_summary.status | default(0) == 200 and
+    dashboard_pilotage_backup_summary.json is defined and
+    dashboard_pilotage_backup_summary.json.scope | default('') == 'pilotage_postgresql' and
+    dashboard_pilotage_backup_summary.json.mode | default('') == 'read_only'
+  retries: 6
+  delay: 5
+  when: control_plane_pilotage_backup_status_enabled | default(false) | bool

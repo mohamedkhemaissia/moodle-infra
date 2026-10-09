@@ -5,7 +5,7 @@ After=local-fs.target
 [Service]
 Type=oneshot
 WorkingDirectory={{ backup_status_base_dir }}
-ExecStart=/usr/bin/python3 -B -m backup_status.collector --marker {{ backup_status_marker }} --project {{ backup_status_project }} --max-age-hours {{ backup_status_max_age_hours }} --output {{ backup_status_output_dir }}/status.json
+ExecStart=/usr/bin/python3 -B -m backup_status.collector --marker {{ backup_status_marker }} --project {{ backup_status_project }} --max-age-hours {{ backup_status_max_age_hours }} --output {{ backup_status_output_dir }}/status.json{{ (' --pilotage-root ' ~ backup_status_pilotage_root ~ ' --pilotage-max-age-hours ' ~ backup_status_pilotage_max_age_hours | string) if backup_status_pilotage_enabled | bool else '' }}
 TimeoutStartSec=60
 User=root
 Group=root

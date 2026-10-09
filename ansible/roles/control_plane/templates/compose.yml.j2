@@ -28,6 +28,9 @@ services:
 {% if control_plane_backup_status_enabled | bool %}
       BACKUP_STATUS_FILE: /var/lib/moodle-backup-status/status.json
 {% endif %}
+{% if control_plane_pilotage_backup_status_enabled | bool %}
+      PILOTAGE_BACKUP_STATUS_FILE: /var/lib/moodle-backup-status/pilotage.json
+{% endif %}
       DECISIONS_ENABLED: {{ (control_plane_decisions_enabled | bool | ternary('true', 'false')) | to_json }}
 {% if control_plane_forecasts_enabled | bool %}
       FORECASTS_DIR: /opt/forecasts

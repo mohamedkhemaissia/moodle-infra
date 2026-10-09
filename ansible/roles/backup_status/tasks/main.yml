@@ -9,6 +9,9 @@
       - backup_status_project is match('^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,80}$')
       - backup_status_max_age_hours | float > 0
       - backup_status_max_age_hours | float <= 720
+      - backup_status_pilotage_root is match('^/var/lib/[a-zA-Z0-9_-]+$')
+      - backup_status_pilotage_max_age_hours | float > 0
+      - backup_status_pilotage_max_age_hours | float <= 720
 
 - name: Creer les repertoires du suivi
   ansible.builtin.file:
@@ -30,7 +33,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: [__init__.py, status.py, collector.py, tests/test_status.py]
+  loop: [__init__.py, status.py, pilotage.py, collector.py, tests/test_status.py, tests/test_pilotage_status.py]
 
 - name: Verifier les formats et les etats de sauvegarde
   ansible.builtin.command:
@@ -71,19 +74,12 @@
 
 - name: Publier un premier etat pour l API
   ansible.builtin.command:
-    argv:
-      - /usr/bin/python3
-      - -B
-      - -m
-      - backup_status.collector
-      - --marker
-      - "{{ backup_status_marker }}"
-      - --project
-      - "{{ backup_status_project }}"
-      - --max-age-hours
-      - "{{ backup_status_max_age_hours | string }}"
-      - --output
-      - "{{ backup_status_output_dir }}/status.json"
+    argv: >-
+      {{ ['/usr/bin/python3', '-B', '-m', 'backup_status.collector', '--marker', backup_status_marker,
+          '--project', backup_status_project, '--max-age-hours', backup_status_max_age_hours | string,
+          '--output', backup_status_output_dir ~ '/status.json'] +
+         (['--pilotage-root', backup_status_pilotage_root, '--pilotage-max-age-hours',
+           backup_status_pilotage_max_age_hours | string] if backup_status_pilotage_enabled | bool else []) }}
     chdir: "{{ backup_status_base_dir }}"
   changed_when: false
   when: not ansible_check_mode

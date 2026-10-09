@@ -1,0 +1,4 @@
+---
+backup_status_pilotage_enabled: true
+control_plane_backup_status_enabled: true
+control_plane_pilotage_backup_status_enabled: true
