@@ -13,7 +13,7 @@ from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from backup_status import catalog, catalog_collector
+from backup_status import catalog, catalog_collector, status
 
 
 def pinned_restic(directory):
@@ -70,7 +70,7 @@ def exercise(binary, directory):
         restic("backup", "--json", "--host", "ci-catalog", "--tag", tag, str(source))
     rows = json.loads(restic("snapshots", "--json", "--no-lock"))
     selected = next(row for row in rows if row["paths"] == [str(moodle_staging / "run-second")])
-    archived = datetime.fromisoformat(selected["time"].replace("Z", "+00:00"))
+    archived = status.utc(catalog_collector.parse_time(selected["time"]))
     frozen = (archived-timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     completed = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     marker = directory / "last-success.txt"
