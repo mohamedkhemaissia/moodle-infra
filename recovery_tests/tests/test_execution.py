@@ -2,6 +2,7 @@
 import copy
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tarfile
@@ -148,6 +149,14 @@ class WorkerTests(unittest.TestCase):
             def runner(**kwargs):
                 descriptor=json.loads((runs/ID/'job.json').read_text());calls.append(kwargs)
                 self.assertEqual(set(descriptor),{'id','scope','snapshot_id','point'})
+                private=Path(kwargs['private_data_dir'])
+                temporary=private/'ansible-tmp'
+                for key,name in (('ANSIBLE_HOME','home'),('ANSIBLE_LOCAL_TEMP','local'),('ANSIBLE_REMOTE_TEMP','remote')):
+                    self.assertEqual(kwargs['envvars'][key],str(temporary/name))
+                    self.assertTrue((temporary/name).is_dir())
+                    self.assertEqual((temporary/name).stat().st_mode & 0o777,0o700)
+                (temporary/'local/private-module').write_text('temporary data')
+                (private/'audit-proof').write_text('audit retained')
                 atomic_json(results/(ID+'.json'),GOOD)
                 return SimpleNamespace(status='successful',rc=0)
             store=SimpleNamespace(finish=lambda *a,**k:(a,k))
@@ -156,6 +165,8 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(calls[0]['extravars'],{'recovery_test_job_id':ID})
             self.assertEqual(calls[0]['project_dir'],worker.PROJECT)
             self.assertNotIn(str(runs),calls[0]['private_data_dir'])
+            self.assertFalse((artifacts/ID/'ansible-tmp').exists())
+            self.assertTrue((artifacts/ID/'audit-proof').exists())
     def test_runner_zero_without_functional_report_is_not_restore_success(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)
@@ -172,6 +183,33 @@ class WorkerTests(unittest.TestCase):
         worker.process(store,CONFIG,ID,clean=lambda *a:FLAGS,run=lambda *a:self.fail('replayed'))
         self.assertTrue(calls[0][1]['interrupted']);self.assertEqual(calls[0][0][2]['status'],'inconclusive')
 
+    def test_temporary_cleanup_failure_is_retried_without_replaying_the_test(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runner=Path(tmp)/'runner';temporary=runner/ID/'ansible-tmp'
+            temporary.mkdir(parents=True)
+            (temporary/'module').write_text('private temporary data')
+            audit=runner/ID/'audit-proof';audit.write_text('audit retained')
+            observed=[]
+            store=SimpleNamespace(cleanup_pending=lambda:[JOB],record_cleanup=lambda *a:observed.append(a[1]),
+                abandoned=lambda *a:[],claim=lambda *a:None)
+            with patch.object(worker,'RUNNER',runner):
+                with patch.object(worker.shutil,'rmtree',side_effect=OSError('read-only')):
+                    value=worker.process(store,CONFIG,ID,clean=lambda *a:FLAGS,run=lambda *a:self.fail('replayed'))
+                self.assertEqual(value['status'],'cleanup_pending')
+                self.assertFalse(observed[-1]['temporary_files_removed'])
+                value=worker.process(store,CONFIG,ID,clean=lambda *a:FLAGS,run=lambda *a:self.fail('replayed'))
+                self.assertEqual(value['status'],'idle')
+                self.assertTrue(observed[-1]['temporary_files_removed'])
+                self.assertFalse(temporary.exists());self.assertTrue(audit.exists())
+
+    def test_symlinked_temporary_directory_never_removes_its_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);runner=root/'runner';private=runner/ID;private.mkdir(parents=True)
+            outside=root/'outside';outside.mkdir();marker=outside/'retained';marker.write_text('retained')
+            (private/'ansible-tmp').symlink_to(outside,target_is_directory=True)
+            value=worker.clean_ansible_temporaries(ID,FLAGS,runner_root=runner)
+            self.assertFalse(value['temporary_files_removed']);self.assertTrue(marker.exists())
+
     def test_real_ansible_runner_dispatches_fixed_playbook_and_reads_private_proof(self):
         import yaml
         import ansible_runner
@@ -185,11 +223,17 @@ class WorkerTests(unittest.TestCase):
             play=[{'hosts':'localhost','connection':'local','gather_facts':False,'tasks':[{'ansible.builtin.command':{'argv':[sys.executable,str(script),str(root/'results'/(ID+'.json'))]},'changed_when':False}]}]
             (project/'test-restore.yml').write_text(yaml.safe_dump(play))
             store=SimpleNamespace(finish=lambda *a,**k:a[2])
-            with patch.object(worker,'PROJECT',str(project)),patch.object(worker,'PYTHON',sys.executable):
+            # Le service systemd protege le dossier personnel en lecture seule.
+            # Ansible doit donc ignorer ces emplacements herites non inscriptibles.
+            with patch.object(worker,'PROJECT',str(project)),patch.object(worker,'PYTHON',sys.executable), \
+                    patch.dict(os.environ,{'ANSIBLE_HOME':'/sys/moodle-runner-readonly-home',
+                        'ANSIBLE_LOCAL_TEMP':'/sys/moodle-runner-readonly-local',
+                        'ANSIBLE_REMOTE_TEMP':'/sys/moodle-runner-readonly-remote'}):
                 proof=worker.run_job(store,JOB,CONFIG,root=root/'runs',results=root/'results',runner_root=root/'runner',
                     clean=lambda *a,**k:FLAGS)
             self.assertEqual(proof['status'],'restore_validated')
             self.assertEqual(proof['runner_status'],'successful');self.assertEqual(proof['runner_rc'],0)
+            self.assertFalse((root/'runner'/ID/'ansible-tmp').exists())
 
 
 if __name__=='__main__':unittest.main()

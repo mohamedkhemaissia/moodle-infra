@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import sys
 import time
 
@@ -29,6 +30,20 @@ def proof_failed(reason, flags):
     return {'status':'inconclusive','production_changed':False,'reason':reason,'cleanup':flags}
 
 
+def clean_ansible_temporaries(identifier, flags, *, runner_root=None):
+    """Effacer les caches du job apres Runner, en conservant ses preuves d'audit."""
+    flags=dict(flags)
+    try:
+        private=job_directory(identifier,root=RUNNER if runner_root is None else runner_root)
+        temporary=private/'ansible-tmp'
+        if temporary.is_symlink():raise BackupError('unsafe_test_directory')
+        if temporary.exists():shutil.rmtree(temporary)
+        flags['temporary_files_removed']=flags['temporary_files_removed'] and not temporary.exists()
+    except (BackupError,OSError):
+        flags['temporary_files_removed']=False
+    return flags
+
+
 def run_job(store, job, config, *, runner=None, root=ROOT, results=RESULTS, runner_root=RUNNER, clean=cleanup, cancelled=lambda: False):
     """Un seul appel Runner ; un echec ou une interruption ne relance jamais le test."""
     runner_root=Path(runner_root); results=Path(results)
@@ -40,6 +55,8 @@ def run_job(store, job, config, *, runner=None, root=ROOT, results=RESULTS, runn
         directory.mkdir(mode=0o700)
         atomic_json(directory/'job.json',{key:job[key] for key in ('id','scope','snapshot_id','point')})
         private=runner_root/job['id'];private.mkdir(mode=0o700)
+        temporary=private/'ansible-tmp';temporary.mkdir(mode=0o700)
+        for name in ('home','local','remote'):(temporary/name).mkdir(mode=0o700)
         if runner is None:
             import ansible_runner
             runner=ansible_runner.run
@@ -50,6 +67,9 @@ def run_job(store, job, config, *, runner=None, root=ROOT, results=RESULTS, runn
             extravars={'recovery_test_job_id':job['id']},
             envvars={'PYTHONPATH':'/opt/moodle-recovery-tests','PYTHONDONTWRITEBYTECODE':'1',
                 'ANSIBLE_CONFIG':PROJECT+'/ansible.cfg','ANSIBLE_PYTHON_INTERPRETER':PYTHON,
+                'ANSIBLE_HOME':str(temporary/'home'),
+                'ANSIBLE_LOCAL_TEMP':str(temporary/'local'),
+                'ANSIBLE_REMOTE_TEMP':str(temporary/'remote'),
                 'PATH':str(Path(PYTHON).parent)+':/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'},
             settings={'pexpect_timeout':1,'job_timeout':min(config['run_seconds']+30,960),'idle_timeout':min(config['run_seconds']+30,960)},
             cancel_callback=lambda: cancelled() or time.monotonic()>=deadline,
@@ -66,7 +86,7 @@ def run_job(store, job, config, *, runner=None, root=ROOT, results=RESULTS, runn
         # Pas de trace contenant configuration, sorties Restic ou donnees restaurees.
         pass
     finally:
-        flags=clean(job['id'],root=root)
+        flags=clean_ansible_temporaries(job['id'],clean(job['id'],root=root),runner_root=runner_root)
         result['cleanup']=flags
         if not all(flags.values()):
             result['status']='inconclusive';result['reason']='isolated_test_cleanup_incomplete'
@@ -79,12 +99,12 @@ def run_job(store, job, config, *, runner=None, root=ROOT, results=RESULTS, runn
 
 def process(store, config, boot_id, *, run=run_job, clean=cleanup, cancelled=lambda:False):
     for job in store.cleanup_pending():
-        flags=clean(job['id'])
+        flags=clean_ansible_temporaries(job['id'],clean(job['id']))
         store.record_cleanup(job['id'],flags)
         if not all(flags.values()):return {'status':'cleanup_pending','production_changed':False}
     orphaned=store.abandoned(boot_id)
     for job in orphaned:
-        flags=clean(job['id'])
+        flags=clean_ansible_temporaries(job['id'],clean(job['id']))
         store.finish(job['id'],job['claim_token'],proof_failed('isolated_runner_interrupted',flags),interrupted=True)
         if not all(flags.values()):return {'status':'cleanup_pending','production_changed':False}
     if cancelled():return {'status':'waiting','production_changed':False}
