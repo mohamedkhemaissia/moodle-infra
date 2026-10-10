@@ -15,6 +15,7 @@ services:
       - {{ control_plane_port | string | to_json }}
     environment:
       AUTH_ENABLED: {{ (pilotage_auth_activation.stat.exists | ternary('true', 'false')) | to_json }}
+      POLICIES_ENABLED: {{ (pilotage_policy_activation.stat.exists | ternary('true', 'false')) | to_json }}
       RECOVERY_REQUESTS_ENABLED: {{ (control_plane_recovery_requests_enabled | bool | ternary('true', 'false')) | to_json }}
       RECOVERY_EXECUTION_ENABLED: {{ (control_plane_recovery_execution_enabled | bool) | ternary("true", "false") | to_json }}
 {% if pilotage_auth_activation.stat.exists %}

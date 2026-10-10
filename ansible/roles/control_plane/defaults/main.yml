@@ -57,11 +57,13 @@ control_plane_source_files:
   - pilotage/recovery.py
   - pilotage/recovery_cli.py
   - pilotage/recovery_execution.py
+  - pilotage/operating_policy.py
   - app/__init__.py
   - app/main.py
   - app/auth.py
   - app/backups.py
   - app/recovery_requests.py
+  - app/operating_policy.py
   - app/backup_status.py
   - app/pilotage_backup_status.py
   - app/backup_catalog_status.py
@@ -84,6 +86,7 @@ control_plane_source_files:
   - tests/test_backups_api.py
   - tests/test_backup_catalog_api.py
   - tests/test_recovery_requests_api.py
+  - tests/test_operating_policy_api.py
   - tests/test_pilotage_backups_api.py
   - tests/test_forecasts.py
   - tests/test_anomalies.py

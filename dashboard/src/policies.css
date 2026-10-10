@@ -1,0 +1,8 @@
+.policy-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin:0 0 1.2rem}
+.policy-summary dt{font-size:.82rem;color:var(--muted,#a9abb6);margin-bottom:.4rem}
+.policy-summary dd{margin:0;font-weight:600;line-height:1.5}
+.policy-description{max-width:850px;line-height:1.6;color:var(--muted,#a9abb6)}
+.policy-form{max-width:620px;margin:1.4rem 0}
+.policy-form .policy-check{display:flex;align-items:flex-start;gap:.75rem;line-height:1.5}
+.policy-form .policy-check input{width:18px;min-width:18px;height:18px;margin:.15rem 0 0;accent-color:#0090e7}
+.policy-history-heading{margin:1.8rem 0 .8rem;font-size:1rem}

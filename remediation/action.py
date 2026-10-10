@@ -12,6 +12,7 @@ from diagnostics.store import strict_json
 from .policy import decision_for_php, metric_gate
 from .probes import login_probe
 from .store import RemediationStore, ACTION
+from pilotage.operating_policy import PolicyStore, PolicyStorageError, PolicyBlocked
 
 PROJECT = "moodle-pilote"
 NAMES = {service: PROJECT + "-" + service + "-1" for service in ("php", "apache", "postgres")}
@@ -19,7 +20,8 @@ NAMES = {service: PROJECT + "-" + service + "-1" for service in ("php", "apache"
 
 def config_read(path):
     config = strict_json(Path(path).read_text())
-    if set(config) != {"api_url", "data_dir", "hostname", "https_port", "ca_file", "restoration_marker"}:
+    required={"api_url", "data_dir", "hostname", "https_port", "ca_file", "restoration_marker"}
+    if set(config) not in (required,required | {"policy_required"}) or type(config.get("policy_required",False)) is not bool:
         raise ValueError("Configuration de remediation invalide.")
     config["api_url"] = local_url(config["api_url"])
     if config["hostname"] != "moodle-pfe.test" or type(config["https_port"]) is not int or not 1 <= config["https_port"] <= 65535 or \
@@ -86,11 +88,12 @@ def container_gate(services):
 
 
 def current(config, incident_id, expected):
-    decision = decision_for_php(get_json(config["api_url"] + "/api/v1/decisions/" + str(incident_id)),
+    document=get_json(config["api_url"] + "/api/v1/decisions/" + str(incident_id))
+    decision = decision_for_php(document,
                                incident_id, time.time(), expected=expected)
     metrics = get_json(config["api_url"] + "/api/v1/metrics/summary")
     metric_gate(metrics, time.time(), available=False)
-    return decision, metrics
+    return decision, metrics, document
 
 
 def apply(config, incident_id, identifier, expected, *, inspect_fn=inspect, probe_fn=None,
@@ -100,7 +103,7 @@ def apply(config, incident_id, identifier, expected, *, inspect_fn=inspect, prob
     report = {"status": "blocked", "mode": "manual_guarded", "action": ACTION,
               "action_dispatched": False, "recovered": False, "checks": {}}
     try:
-        decision, metrics = current(config, incident_id, expected)
+        decision, metrics, document = current(config, incident_id, expected)
         report["decision"], report["checks"]["metrics_before"] = decision, metrics
         operations_fn(config)
         services = {name: inspect_fn(name) for name in NAMES}
@@ -114,7 +117,7 @@ def apply(config, incident_id, identifier, expected, *, inspect_fn=inspect, prob
         if before["success"] is not False or before["tls_validated"] is not True or before["http_status"] not in (500,502,503,504):
             raise Blocked("php_upstream_failure_not_confirmed")
         # Revalidation apres les sondes et comparaison du conteneur juste avant l'action.
-        decision, _ = current(config, incident_id, expected)
+        decision, _, document = current(config, incident_id, expected)
         operations_fn(config)
         latest = {name: inspect_fn(name) for name in NAMES}
         container_gate(latest)
@@ -124,9 +127,22 @@ def apply(config, incident_id, identifier, expected, *, inspect_fn=inspect, prob
         if not timestamp(decision["input_evaluated_at"]) <= time.time() < timestamp(decision["valid_until"]):
             raise Blocked("decision_expired_before_dispatch")
         reserved_at = time.time()
-        reason = RemediationStore(config["data_dir"]).reserve(identifier, incident_id, reserved_at, latest["php"]["id"])
-        if reason:
-            raise Blocked(reason)
+        reserve=lambda: RemediationStore(config["data_dir"]).reserve(identifier, incident_id, time.time(), latest["php"]["id"])
+        if config.get("policy_required",False):
+            try:
+                authorization=PolicyStore().dispatch(document,expected.get("operating_policy"),run_id=identifier,
+                    automatic=expected.get("execution_mode") == "automatic_guarded",reserve=reserve)
+            except (PolicyBlocked,PolicyStorageError) as exc:
+                raise Blocked(str(exc)) from None
+            report["operating_authorization"]=authorization
+            decision["operating_policy"]=authorization["policy"]
+            decision["execution_mode"]="automatic_guarded" if authorization["trigger_mode"] == "automatic" else "manual_guarded"
+            report["mode"]=decision["execution_mode"]
+        else:
+            if expected.get("execution_mode") == "automatic_guarded":
+                raise Blocked("automatic_requires_operating_policy")
+            reason=reserve()
+            if reason: raise Blocked(reason)
         report["action_reserved_at"] = reserved_at
         if not timestamp(decision["input_evaluated_at"]) <= time.time() < timestamp(decision["valid_until"]):
             raise Blocked("decision_expired_after_reservation")

@@ -37,6 +37,10 @@ dashboard_source_files:
   - src/authClient.js
   - src/auth.css
   - src/App.jsx
+  - src/Policies.jsx
+  - src/policies.js
+  - src/policies.css
+  - tests/policies.test.js
   - src/Reports.jsx
   - src/reports.js
   - src/reports.css

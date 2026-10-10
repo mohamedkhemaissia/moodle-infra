@@ -1,0 +1,28 @@
+[Unit]
+Description=Verifier les incidents autorises pour le pilotage automatique Moodle
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory={{ remediation_base_dir }}/code
+ExecStart={{ remediation_python }} -B -m remediation.automatic
+Environment=PILOTAGE_DATABASE_CONFIG={{ pilotage_database_config_dir }}/database.json
+Environment=PILOTAGE_SERVICE_TOKEN_FILE={{ pilotage_database_config_dir }}/worker-token
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+UMask=0027
+TimeoutStartSec=240
+TimeoutStopSec=30
+Nice=10
+CPUQuota=50%
+MemoryMax=512M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ReadWritePaths={{ remediation_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

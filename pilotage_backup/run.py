@@ -225,10 +225,11 @@ def restore_test(config,snapshot,commands=None,*,sleep=time.sleep,monotonic=time
             return json_value(lines[0])
         include_recovery = 'pilotage_recovery' in expected['schemas']
         include_execution = 'pilotage_recovery.executions' in expected['tables']
-        actual=validate_inventory(query(inventory_sql(include_recovery,include_execution)))
+        include_policy = 'pilotage_policy' in expected['schemas']
+        actual=validate_inventory(query(inventory_sql(include_recovery,include_execution,include_policy)))
         if actual!=expected:raise BackupError('restored_tables_do_not_match_snapshot')
-        identities=query(identity_check_sql(include_recovery,include_execution))
-        if not isinstance(identities,dict) or set(identities)!=set(expected_identities(include_recovery,include_execution)) or not all(v is True for v in identities.values()):
+        identities=query(identity_check_sql(include_recovery,include_execution,include_policy))
+        if not isinstance(identities,dict) or set(identities)!=set(expected_identities(include_recovery,include_execution,include_policy)) or not all(v is True for v in identities.values()):
             raise BackupError('restored_sequences_invalid')
         result.update(status='restore_validated',captured_at=manifest['captured_at'],
             tables_verified=len(actual['tables']),rows_verified=sum(v['rows'] for v in actual['tables'].values()),

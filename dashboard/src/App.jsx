@@ -6,6 +6,7 @@ import Accounts from './Accounts.jsx';
 import Backups from './Backups.jsx';
 import ApplicationServices from './ApplicationServices.jsx';
 import Reports from './Reports.jsx';
+import Policies from './Policies.jsx';
 import { initials, canManageUsers } from './authClient.js';
 
 // Sidebar structure adapted from BootstrapDash Corona React (MIT).
@@ -123,6 +124,7 @@ const navigation = [
   { id: 'incidents', title: 'Incidents et décisions', icon: 'alert', color: '#ffab00' },
   { id: 'audits', title: 'Journaux d’exécution', icon: 'clock', color: '#0090e7' },
   { id: 'backups', title: 'Sauvegardes', icon: 'disk', color: '#8f5fe8' },
+  { id: 'policies', title: 'Politiques', icon: 'server', color: '#0090e7' },
   { id: 'reports', title: 'Rapports', icon: 'chart', color: '#0090e7' },
 ];
 
@@ -186,6 +188,7 @@ export default function App() {
         <ApplicationServices now={now} refreshToken={operationsRefresh} />
         <Operations now={now} refreshToken={operationsRefresh} />
         <Backups now={now} refreshToken={operationsRefresh} />
+        <Policies refreshToken={operationsRefresh} />
         <Reports refreshToken={operationsRefresh} />
         <Accounts />
         <footer className="page-footer"><span>BeeCoders · Pilotage Moodle</span><span>Interface Corona · v0.3.0</span></footer>
