@@ -15,19 +15,24 @@ IDENTITIES = ('pilotage_incidents.incidents', 'pilotage_incidents.events',
               'pilotage_auth.users', 'pilotage_auth.events')
 RECOVERY_SCHEMA = {'pilotage_recovery': (0x4D525143, ('schema_info', 'requests', 'events'))}
 
+POLICY_SCHEMA = {'pilotage_policy': (0x4D504F4C, ('schema_info','settings','events','approvals','authorizations','worker_attempts','worker_state'))}
 
-def schemas(include_recovery=False):
-    if type(include_recovery) is not bool:
+
+def schemas(include_recovery=False, include_execution=False, include_policy=False):
+    if any(type(v) is not bool for v in (include_recovery,include_execution,include_policy)) or (include_execution and not include_recovery):
         raise ValueError('Profil de sauvegarde invalide.')
-    return {**SCHEMAS, **(RECOVERY_SCHEMA if include_recovery else {})}
+    recovery = RECOVERY_SCHEMA
+    if include_execution:
+        recovery = {'pilotage_recovery': (0x4D525143, ('schema_info','requests','events','executions','execution_events'))}
+    return {**SCHEMAS, **(recovery if include_recovery else {}), **(POLICY_SCHEMA if include_policy else {})}
 
 
-def identities(include_recovery=False):
-    schemas(include_recovery)
-    return IDENTITIES + (('pilotage_recovery.events',) if include_recovery else ())
+def identities(include_recovery=False, include_execution=False, include_policy=False):
+    schemas(include_recovery,include_execution,include_policy)
+    return IDENTITIES + (('pilotage_recovery.events',) if include_recovery else ()) + (('pilotage_recovery.execution_events',) if include_execution else ()) + (('pilotage_policy.events',) if include_policy else ())
 
 
-def inventory_sql(include_recovery=False):
+def inventory_sql(include_recovery=False, include_execution=False, include_policy=False):
     """Le meme SQL sur l'instantane source et sur la copie PostgreSQL 16.
 
     Les empreintes portent sur les lignes JSON ordonnees en collation C. Les
@@ -35,7 +40,7 @@ def inventory_sql(include_recovery=False):
     Les anciennes sauvegardes restent verificables avec leur profil de 16 tables.
     Le nouveau journal ajoute trois tables lorsque present dans l'instantane.
     """
-    selected = schemas(include_recovery)
+    selected = schemas(include_recovery,include_execution,include_policy)
     table_names = tuple(f'{schema}.{table}' for schema, (_, tables) in selected.items() for table in tables)
     schema_names = ','.join("'" + name + "'" for name in selected)
     versions = ','.join(
@@ -62,7 +67,9 @@ def validate_inventory(value, database='moodle_pilotage'):
         raise ValueError('Inventaire incomplet.')
     if value['database'] != database or value['server_major'] != 16:
         raise ValueError('PostgreSQL 16 et base de pilotage requis.')
-    selected = schemas(isinstance(value['schemas'], dict) and 'pilotage_recovery' in value['schemas'])
+    selected = schemas(isinstance(value['schemas'], dict) and 'pilotage_recovery' in value['schemas'],
+                       isinstance(value['tables'],dict) and 'pilotage_recovery.executions' in value['tables'],
+                       isinstance(value['schemas'],dict) and 'pilotage_policy' in value['schemas'])
     tables = tuple(f'{schema}.{table}' for schema, (_, names) in selected.items() for table in names)
     expected = {name: [1, app] for name, (app, _) in selected.items()}
     if value['schemas'] != expected or sorted(value['table_names'] or []) != sorted(tables):
@@ -83,9 +90,9 @@ def validate_inventory(value, database='moodle_pilotage'):
     return value
 
 
-def identity_check_sql(include_recovery=False):
+def identity_check_sql(include_recovery=False, include_execution=False, include_policy=False):
     checks = []
-    for name in identities(include_recovery):
+    for name in identities(include_recovery,include_execution,include_policy):
         schema, table = name.split('.')
         checks.extend(["'"+name+"'", "(SELECT CASE WHEN COALESCE((SELECT max(id) FROM " + name + "),0)=0 "
             "THEN true ELSE last_value>(SELECT max(id) FROM " + name + ") OR "

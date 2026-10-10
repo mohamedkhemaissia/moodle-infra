@@ -12,10 +12,13 @@ from .models import MetricsSummary
 from .application_metrics import summary as application_metrics_summary, queries as application_queries
 from .auth import Settings as AuthSettings, install as install_auth
 from .recovery_requests import install as install_recovery_requests
+from .operating_policy import install as install_operating_policy
 from .backup_catalog_status import select_point
 from .backups import read_summary as read_backup_summary, read_pilotage_summary, read_catalog
 from pilotage.auth import AuthStore, AuthStorageError
 from pilotage.recovery import RecoveryStore, RecoveryStorageError
+from pilotage.recovery_execution import RecoveryExecutionStore
+from pilotage.operating_policy import PolicyStore, PolicyStorageError
 from .diagnostics_store import DiagnosticStore, DiagnosticStorageError
 from .remediation_store import RemediationStore
 from .incidents import IncidentStore, IncidentStorageError
@@ -49,6 +52,9 @@ def create_app(
     backup_catalog_file: str | None = None,
     recovery_requests_enabled: bool | None = None,
     recovery_store=None,
+    recovery_execution_enabled: bool | None = None,
+    policies_enabled: bool | None = None,
+    policy_store=None,
 ) -> FastAPI:
     authentication = AuthSettings.load(auth_enabled, auth_origins, auth_secure_cookie, auth_worker_hash_file)
     backup_file = backup_status_file if backup_status_file is not None else os.getenv("BACKUP_STATUS_FILE", "")
@@ -62,6 +68,13 @@ def create_app(
         recovery_requests_enabled = setting == "true"
     if type(recovery_requests_enabled) is not bool or (recovery_requests_enabled and (not authentication.enabled or not catalog_file)):
         raise ValueError("Les demandes exigent l'authentification et un catalogue configure.")
+    if recovery_execution_enabled is None:
+        setting = os.getenv("RECOVERY_EXECUTION_ENABLED", "false")
+        if setting not in ("true", "false"):
+            raise ValueError("RECOVERY_EXECUTION_ENABLED doit valoir true ou false.")
+        recovery_execution_enabled = setting == "true"
+    if type(recovery_execution_enabled) is not bool or (recovery_execution_enabled and not recovery_requests_enabled):
+        raise ValueError("L execution isolee exige le parcours de demandes active.")
     url = prometheus_url or os.getenv("PROMETHEUS_URL", "http://127.0.0.1:9090")
     max_age = float(os.getenv("MAX_SCRAPE_AGE_SECONDS", "60"))
     if application_metrics_enabled is None:
@@ -89,6 +102,13 @@ def create_app(
         decisions_enabled = setting == "true"
     if type(decisions_enabled) is not bool:
         raise ValueError("Le mode des decisions doit etre booleen.")
+    if policies_enabled is None:
+        setting=os.getenv("POLICIES_ENABLED","false")
+        if setting not in ("true","false"):
+            raise ValueError("POLICIES_ENABLED doit valoir true ou false.")
+        policies_enabled=setting == "true"
+    if type(policies_enabled) is not bool or (policies_enabled and (not authentication.enabled or not decisions_enabled or not incident_directory)):
+        raise ValueError("Les politiques exigent les comptes, les incidents et les decisions.")
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -96,9 +116,13 @@ def create_app(
         application.state.auth_password_slots = asyncio.Semaphore(2)
         if authentication.enabled:
             await asyncio.to_thread(application.state.auth_store.check)
+        application.state.operating_policy=(policy_store or PolicyStore()) if policies_enabled else None
+        if application.state.operating_policy is not None:
+            await asyncio.to_thread(application.state.operating_policy.check)
+        application.state.recovery_execution_enabled = recovery_execution_enabled
         application.state.recovery_requests = None
         if recovery_requests_enabled:
-            application.state.recovery_requests = recovery_store or RecoveryStore(
+            application.state.recovery_requests = recovery_store or (RecoveryExecutionStore if recovery_execution_enabled else RecoveryStore)(
                 selector=lambda scope, snapshot, now: select_point(catalog_file, now, scope, snapshot))
             await asyncio.to_thread(application.state.recovery_requests.check)
         async with httpx.AsyncClient(
@@ -131,15 +155,16 @@ def create_app(
     application = FastAPI(
         title="Pilotage Moodle",
         description="Supervision, analyses experimentales et historique des incidents observes du pilote Moodle.",
-        version="0.13.0",
+        version="0.14.0",
         lifespan=lifespan,
     )
     install_auth(application, authentication)
     install_recovery_requests(application)
+    install_operating_policy(application)
 
     @application.get("/api/v1/health", tags=["Sante"])
     async def health():
-        return {"status": "ok", "service": "moodle-control-plane", "version": "0.13.0"}
+        return {"status": "ok", "service": "moodle-control-plane", "version": "0.14.0"}
 
     @application.get("/api/v1/metrics/applications", tags=["Supervision"])
     async def application_metrics(request: Request, response: Response):
@@ -200,10 +225,13 @@ def create_app(
             if request.app.state.recovery_requests is not None:
                 request.app.state.recovery_requests.check()
                 result["recovery_requests"] = {"status": "available", "schema_version": 1, "backend": "postgresql"}
+            if request.app.state.operating_policy is not None:
+                request.app.state.operating_policy.check()
+                result["policies"]={"status":"available","schema_version":1,"backend":"postgresql"}
             return result
         try:
             stores = await asyncio.to_thread(inspect_storage)
-        except (IncidentStorageError, DiagnosticStorageError, AuthStorageError, RecoveryStorageError) as exc:
+        except (IncidentStorageError, DiagnosticStorageError, AuthStorageError, RecoveryStorageError, PolicyStorageError) as exc:
             raise HTTPException(503, detail="Le stockage du pilotage est indisponible.") from exc
         if not stores:
             raise HTTPException(503, detail="Aucun historique du pilotage n'est configure.")
@@ -378,7 +406,21 @@ def create_app(
 
     @application.get("/api/v1/remediations/summary", tags=["Remediation"])
     async def remediations_summary(request: Request, response: Response):
-        return await read_remediations(request, response, "summary")
+        result = await read_remediations(request, response, "summary")
+        policy_store = request.app.state.operating_policy
+        if policy_store is not None:
+            try:
+                control = await asyncio.to_thread(policy_store.view)
+            except PolicyStorageError as exc:
+                raise HTTPException(503, detail="Les politiques de correction sont indisponibles.") from exc
+            policy = control["policy"]
+            result = {**result, "mode": "policy_guarded", "operating_policy": policy,
+                      "automatic_worker": control["worker"],
+                      "automatic_execution_enabled": policy["mode"] == "automatic" and not policy["suspended"],
+                      "semantics": {**result.get("semantics", {}),
+                          "action": "Demarrage de PHP confirme arrete selon le mode, les autorisations et les controles techniques.",
+                          "evaluation": "Une evaluation active exige une approbation humaine valide pour cet incident."}}
+        return result
 
     @application.get("/api/v1/remediations", tags=["Remediation"])
     async def remediations_list(request: Request, response: Response,

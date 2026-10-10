@@ -1,0 +1,11 @@
+[Unit]
+Description=Examiner periodiquement les incidents selon la politique Moodle
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=30s
+AccuracySec=1s
+Unit=moodle-remediation-worker.service
+
+[Install]
+WantedBy=timers.target

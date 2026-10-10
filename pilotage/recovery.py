@@ -174,6 +174,15 @@ class RecoveryStore:
         except ValueError as exc:
             raise RecoveryConflict(str(exc)) from None
 
+    def public(self, cursor, row, now):
+        return public_request(row, now)
+
+    def transition_guard(self, cursor, row, actor, action, reason, now):
+        pass
+
+    def detail_extra(self, cursor, row, now):
+        return {}
+
     @staticmethod
     def event(cursor, row, actor, action, now, evidence):
         cursor.execute("""INSERT INTO events(request_id,actor_id,actor_name,action,observed_at,revision,evidence_json)
@@ -192,7 +201,7 @@ class RecoveryStore:
             if old is not None:
                 if old["payload_sha256"] != digest:
                     raise RecoveryConflict("Cette reference de demande a deja un contenu different.")
-                return public_request(old, now), False
+                return self.public(cursor, old, now), False
             selection = self.select(scope, snapshot_id, now)
             row = cursor.execute("""INSERT INTO requests(id,scope,snapshot_id,target,reason,actor_id,actor_name,
                 client_key,payload_sha256,status,revision,created_at,updated_at,selected_json)
@@ -200,7 +209,7 @@ class RecoveryStore:
                 (uuid.uuid4().hex, scope, snapshot_id, reason, actor["id"], actor["username"], client_key, digest,
                 now, now, json.dumps(selection, sort_keys=True, separators=(",", ":")))).fetchone()
             self.event(cursor, row, actor, "created", now, selection)
-            return public_request(row, now), True
+            return self.public(cursor, row, now), True
 
     def transition(self, principal, request_id, *, action, revision, reason, confirmed_snapshot_id=None, now=None):
         identifier(request_id)
@@ -223,15 +232,17 @@ class RecoveryStore:
                 raise RecoveryConflict("La confirmation ne correspond pas au point choisi.")
             if (row["status"] == status and row["revision"] == revision + 1
                     and row["decision_actor_id"] == actor["id"] and row["decision_reason"] == reason):
-                return public_request(row, now)
+                return self.public(cursor, row, now)
             if row["revision"] != revision or row["status"] not in (("pending", "approved") if action == "cancel" else ("pending",)):
                 raise RecoveryConflict("La demande a change ; actualiser avant de decider.")
+            self.transition_guard(cursor, row, actor, action, reason, now)
             approval = None
             if action == "approve":
                 approval = self.select(row["scope"], row["snapshot_id"], now)
                 original = json.loads(row["selected_json"])["point"]
                 if any(approval["point"][key] != original[key] for key in ("id", "archived_at", "hostname")):
                     raise RecoveryConflict("Les preuves du point choisi ont change.")
+                approval["approver_version"] = actor["version"]
             until = now + APPROVAL_SECONDS if action == "approve" else None
             updated = cursor.execute("""UPDATE requests SET status=%s,revision=revision+1,updated_at=%s,
                 decision_actor_id=%s,decision_actor_name=%s,decision_reason=%s,decision_at=%s,valid_until=%s,
@@ -239,7 +250,7 @@ class RecoveryStore:
                 now, until, None if approval is None else json.dumps(approval, sort_keys=True), request_id)).fetchone()
             self.event(cursor, updated, actor, status, now, {"reason": reason, "selection": approval,
                 "valid_until": None if until is None else encoded(until), "execution_enabled": False})
-            return public_request(updated, now)
+            return self.public(cursor, updated, now)
 
     def listing(self, *, status=None, limit=10, offset=0, now=None):
         now = timestamp(now)
@@ -249,7 +260,7 @@ class RecoveryStore:
             where, args = ("", ()) if status is None else (" WHERE status=%s", (status,))
             total = cursor.execute("SELECT count(*) AS total FROM requests" + where, args).fetchone()["total"]
             rows = cursor.execute("SELECT * FROM requests" + where + " ORDER BY created_at DESC,id LIMIT %s OFFSET %s", (*args, limit, offset)).fetchall()
-            return {"items": [public_request(row, now) for row in rows], "total": total, "limit": limit,
+            return {"items": [self.public(cursor, row, now) for row in rows], "total": total, "limit": limit,
                     "offset": offset, "has_more": offset + limit < total}
 
     def detail(self, request_id, *, now=None):
@@ -259,6 +270,7 @@ class RecoveryStore:
             if row is None:
                 raise RecoveryNotFound("Demande inconnue.")
             events = cursor.execute("SELECT * FROM events WHERE request_id=%s ORDER BY id DESC LIMIT 100", (request_id,)).fetchall()
-            return {"request": public_request(row, now), "events": [{"id": item["id"], "action": item["action"],
+            return {"request": self.public(cursor, row, now), "events": [{"id": item["id"], "action": item["action"],
                 "by": {"id": item["actor_id"], "username": item["actor_name"]}, "at": encoded(item["observed_at"]),
-                "revision": item["revision"], "evidence": json.loads(item["evidence_json"])} for item in reversed(events)]}
+                "revision": item["revision"], "evidence": json.loads(item["evidence_json"])} for item in reversed(events)],
+                **self.detail_extra(cursor, row, now)}

@@ -1,0 +1,10 @@
+---
+recovery_tests_base_dir: /opt/moodle-recovery-tests
+recovery_tests_python: /opt/moodle-diagnostics/venv/bin/python
+recovery_tests_run_seconds: 840
+recovery_tests_min_free_mb: 1024
+recovery_tests_moodle_base: "{{ moodle_base_dir | default('/opt/moodle') }}"
+recovery_tests_moodle_project: "{{ moodle_compose_project | default('moodle-pilote') }}"
+recovery_tests_catalog_file: /var/lib/moodle-backup-status/catalog.json
+recovery_tests_backup_config: /opt/moodle-pilotage-backup/config.json
+pilotage_database_config_dir: /etc/moodle-pilotage

@@ -12,7 +12,8 @@ export function validateRecoveryRequest(row) {
       || row.target !== 'isolated_test' || !note(row.reason) || !Object.hasOwn(requestLabels, row.status)
       || !integer(row.revision) || row.revision < 1 || !actor(row.requested_by)
       || !date(row.created_at) || !date(row.updated_at) || Date.parse(row.updated_at) < Date.parse(row.created_at)
-      || row.execution?.enabled !== false || row.execution?.status !== 'not_dispatched') fail();
+      ) fail();
+  validateExecution(row.execution);
   const selection = row.selection;
   const point = selection?.point;
   if (selection?.scope !== row.scope || !date(selection.catalog_observed_at) || point?.id !== row.snapshot_id
@@ -34,16 +35,17 @@ export function validateRecoveryRequest(row) {
 }
 
 export function validateRecoveryDocument(kind, value) {
-  if (value?.status !== 'available' || value.mode !== 'approval_only' || value.execution_enabled !== false || !date(value.evaluated_at)) fail();
+  validateEnvelope(value);
   if (kind === 'recovery_requests') {
     if (!Array.isArray(value.items) || !integer(value.total) || !integer(value.limit) || value.limit < 1 || value.limit > 50
         || !integer(value.offset) || value.offset > 10000 || typeof value.has_more !== 'boolean'
         || value.has_more !== (value.offset+value.limit < value.total)
         || value.items.length !== Math.max(0, Math.min(value.limit, value.total-value.offset))) fail();
     const keys = new Set();
-    for (const row of value.items) { validateRecoveryRequest(row); if (keys.has(row.id)) fail(); keys.add(row.id); }
+    for (const row of value.items) { validateRecoveryRequest(row); if (row.execution.enabled !== value.execution_enabled) fail(); if (keys.has(row.id)) fail(); keys.add(row.id); }
   } else {
     validateRecoveryRequest(value.request);
+  if (value.request.execution.enabled !== value.execution_enabled) fail();
     if (!Array.isArray(value.events) || value.events.length > 100) fail();
     let previous = 0;
     for (const event of value.events) {
@@ -53,12 +55,23 @@ export function validateRecoveryDocument(kind, value) {
       previous = event.id;
     }
   }
+  if (value.execution_events !== undefined) {
+    if (!Array.isArray(value.execution_events) || value.execution_events.length > 100) fail();
+    let previous = 0;
+    for (const event of value.execution_events) {
+      if (!integer(event.id) || event.id <= previous || !['queued','started','blocked','finished','cancelled','interrupted'].includes(event.action)
+          || !date(event.at) || !(event.by?.kind === 'human' ? actor(event.by) : event.by?.kind === 'worker' && event.by.id === null && event.by.username === 'worker')
+          || !event.evidence || typeof event.evidence !== 'object') fail();
+      previous = event.id;
+    }
+  }
   return value;
 }
 
 export function validateRecoveryMutation(value) {
-  if (value?.status !== 'available' || value.mode !== 'approval_only' || value.execution_enabled !== false || !date(value.evaluated_at)) fail();
+  validateEnvelope(value);
   validateRecoveryRequest(value.request);
+  if (value.request.execution.enabled !== value.execution_enabled) fail();
   return value;
 }
 
@@ -79,4 +92,39 @@ export function requestKey(crypto = globalThis.crypto) {
 export function requestPath(identifier) {
   if (!id(identifier)) throw new Error('Demande invalide.');
   return '/api/v1/recovery/requests/' + identifier;
+}
+
+export const executionLabels = {not_dispatched:'Non lancé',queued:'En attente de démarrage',running:'Test en cours',
+  succeeded:'Restauration vérifiée',failed:'Test échoué',blocked:'Démarrage bloqué',inconclusive:'Résultat non concluant',cancelled:'Test annulé'};
+function validateEnvelope(value) {
+  if (value?.status !== 'available' || typeof value.execution_enabled !== 'boolean' || !date(value.evaluated_at)
+      || value.mode !== (value.execution_enabled ? 'isolated_test' : 'approval_only')) fail();
+}
+function validateExecution(value) {
+  if (!value || typeof value.enabled !== 'boolean' || !Object.hasOwn(executionLabels,value.status)) fail();
+  if (value.status === 'not_dispatched') return;
+  if (!value.enabled || !id(value.id) || !date(value.queued_at)) fail();
+  const terminal = !['queued','running'].includes(value.status);
+  if ((value.started_at !== null && (!date(value.started_at) || Date.parse(value.started_at)<Date.parse(value.queued_at)))
+      || (terminal ? !date(value.finished_at) || Date.parse(value.finished_at)<Date.parse(value.started_at || value.queued_at) : value.finished_at !== null)
+      || (value.status === 'running' && value.started_at === null)
+      || (value.reason_code !== null && !/^[a-z][a-z0-9_]{0,95}$/.test(value.reason_code))) fail();
+  if (value.report !== null) {
+    const report=value.report;
+    if (!terminal || report.production_changed !== false || !['restore_validated','failed','blocked','inconclusive'].includes(report.status)
+        || !report.cleanup || Object.keys(report.cleanup).length !== 3
+        || ['containers_removed','networks_removed','temporary_files_removed'].some((key)=>typeof report.cleanup[key] !== 'boolean')) fail();
+    for (const key of ['files_verified','tables_verified','rows_verified','courses','users','quizzes']) {
+      if (key in report && (!integer(report[key]) || report[key]>1e12)) fail();
+    }
+    for (const key of ['database_check','login_check','sequence_check','archive_check']) if (key in report && report[key] !== 'passed') fail();
+    if (report.status === 'restore_validated' && (value.status !== 'succeeded' || !Object.values(report.cleanup).every(Boolean) || report.database_check !== 'passed')) fail();
+  }
+  if (value.status === 'succeeded' && value.report?.status !== 'restore_validated') fail();
+}
+export function canStartTest(row, now) {
+  return row.execution?.enabled === true && row.execution.status === 'not_dispatched' && approvalCurrent(row,now);
+}
+export function canCancelRequest(row) {
+  return ['pending','approved'].includes(row.status) && ['not_dispatched','queued'].includes(row.execution.status);
 }

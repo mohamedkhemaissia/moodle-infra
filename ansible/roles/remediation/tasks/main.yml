@@ -69,12 +69,18 @@
     owner: root
     group: root
     mode: '0644'
-  loop: [__init__.py, db.py, schemas.py, migrate.py, worker_auth.py]
+  loop: [__init__.py, db.py, schemas.py, migrate.py, worker_auth.py, auth.py, passwords.py, recovery.py, operating_policy.py]
 
 - name: Verifier si PostgreSQL a ete active pour le pilotage
   ansible.builtin.stat:
     path: "{{ pilotage_database_config_dir }}/active"
   register: pilotage_database_activation
+
+- name: Verifier si les politiques encadrent les corrections
+  ansible.builtin.stat:
+    path: "{{ pilotage_database_config_dir }}/policies-active"
+    follow: false
+  register: remediation_policy_activation
 
 - name: Installer la configuration locale de remediation
   ansible.builtin.template:
@@ -129,3 +135,28 @@
     owner: root
     group: root
     mode: "0755"
+
+- name: Installer la planification du worker de politiques
+  ansible.builtin.template:
+    src: "moodle-remediation-worker.{{ item }}.j2"
+    dest: "/etc/systemd/system/moodle-remediation-worker.{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [service, timer]
+  register: remediation_worker_units
+  when: remediation_policy_activation.stat.exists
+
+- name: Valider les unites du worker
+  ansible.builtin.command:
+    argv: [/usr/bin/systemd-analyze, verify, /etc/systemd/system/moodle-remediation-worker.service, /etc/systemd/system/moodle-remediation-worker.timer]
+  changed_when: false
+  when: remediation_policy_activation.stat.exists
+
+- name: Activer le worker soumis a la politique persistante
+  ansible.builtin.systemd_service:
+    name: moodle-remediation-worker.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ remediation_worker_units.changed | default(false) }}"
+  when: remediation_policy_activation.stat.exists
