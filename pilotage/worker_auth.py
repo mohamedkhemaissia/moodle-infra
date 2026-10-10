@@ -9,7 +9,7 @@ READ_PATH = re.compile(
     r"^/api/v1/(metrics/(?:summary|applications)|storage/health|backups/(?:(?:pilotage/)?summary|catalog)|"
     r"(forecasts/summary|anomalies/(summary|model))|"
     r"incidents(?:/summary|/[1-9][0-9]*(?:/events)?)?|"
-    r"decisions/(?:summary|policies|[1-9][0-9]*)|"
+    r"decisions/(?:summary|policies|[1-9][0-9]*)|policies|"
     r"(?:diagnostics|remediations)(?:/summary|/[0-9a-f]{32})?)$")
 
 

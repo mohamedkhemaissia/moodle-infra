@@ -16,12 +16,13 @@ from diagnostics.policy import Blocked
 from .policy import decision_for_php
 from diagnostics.store import DiagnosticStorageError, strict_json
 from .store import RemediationStore
+from pilotage.operating_policy import PolicyStore, PolicyStorageError, PolicyBlocked, admission
 
 CODE_DIR = Path(__file__).resolve().parent.parent
 CONFIG = CODE_DIR.parent / "config.json"
 
 
-def execute(config, config_path, incident_id, *, project_dir=None, runner_function=None):
+def execute(config, config_path, incident_id, *, project_dir=None, runner_function=None, automatic=False, expected_policy=None):
     identifier = uuid.uuid4().hex
     directory = Path(config["data_dir"])
     store = RemediationStore(directory)
@@ -36,6 +37,15 @@ def execute(config, config_path, incident_id, *, project_dir=None, runner_functi
         try:
             decision = decision_for_php(get_json(config["api_url"] + "/api/v1/decisions/" + str(incident_id)),
                                 incident_id, time.time())
+            if config.get("policy_required",False):
+                policy=PolicyStore().view()["policy"]
+                admission(policy,automatic=automatic)
+                if expected_policy and (policy["revision"],policy["sha256"]) != (expected_policy["revision"],expected_policy["sha256"]):
+                    raise PolicyBlocked("operating_policy_changed")
+                decision["operating_policy"]=policy
+            elif automatic:
+                raise PolicyBlocked("automatic_requires_operating_policy")
+            decision["execution_mode"]="automatic_guarded" if automatic else "manual_guarded"
             if runner_function is None:
                 import ansible_runner
                 runner_function = ansible_runner.run
@@ -53,6 +63,9 @@ def execute(config, config_path, incident_id, *, project_dir=None, runner_functi
                 return True
             with tempfile.TemporaryDirectory(prefix="runner-", dir=directory) as private:
                 os.chmod(private, 0o700)
+                # Root's home can be read-only in the automatic worker's systemd unit.
+                for name in ("ansible-home","tmp","remote-tmp"):
+                    Path(private,name).mkdir(mode=0o700)
                 expected = Path(private) / "expected.json"
                 expected.write_text(json.dumps(decision))
                 runner = runner_function(
@@ -65,7 +78,8 @@ def execute(config, config_path, incident_id, *, project_dir=None, runner_functi
                              "PILOTAGE_DATABASE_CONFIG": os.environ.get("PILOTAGE_DATABASE_CONFIG", ""),
                              "PILOTAGE_SERVICE_TOKEN_FILE": os.environ.get("PILOTAGE_SERVICE_TOKEN_FILE", ""),
                              "PYTHONPATH": str(CODE_DIR), "ANSIBLE_CONFIG": str(CODE_DIR / "remediation" / "project" / "ansible.cfg"),
-                             "ANSIBLE_NOCOLOR": "1", "ANSIBLE_LOCAL_TEMP": private + "/tmp"},
+                             "ANSIBLE_NOCOLOR": "1", "ANSIBLE_HOME":private+"/ansible-home",
+                             "ANSIBLE_LOCAL_TEMP": private + "/tmp", "ANSIBLE_REMOTE_TEMP":private+"/remote-tmp"},
                     settings={"job_timeout": 180, "idle_timeout": 180}, quiet=True,
                     event_handler=event_handler, process_isolation=False)
                 rc, runner_status = runner.rc, runner.status
@@ -78,7 +92,7 @@ def execute(config, config_path, incident_id, *, project_dir=None, runner_functi
                         decision = report["decision"]
                 else:
                     report = {"reason": "runner_failed_or_invalid_report"}
-        except (Blocked, ProbeError) as exc:
+        except (Blocked, ProbeError, PolicyBlocked, PolicyStorageError) as exc:
             status = "blocked"
             report = {"reason": "preflight_revalidation_failed", "detail": str(exc)[:240], "error_type": type(exc).__name__}
         except KeyboardInterrupt:
@@ -91,7 +105,7 @@ def execute(config, config_path, incident_id, *, project_dir=None, runner_functi
             store.finish(identifier, status, time.time(), decision=decision, report=report, events=events,
                          runner_rc=rc, runner_status=runner_status)
         return {"status": status, "run_id": identifier, "incident_id": incident_id,
-                "mode": "manual_guarded", "runner_status": runner_status, "runner_rc": rc,
+                "mode": "automatic_guarded" if automatic else "manual_guarded", "runner_status": runner_status, "runner_rc": rc,
                 "detail_url": config["api_url"] + "/api/v1/remediations/" + identifier}, (0 if status == "completed" else 2)
 
 

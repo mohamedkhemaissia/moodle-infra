@@ -61,7 +61,8 @@ class RecoveryConfigurationTests(unittest.TestCase):
         values=yaml.safe_load((ROOT/'ansible/roles/control_plane/defaults/main.yml').read_text())
         values.update(control_plane_image='api:fixture',control_plane_application_pg_database='moodle',
             control_plane_recovery_requests_enabled=True,control_plane_backup_status_enabled=True,control_plane_backup_catalog_enabled=True,
-            pilotage_database_activation={'stat':{'exists':True}},pilotage_auth_activation={'stat':{'exists':True}})
+            pilotage_database_activation={'stat':{'exists':True}},pilotage_auth_activation={'stat':{'exists':True}},
+            pilotage_policy_activation={'stat':{'exists':False}})
         env=jinja2.Environment(undefined=jinja2.StrictUndefined)
         env.filters.update(to_json=json.dumps,bool=bool,ternary=lambda c,y,n:y if c else n)
         config=yaml.safe_load(env.from_string((ROOT/'ansible/roles/control_plane/templates/compose.yml.j2').read_text()).render(values))
