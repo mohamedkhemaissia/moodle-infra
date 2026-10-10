@@ -10,7 +10,7 @@ RESOURCE_RULES = {
 }
 
 
-def observations(metrics, anomaly, *, prometheus_error=None, anomaly_error=None, model_enabled=True):
+def observations(metrics, anomaly, *, prometheus_error=None, anomaly_error=None, model_enabled=True, applications=None):
     result = {key:Observation(key,"unknown",{"reason":"observation_unavailable"}) for key in DEFINITIONS}
     result["prometheus_unavailable"] = Observation("prometheus_unavailable",
         "triggered" if prometheus_error else "clear", {"reason":prometheus_error or "prometheus_read_successful"})
@@ -73,4 +73,23 @@ def observations(metrics, anomaly, *, prometheus_error=None, anomaly_error=None,
                  "invalid_point_count":len(anomaly.get("invalid_points",[])),"model_id":identifier},context)
             result["statistical_anomaly"] = Observation("statistical_anomaly","unknown",
                 {"reason":anomaly["reason"],"model_id":identifier},context)
+    if applications is not None:
+        try:
+            php = applications["services"]["php_fpm"]
+            age = php["collection"]["scrape_age_seconds"]
+            values = php["metrics"]
+            keys = ("active_processes", "idle_processes", "total_processes", "listen_queue")
+            good = (php["status"] == "available" and php["service_reachable"] is True
+                    and php["collection"]["status"] == "up" and type(age) in (int, float) and 0 <= age <= 30
+                    and all(type(values[k]) in (int, float) and math.isfinite(values[k])
+                            and 0 <= values[k] <= 100000 and values[k] == int(values[k]) for k in keys)
+                    and values["total_processes"] == values["active_processes"] + values["idle_processes"])
+            if good:
+                busy = values["listen_queue"] > 0 and values["idle_processes"] == 0 and values["active_processes"] > 0
+                state = "triggered" if busy else "clear" if values["listen_queue"] == 0 else "hold"
+                result["php_pool_queue"] = Observation("php_pool_queue", state,
+                    {"pool": "www", **{k: values[k] for k in keys}, "scrape_age_seconds": age,
+                     "scope": "file actuelle du pool ; ne determine pas une cause"})
+        except (KeyError, TypeError, ValueError):
+            pass
     return list(result.values())

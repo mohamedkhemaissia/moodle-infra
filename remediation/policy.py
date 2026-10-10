@@ -4,6 +4,8 @@ import math
 from diagnostics.policy import Blocked, timestamp, validate
 from .store import ACTION
 
+PROFILE_ACTION = "apply_php_fpm_profile"
+
 
 def decision_for_php(document, incident_id, now, *, expected=None):
     try:
@@ -17,6 +19,22 @@ def decision_for_php(document, incident_id, now, *, expected=None):
         return current
     except (KeyError, TypeError, ValueError) as exc:
         raise Blocked("invalid_moodle_evidence") from exc
+
+
+def decision_for_correction(document, incident_id, now, *, expected=None):
+    if document.get("decision", {}).get("signal_key") == "moodle_https":
+        return decision_for_php(document, incident_id, now, expected=expected)
+    current = validate(document, incident_id, now, expected=expected)
+    decision = document["decision"]
+    evidence = decision.get("evidence", {})
+    if (decision.get("signal_key") != "php_pool_queue" or current["action_id"] != "diagnose_php_pool"
+            or evidence.get("pool") != "www" or evidence.get("idle_processes") != 0
+            or type(evidence.get("listen_queue")) not in (int, float) or not 0 < evidence["listen_queue"] <= 100000
+            or type(evidence.get("active_processes")) not in (int, float) or not 0 < evidence["active_processes"] <= 100000
+            or evidence.get("active_processes") != evidence.get("total_processes")):
+        raise Blocked("unsupported_pool_incident")
+    current.update(correction_action=PROFILE_ACTION, execution_mode="manual_guarded")
+    return current
 
 
 def metric_gate(document, now, *, available):

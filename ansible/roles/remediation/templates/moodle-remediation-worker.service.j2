@@ -23,6 +23,9 @@ ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=true
 ReadWritePaths={{ remediation_data_dir }}
+{% if remediation_php_profiles_enabled | bool %}
+ReadWritePaths=/opt/moodle/config/php/zz-moodle.conf
+{% endif %}
 
 [Install]
 WantedBy=multi-user.target

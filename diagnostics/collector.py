@@ -161,12 +161,14 @@ def collect(config, incident_id, expected):
     decision = validate(document, incident_id, time.time(), expected=expected)
     checks = {}
     profile = decision["profile"]
-    if profile in ("collection", "resources", "moodle"):
+    if profile in ("collection", "resources", "moodle", "php_pool"):
         checks["prometheus_targets"] = observe(lambda: targets(config))
         checks["linux_history"] = observe(lambda: history(config, int(time.time()) // 30 * 30))
         checks["service_states"] = services()
-    if profile in ("resources", "moodle"):
+    if profile in ("resources", "moodle", "php_pool"):
         checks["current_metrics"] = observe(lambda: get_json(config["api_url"] + "/api/v1/metrics/summary"))
+    if profile == "php_pool":
+        checks["application_metrics"] = observe(lambda: get_json(config["api_url"] + "/api/v1/metrics/applications"))
     if profile == "model":
         checks["anomaly_model"] = observe(lambda: get_json(config["api_url"] + "/api/v1/anomalies/model"))
     return {"status": "completed", "mode": "read_only", "decision": decision,

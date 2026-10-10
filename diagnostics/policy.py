@@ -3,13 +3,15 @@ import math
 import re
 from datetime import datetime
 
-POLICY_SHA = "96246d2d412bdf0b6ff739ea558e18e0ff1107c3d2cf87248ac785429d1ac529"
+POLICY_VERSION = "1.1.0"
+POLICY_SHA = "d70076762e038a0d7758838d0f3d706258a3b4306707b832a893f66c9faadf52"
 ACTIONS = {
     "inspect_prometheus": "collection", "inspect_linux_collection": "collection",
     "inspect_moodle_collection": "collection", "wait_contiguous_history": "collection",
     "inspect_anomaly_model": "model", "diagnose_moodle_https": "moodle",
     "diagnose_disk_usage": "resources", "diagnose_memory_usage": "resources",
     "diagnose_cpu_usage": "resources", "investigate_statistical_anomaly": "resources",
+    "diagnose_php_pool": "php_pool",
 }
 
 
@@ -37,7 +39,7 @@ def validate(document, incident_id, now, *, expected=None):
             raise ValueError("no_current_recommendation")
         if action["kind"] != "diagnostic_recommendation" or action["executable"] is not False or action["id"] not in ACTIONS:
             raise ValueError("unsupported_action")
-        if document["policy_sha256"] != POLICY_SHA or d["policy_sha256"] != POLICY_SHA or d["policy_version"] != "1.0.0":
+        if document["policy_sha256"] != POLICY_SHA or d["policy_sha256"] != POLICY_SHA or d["policy_version"] != POLICY_VERSION:
             raise ValueError("unsupported_policy")
         start, expiry = timestamp(d["input_evaluated_at"]), timestamp(d["valid_until"])
         if not math.isfinite(now) or start > now or expiry <= now or not 0 < expiry - start <= 90 or now - start > 90:
@@ -45,7 +47,7 @@ def validate(document, incident_id, now, *, expected=None):
         if not re.fullmatch(r"[0-9a-f]{64}", d["decision_id"]):
             raise ValueError("invalid_decision_id")
         result = {"incident_id": incident_id, "action_id": action["id"], "profile": ACTIONS[action["id"]],
-                  "decision_id": d["decision_id"], "policy_sha256": POLICY_SHA, "policy_version": "1.0.0",
+                  "decision_id": d["decision_id"], "policy_sha256": POLICY_SHA, "policy_version": POLICY_VERSION,
                   "context": d["context"], "input_evaluated_at": d["input_evaluated_at"], "valid_until": d["valid_until"]}
         if expected and any(result[key] != expected[key] for key in ("incident_id", "action_id", "policy_sha256", "context")):
             raise ValueError("recommendation_changed")

@@ -2,6 +2,7 @@ import { validateBackupDocument, validatePilotageBackupDocument } from './backup
 import { validateApplications } from './applicationMetrics.js';
 import { validateCatalog } from './backupCatalog.js';
 import { validateRecoveryDocument } from './recoveryRequests.js';
+import { validateProfiles } from './phpProfiles.js';
 export const FRESH_MS = 60_000;
 export const RESOURCES = [
   ['cpu_usage_percent', 'CPU utilisé'],
@@ -16,6 +17,7 @@ const percent = (x) => finite(x) && x >= 0 && x <= 100;
 const fail = () => { throw new Error('La réponse reçue est inexploitable.'); };
 
 export function validateDocument(kind, value) {
+  if (kind === 'php_profiles') return validateProfiles(value);
   if (kind === 'recovery_requests' || kind === 'recovery_request') return validateRecoveryDocument(kind, value);
   if (kind === 'backup_catalog') return validateCatalog(value);
   if (kind === 'applications') return validateApplications(value);
@@ -103,7 +105,9 @@ export function decisionCurrent(value, now) {
 
 export function recoveryProven(value) {
   return value?.status === 'completed' && value.report?.action_dispatched === true &&
-    value.report?.recovered === true && value.report?.reason === 'https_and_new_probe_confirmed';
+    value.report?.recovered === true && (
+      value.report?.reason === 'https_and_new_probe_confirmed' ||
+      (value.action_id === 'apply_php_fpm_profile' && value.report?.reason === 'profile_reload_queue_and_https_confirmed'));
 }
 
 export function requestPath(kind, { status = '', offset = 0, incidentId = null, runId = null } = {}) {

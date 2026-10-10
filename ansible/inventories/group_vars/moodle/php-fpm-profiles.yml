@@ -1,0 +1,3 @@
+---
+remediation_php_profiles_enabled: true
+control_plane_application_metrics_enabled: true

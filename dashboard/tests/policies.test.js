@@ -58,7 +58,8 @@ test('un lecteur voit le mode et l historique sans controles de modification', a
     assert.match(reader, /Assisté/); assert.match(reader, /approbation requise/);
     assert.doesNotMatch(reader, /Enregistrer la politique|Approuver le démarrage/);
     const admin = renderToStaticMarkup(React.createElement(PolicyView, { data, admin: true, form: form(), approval: { incident: '', reason: '' }, busy: true }));
-    assert.match(admin, /disabled/); assert.match(admin, /J’autorise le worker/);
+    assert.match(admin, /disabled/); assert.match(admin, /J’autorise la remise en service/);
+    assert.match(admin, /changements de profil PHP-FPM/);
     assert.match(admin, /90 secondes/);
   } finally { await server.close(); }
 });

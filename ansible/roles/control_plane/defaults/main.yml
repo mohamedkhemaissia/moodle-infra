@@ -80,6 +80,8 @@ control_plane_source_files:
   - app/models.py
   - app/prometheus.py
   - app/application_metrics.py
+  - app/php_profiles.py
+  - tests/test_php_profiles_api.py
   - tests/test_application_metrics.py
   - tests/test_api.py
   - tests/test_auth_api.py

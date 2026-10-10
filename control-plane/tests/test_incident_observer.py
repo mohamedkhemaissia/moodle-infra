@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.incident_observer import poll, writer_lock
 from app.incident_signals import observations
-from app.incidents import IncidentStore, IncidentStorageError
+from app.incidents import IncidentStore, IncidentStorageError, DEFINITIONS
 from app.prometheus import PrometheusUnavailable
 import test_anomalies as model_fixtures
 
@@ -218,7 +218,7 @@ runpy.run_module('app.incident_observer',run_name='__main__')
             result=subprocess.run([sys.executable,"-B","-m","app.incident_observer","--once"],
                                   env=environment,capture_output=True,text=True,timeout=12)
             self.assertEqual(result.returncode,0,result.stderr)
-            self.assertEqual(json.loads(result.stdout)["processed_signals"],10)
+            self.assertEqual(json.loads(result.stdout)["processed_signals"],len(DEFINITIONS))
             self.assertTrue((Path(directory)/"incidents.sqlite3").exists())
             health=subprocess.run([sys.executable,"-B","-m","app.incident_observer","--healthcheck"],
                                   env=environment,capture_output=True,text=True,timeout=30)

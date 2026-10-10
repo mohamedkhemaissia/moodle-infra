@@ -1,0 +1,13 @@
+---
+- name: Preparer les profils PHP-FPM et publier leur suivi
+  hosts: moodle
+  become: true
+  gather_facts: false
+  vars:
+    # Les essais de panne et de charge restent dans la recette finale.
+    remediation_test_pattern: "test_fpm_profiles.py"
+  roles:
+    - diagnostics
+    - remediation
+    - control_plane
+    - dashboard
