@@ -1,0 +1,4 @@
+---
+operating_policies_base_dir: /opt/moodle-operating-policies
+operating_policies_python: /opt/moodle-diagnostics/venv/bin/python
+pilotage_database_config_dir: /etc/moodle-pilotage

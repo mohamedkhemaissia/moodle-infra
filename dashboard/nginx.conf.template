@@ -60,6 +60,27 @@ http {
             add_header X-Content-Type-Options nosniff always;
         }
 
+        location = /api/v1/policies {
+            limit_except GET POST { deny all; }
+            proxy_pass ${API_ORIGIN};
+            add_header Cache-Control no-store always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
+        location = /api/v1/policies/events {
+            limit_except GET { deny all; }
+            proxy_pass ${API_ORIGIN};
+            add_header Cache-Control no-store always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
+        location = /api/v1/policies/approvals {
+            limit_except POST { deny all; }
+            proxy_pass ${API_ORIGIN};
+            add_header Cache-Control no-store always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
         location = /api/v1/recovery/requests {
             limit_except GET POST { deny all; }
             proxy_pass ${API_ORIGIN};
@@ -74,7 +95,7 @@ http {
             add_header X-Content-Type-Options nosniff always;
         }
 
-        location ~ "^/api/v1/recovery/requests/[0-9a-f]{32}/(approve|reject|cancel)$" {
+        location ~ "^/api/v1/recovery/requests/[0-9a-f]{32}/(approve|reject|cancel|execute)$" {
             limit_except POST { deny all; }
             proxy_pass ${API_ORIGIN};
             add_header Cache-Control no-store always;

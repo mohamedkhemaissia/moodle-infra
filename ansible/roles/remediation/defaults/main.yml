@@ -13,6 +13,9 @@ remediation_files:
   - action.py
   - run.py
   - initialize.py
+  - automatic.py
+  - tests/test_automatic.py
+  - tests/test_operating_guard.py
   - project/ansible.cfg
   - project/recover-php.yml
   - tests/test_remediation.py

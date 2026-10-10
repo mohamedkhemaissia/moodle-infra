@@ -87,7 +87,7 @@ class RecoveryRequestAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.transition_input['confirmed_snapshot_id'],'b'*64)
         for action in ('reject','cancel'):
             self.assertEqual((await self.client.post(root+'/'+action,headers=self.headers,json=body)).status_code,200)
-        self.assertEqual((await self.client.post(root+'/execute',headers=self.headers,json={})).status_code,404)
+        self.assertEqual((await self.client.post(root+'/execute',headers=self.headers,json=dict(revision=1,confirmed_snapshot_id='b'*64))).status_code,503)
         self.assertEqual((await self.client.request('DELETE',root,headers=self.headers,json={})).status_code,415)
 
     async def test_conflict_revoked_session_missing_record_and_storage_failure_have_safe_status(self):
@@ -111,3 +111,23 @@ class RecoveryRequestAPITests(unittest.IsolatedAsyncioTestCase):
 
 
 if __name__=='__main__': unittest.main()
+
+class ExecutionAPITests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp=RecoveryRequestAPITests.asyncSetUp
+    login=RecoveryRequestAPITests.login
+    async def test_explicit_execution_queues_idempotently_without_command_inputs(self):
+        await self.login()
+        self.app.state.recovery_execution_enabled=True;self.store.execution_enabled=True
+        calls=[]
+        def enqueue(principal,identifier,**kwargs):calls.append((principal,identifier,kwargs));return {'id':identifier},len(calls)==1
+        self.store.enqueue=enqueue
+        path=self.path+'/'+'a'*32+'/execute';body={'revision':2,'confirmed_snapshot_id':'b'*64}
+        response=await self.client.post(path,headers=self.headers,json=body)
+        self.assertEqual(response.status_code,202);self.assertTrue(response.json()['execution_enabled'])
+        self.assertEqual(response.json()['mode'],'isolated_test');self.assertEqual(calls[0][2],body)
+        self.assertEqual((await self.client.post(path,headers=self.headers,json=body)).status_code,200)
+        for change in ({'path':'/opt/moodle'},{'target':'production'},{'command':'docker stop php'},{'revision':True}):
+            self.assertEqual((await self.client.post(path,headers=self.headers,json={**body,**change})).status_code,422)
+        self.auth.user['role']='reader'
+        self.assertEqual((await self.client.post(path,headers=self.headers,json=body)).status_code,403)
+        self.assertEqual(len(calls),2)

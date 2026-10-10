@@ -44,6 +44,7 @@ class CatalogConfigurationTests(unittest.TestCase):
                       control_plane_application_pg_database='moodle',
                       control_plane_backup_status_enabled=True, control_plane_backup_catalog_enabled=True,
                       pilotage_auth_activation={'stat': {'exists': False}},
+                      pilotage_policy_activation={'stat': {'exists': False}},
                       pilotage_database_activation={'stat': {'exists': False}})
         doc = yaml.safe_load(self.render('ansible/roles/control_plane/templates/compose.yml.j2', values))
         api = doc['services']['api']

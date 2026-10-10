@@ -1,0 +1,11 @@
+---
+- name: Administrer les politiques et proteger les periodes d evaluation
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - operating_policies
+    - remediation
+    - pilotage_backup
+    - control_plane
+    - dashboard

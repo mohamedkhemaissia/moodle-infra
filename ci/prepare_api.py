@@ -27,6 +27,8 @@ SHARED = {
     'pilotage/worker_auth.py': 'pilotage/worker_auth.py',
     'pilotage/recovery.py': 'pilotage/recovery.py',
     'pilotage/recovery_cli.py': 'pilotage/recovery_cli.py',
+    'pilotage/recovery_execution.py': 'pilotage/recovery_execution.py',
+    'pilotage/operating_policy.py': 'pilotage/operating_policy.py',
 }
 BASE_FILES = ('Dockerfile', '.dockerignore', 'requirements-lock.txt')
 

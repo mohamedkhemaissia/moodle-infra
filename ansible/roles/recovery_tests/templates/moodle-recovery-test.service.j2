@@ -1,0 +1,26 @@
+[Unit]
+Description=Tests de restauration Moodle et pilotage dans des copies isolees
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+WorkingDirectory={{ recovery_tests_base_dir }}
+ExecStart={{ recovery_tests_python }} -B -m recovery_tests.worker
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+TimeoutStartSec=1110
+TimeoutStopSec=150
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/moodle-recovery-tests /run/lock
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=512M
+CPUQuota=50%
+Nice=10

@@ -36,3 +36,8 @@
 .recovery-history li { padding: 6px 0; }
 .recovery-history strong { color: #e6e8ef; font-weight: 500; }
 .recovery-history span { display: block; }
+
+.recovery-result { padding: 18px; margin-top: 20px; background: #191c24; border: 1px solid #2c2e33; border-radius: 6px; }
+.recovery-result dl { display: grid; grid-template-columns: repeat(auto-fit,minmax(130px,1fr)); gap: 14px; }
+.recovery-result dt { color: #b5b9c6; font-size: .85rem; }
+.recovery-result dd { margin: 6px 0 0; color: #fff; font-size: 1.25rem; }

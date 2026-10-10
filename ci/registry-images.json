@@ -1,0 +1,13 @@
+{
+  "format": "moodle-ci-registry-images-v1",
+  "verified_at": "2026-10-09T21:47:33.960249+00:00",
+  "images": {
+    "postgres:16.15-bookworm@sha256:efedf3595f1d6f415c08568ba171029bf54052e754cc9f030e3f2412b21f3d67": "public.ecr.aws/docker/library/postgres:16.15-bookworm@sha256:efedf3595f1d6f415c08568ba171029bf54052e754cc9f030e3f2412b21f3d67",
+    "php:8.3.35-fpm-bookworm@sha256:536a1188a926efe7e6f927b7ca01f3a043c63d0a527567c6d4d3bf9fbd637866": "public.ecr.aws/docker/library/php:8.3.35-fpm-bookworm@sha256:536a1188a926efe7e6f927b7ca01f3a043c63d0a527567c6d4d3bf9fbd637866",
+    "httpd:2.4.68@sha256:03f858efb82c25cb0f9962946615cdcdaf26927cb971722149b563197cfd0fdd": "public.ecr.aws/docker/library/httpd:2.4.68@sha256:03f858efb82c25cb0f9962946615cdcdaf26927cb971722149b563197cfd0fdd",
+    "python:3.12.15-slim-bookworm": "public.ecr.aws/docker/library/python:3.12.15-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
+    "node:24.21.0-alpine3.24": "public.ecr.aws/docker/library/node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1",
+    "nginx:1.30.5-alpine3.24": "public.ecr.aws/docker/library/nginx:1.30.5-alpine3.24@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94",
+    "prom/prometheus:v3.13.4": "quay.io/prometheus/prometheus:v3.13.4@sha256:87861b8cf91579109319ebc300f3f1060e6da9c05d6ae8ad15a20c879e84e32e"
+  }
+}

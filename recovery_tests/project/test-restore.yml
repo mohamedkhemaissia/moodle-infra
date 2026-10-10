@@ -1,0 +1,21 @@
+---
+- name: Verifier la restauration dans un environnement isole
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Restaurer la copie et verifier ses preuves fonctionnelles
+      ansible.builtin.command:
+        argv:
+          - /opt/moodle-diagnostics/venv/bin/python
+          - -B
+          - -m
+          - recovery_tests.operation
+          - --job-id
+          - "{{ recovery_test_job_id }}"
+        chdir: /opt/moodle-recovery-tests
+      environment:
+        PYTHONPATH: /opt/moodle-recovery-tests
+        PYTHONDONTWRITEBYTECODE: '1'
+      changed_when: false
+      no_log: true

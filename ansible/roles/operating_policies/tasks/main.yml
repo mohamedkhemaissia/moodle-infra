@@ -1,0 +1,65 @@
+---
+- name: Valider les dependances des politiques
+  ansible.builtin.assert:
+    that:
+      - operating_policies_base_dir is match('^/opt/[a-zA-Z0-9_-]+$')
+      - control_plane_decisions_enabled | bool
+      - control_plane_incidents_enabled | bool
+      - control_plane_remediation_enabled | bool
+
+- name: Verifier l activation des comptes PostgreSQL
+  ansible.builtin.stat:
+    path: "{{ pilotage_database_config_dir }}/auth-active"
+    follow: false
+  register: operating_policies_auth
+
+- name: Exiger les comptes du pilotage
+  ansible.builtin.assert:
+    that: operating_policies_auth.stat.isreg | default(false)
+    fail_msg: "Activer les comptes du pilotage avant les politiques."
+
+- name: Creer les repertoires des politiques
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ operating_policies_base_dir }}"
+    - "{{ operating_policies_base_dir }}/pilotage"
+    - "{{ operating_policies_base_dir }}/pilotage/tests"
+
+- name: Installer le stockage et les controles des politiques
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../pilotage/{{ item }}"
+    dest: "{{ operating_policies_base_dir }}/pilotage/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [__init__.py, db.py, schemas.py, auth.py, passwords.py, recovery.py, operating_policy.py, policy_cli.py, tests/test_operating_policy.py]
+  register: operating_policies_sources
+
+- name: Verifier les modes approbations et suspensions avec des fixtures
+  ansible.builtin.command:
+    argv: ["{{ operating_policies_python }}", -B, -m, unittest, discover, -s, pilotage/tests, -p, test_operating_policy.py, -q]
+    chdir: "{{ operating_policies_base_dir }}"
+  changed_when: false
+  when: operating_policies_sources.changed
+
+- name: Initialiser les politiques en observation sans changer les comptes ni les incidents
+  ansible.builtin.command:
+    argv: ["{{ operating_policies_python }}", -B, -m, pilotage.policy_cli]
+    chdir: "{{ operating_policies_base_dir }}"
+  environment:
+    PILOTAGE_DATABASE_CONFIG: "{{ pilotage_database_config_dir }}/database.json"
+  register: operating_policies_initialization
+  changed_when: (operating_policies_initialization.stdout | from_json).changed
+
+- name: Conserver le controle des politiques pour les prochains deploiements
+  ansible.builtin.copy:
+    content: "Politiques versionnees et approbations du schema pilotage_policy.\n"
+    dest: "{{ pilotage_database_config_dir }}/policies-active"
+    owner: root
+    group: '10001'
+    mode: '0640'

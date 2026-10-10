@@ -1,0 +1,3 @@
+---
+control_plane_recovery_requests_enabled: true
+control_plane_recovery_execution_enabled: true
