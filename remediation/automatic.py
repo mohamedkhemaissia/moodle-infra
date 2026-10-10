@@ -22,7 +22,8 @@ def once(config, config_path, *, store=None, reader=get_json, executor=execute):
         if summary.get("status") != "available" or summary.get("snapshot_usable") is not True or not isinstance(summary.get("decisions"),list):
             raise PolicyBlocked("observation_unusable")
         for decision in summary["decisions"]:
-            if decision.get("signal_key") != "moodle_https" or decision.get("status") != "recommendation": continue
+            if decision.get("signal_key") not in ("moodle_https", "php_pool_queue") or decision.get("status") != "recommendation": continue
+            if decision.get("signal_key") == "php_pool_queue" and not config.get("php_profiles_enabled", False): continue
             document={**summary,"decision":decision}; document.pop("decisions")
             selected=store.reserve_worker(document)
             if selected is None: continue

@@ -25,6 +25,7 @@ DEFINITIONS = {
     "anomaly_model": ("Modele d anomalies indisponible", "data_quality", "warning"),
     "analysis_history": ("Historique insuffisant pour l analyse des ressources", "data_quality", "warning"),
     "statistical_anomaly": ("Observation atypique des ressources", "statistical", "warning"),
+    "php_pool_queue": ("File d'attente du pool PHP-FPM", "capacity", "warning"),
 }
 STATES = ("triggered", "clear", "hold", "unknown")
 

@@ -31,6 +31,9 @@ dashboard_source_files:
   - src/RecoveryRequests.jsx
   - src/recoveryRequests.js
   - src/ApplicationServices.jsx
+  - src/PHPProfiles.jsx
+  - src/phpProfiles.js
+  - tests/phpProfiles.test.js
   - src/applicationMetrics.js
   - src/backups.js
   - src/backups.css

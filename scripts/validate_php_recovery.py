@@ -16,7 +16,7 @@ API = "http://127.0.0.1:8000"
 CONFIG = Path("/opt/moodle-remediation/config.json")
 CODE = Path("/opt/moodle-remediation/code")
 WORKER = "/usr/local/sbin/moodle-remediate"
-POLICY_SHA = "96246d2d412bdf0b6ff739ea558e18e0ff1107c3d2cf87248ac785429d1ac529"
+POLICY_SHA = "d70076762e038a0d7758838d0f3d706258a3b4306707b832a893f66c9faadf52"
 
 
 class Refused(Exception):

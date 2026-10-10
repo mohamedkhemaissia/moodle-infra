@@ -13,6 +13,7 @@ from .application_metrics import summary as application_metrics_summary, queries
 from .auth import Settings as AuthSettings, install as install_auth
 from .recovery_requests import install as install_recovery_requests
 from .operating_policy import install as install_operating_policy
+from .php_profiles import read_status as read_php_profiles
 from .backup_catalog_status import select_point
 from .backups import read_summary as read_backup_summary, read_pilotage_summary, read_catalog
 from pilotage.auth import AuthStore, AuthStorageError
@@ -155,7 +156,7 @@ def create_app(
     application = FastAPI(
         title="Pilotage Moodle",
         description="Supervision, analyses experimentales et historique des incidents observes du pilote Moodle.",
-        version="0.14.0",
+        version="0.15.0",
         lifespan=lifespan,
     )
     install_auth(application, authentication)
@@ -164,7 +165,7 @@ def create_app(
 
     @application.get("/api/v1/health", tags=["Sante"])
     async def health():
-        return {"status": "ok", "service": "moodle-control-plane", "version": "0.14.0"}
+        return {"status": "ok", "service": "moodle-control-plane", "version": "0.15.0"}
 
     @application.get("/api/v1/metrics/applications", tags=["Supervision"])
     async def application_metrics(request: Request, response: Response):
@@ -418,9 +419,14 @@ def create_app(
                       "automatic_worker": control["worker"],
                       "automatic_execution_enabled": policy["mode"] == "automatic" and not policy["suspended"],
                       "semantics": {**result.get("semantics", {}),
-                          "action": "Demarrage de PHP confirme arrete selon le mode, les autorisations et les controles techniques.",
+                          "action": "Remise en service de PHP arrete ou profil PHP-FPM prevalide selon les autorisations et les controles techniques.",
                           "evaluation": "Une evaluation active exige une approbation humaine valide pour cet incident."}}
         return result
+
+    @application.get("/api/v1/php-fpm/profiles", tags=["Remediation"])
+    async def php_profiles(response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        return await asyncio.to_thread(read_php_profiles, remediation_directory, datetime.now(timezone.utc).timestamp())
 
     @application.get("/api/v1/remediations", tags=["Remediation"])
     async def remediations_list(request: Request, response: Response,

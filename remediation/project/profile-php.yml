@@ -1,0 +1,23 @@
+---
+- name: Profil PHP-FPM autorise et controle apres changement
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Appliquer le profil PHP-FPM et verifier Moodle
+      ansible.builtin.command:
+        argv:
+          - "{{ remediation_python }}"
+          - -B
+          - -m
+          - remediation.fpm_profiles
+          - --config
+          - "{{ remediation_config }}"
+          - --expected
+          - "{{ remediation_expected }}"
+          - --incident-id
+          - "{{ remediation_incident_id | string }}"
+          - --run-id
+          - "{{ remediation_run_id }}"
+      register: profile_result
+      changed_when: (profile_result.stdout | from_json).action_dispatched | default(false)
+      failed_when: profile_result.rc not in [0, 2]

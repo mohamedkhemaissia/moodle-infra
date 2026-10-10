@@ -18,24 +18,24 @@ export function PolicyView({ data, admin, form, change, save, approve, busy, app
       <div><dt>Worker</dt><dd>{workerNames[data.worker.status]}</dd></div></dl>
     <p>Version {policy.revision} · {policy.updated_by} · {date(policy.updated_at)}</p>
     <p className="policy-description">Observation : consultation et diagnostics. Assisté : correction lancée manuellement depuis le serveur.
-      Automatique : démarrage de PHP confirmé arrêté, après vérification de Moodle et de ses dépendances.</p>
+      Automatique : remise en service de PHP arrêté ou application d’un profil PHP-FPM préparé, selon les mesures et les ressources disponibles.</p>
     {admin && <form className="auth-form policy-form" onSubmit={save}>
       <label>Mode de pilotage<select value={form.mode} disabled={busy} onChange={(e) => change('mode', e.target.value)}>
         {Object.entries(MODE_NAMES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="policy-check"><input type="checkbox" checked={form.suspended} disabled={busy} onChange={(e) => change('suspended', e.target.checked)} />Suspendre les nouvelles corrections</label>
       <label className="policy-check"><input type="checkbox" checked={form.evaluation_context} disabled={busy} onChange={(e) => change('evaluation_context', e.target.checked)} />Une évaluation est en cours</label>
       <label>Motif du changement<input required minLength={15} maxLength={500} value={form.reason} disabled={busy} onChange={(e) => change('reason', e.target.value)} /></label>
-      {form.mode === 'automatic' && <label className="policy-check"><input type="checkbox" required checked={form.confirm_automatic} disabled={busy} onChange={(e) => change('confirm_automatic', e.target.checked)} />J’autorise le worker à démarrer PHP confirmé arrêté.</label>}
+      {form.mode === 'automatic' && <label className="policy-check"><input type="checkbox" required checked={form.confirm_automatic} disabled={busy} onChange={(e) => change('confirm_automatic', e.target.checked)} />J’autorise la remise en service de PHP arrêté et les changements de profil PHP-FPM préparés, après vérification.</label>}
       <button className="refresh-button" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer la politique'}</button>
     </form>}
     {admin && policy.evaluation_context && !policy.suspended && policy.mode !== 'observation' && <details className="account-details">
       <summary>Approuver une intervention pendant l’évaluation</summary>
-      <p>L’approbation concerne un incident d’indisponibilité Moodle et expire avec ses observations, en 90 secondes au maximum.
+      <p>L’approbation concerne la correction proposée pour un incident Moodle ou une file d’attente PHP-FPM et expire avec ses observations, en 90 secondes au maximum.
         En mode assisté, l’administrateur lance ensuite la correction depuis le serveur.</p>
       <form className="auth-form policy-form" onSubmit={approve}>
-        <label>Identifiant de l’incident Moodle<input type="number" required min={1} step={1} value={approval.incident} disabled={busy} onChange={(e) => changeApproval('incident', e.target.value)} /></label>
+        <label>Identifiant de l’incident<input type="number" required min={1} step={1} value={approval.incident} disabled={busy} onChange={(e) => changeApproval('incident', e.target.value)} /></label>
         <label>Motif d’approbation<input required minLength={15} maxLength={500} value={approval.reason} disabled={busy} onChange={(e) => changeApproval('reason', e.target.value)} /></label>
-        <button className="refresh-button" disabled={busy}>Approuver le démarrage de PHP arrêté</button>
+        <button className="refresh-button" disabled={busy}>Approuver l’intervention proposée</button>
       </form></details>}
     <h3 className="policy-history-heading">Historique des politiques</h3>
     <p>{data.events.length} événements affichés sur {data.eventTotal}.</p>

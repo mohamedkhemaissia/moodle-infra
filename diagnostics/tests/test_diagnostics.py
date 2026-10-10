@@ -24,7 +24,7 @@ def recommendation(now=None, incident_id=1):
     return {"status": "available", "mode": "simulation", "snapshot_usable": True,
             "policy_sha256": POLICY_SHA, "decision": {
                 "incident_id": incident_id, "incident_status": "open", "latest_state": "triggered",
-                "status": "recommendation", "policy_version": "1.0.0", "policy_sha256": POLICY_SHA,
+                "status": "recommendation", "policy_version": "1.1.0", "policy_sha256": POLICY_SHA,
                 "input_evaluated_at": date(stamp), "valid_until": date(stamp + 90),
                 "decision_id": "a" * 64, "context": "model:test",
                 "recommended_action": {"id": "wait_contiguous_history", "kind": "diagnostic_recommendation", "executable": False}}}

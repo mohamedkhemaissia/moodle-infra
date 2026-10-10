@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+cd {{ (remediation_base_dir ~ '/code') | quote }}
+exec /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 PYTHONNOUSERSITE=1 \
+  PILOTAGE_DATABASE_CONFIG={{ (pilotage_database_config_dir ~ '/database.json') | quote }} \
+  PILOTAGE_SERVICE_TOKEN_FILE={{ (pilotage_database_config_dir ~ '/worker-token') | quote }} \
+  {{ remediation_python | quote }} -B -m remediation.fpm_profiles \
+  --config {{ (remediation_base_dir ~ '/config.json') | quote }} "$@"

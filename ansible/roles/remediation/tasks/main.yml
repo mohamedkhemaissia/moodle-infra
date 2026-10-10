@@ -6,6 +6,7 @@
       - remediation_data_dir is match('^/var/lib/[^/]+$')
       - remediation_data_dir == control_plane_remediation_data_dir
       - remediation_data_dir != control_plane_diagnostics_data_dir
+      - not (remediation_php_profiles_enabled | bool) or (control_plane_application_metrics_enabled | bool)
       - control_plane_remediation_enabled | bool
       - control_plane_decisions_enabled | bool
     fail_msg: "Indiquer un journal separe et activer le moteur de decision."
@@ -100,6 +101,8 @@
       - discover
       - -s
       - remediation/tests
+      - -p
+      - "{{ remediation_test_pattern }}"
       - -q
     chdir: "{{ remediation_base_dir }}/code"
   environment:
@@ -135,6 +138,33 @@
     owner: root
     group: root
     mode: "0755"
+
+- name: Installer la consultation des profils PHP-FPM
+  ansible.builtin.template:
+    src: moodle-fpm-profiles.j2
+    dest: /usr/local/sbin/moodle-fpm-profiles
+    owner: root
+    group: root
+    mode: "0755"
+  when: remediation_php_profiles_enabled | bool
+
+- name: Preparer les profils avec PHP sans changer le pool en service
+  ansible.builtin.command:
+    argv:
+      - "{{ remediation_python }}"
+      - -B
+      - -m
+      - remediation.fpm_profiles
+      - --config
+      - "{{ remediation_base_dir }}/config.json"
+      - --prepare
+    chdir: "{{ remediation_base_dir }}/code"
+  environment:
+    PILOTAGE_DATABASE_CONFIG: "{{ pilotage_database_config_dir }}/database.json"
+    PILOTAGE_SERVICE_TOKEN_FILE: "{{ pilotage_database_config_dir }}/worker-token"
+  register: remediation_profile_preparation
+  changed_when: (remediation_profile_preparation.stdout | from_json).changed | default(false)
+  when: remediation_php_profiles_enabled | bool
 
 - name: Installer la planification du worker de politiques
   ansible.builtin.template:

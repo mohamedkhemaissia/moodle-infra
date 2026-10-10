@@ -143,6 +143,7 @@ services:
       PROMETHEUS_URL: {{ control_plane_prometheus_url | to_json }}
       MAX_SCRAPE_AGE_SECONDS: {{ control_plane_max_scrape_age_seconds | string | to_json }}
       INCIDENTS_DIR: /var/lib/moodle-incidents
+      APPLICATION_METRICS_ENABLED: {{ (control_plane_application_metrics_enabled | bool) | ternary('true', 'false') | to_json }}
 {% if control_plane_anomalies_enabled | bool %}
       ANOMALIES_DIR: /opt/anomalies
 {% endif %}
