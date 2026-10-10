@@ -267,7 +267,7 @@ class PostgreSQLTests(unittest.TestCase):
                         self.assertEqual(response.status_code, 200, response.text)
                         summary = response.json()
                         self.assertEqual(summary['counts'], {'open': 1, 'resolved': 0})
-                        self.assertEqual(len(summary['signals']), 10)
+                        self.assertEqual(len(summary['signals']), len(DEFINITIONS))
                         for url in ('/api/v1/decisions/summary', '/api/v1/decisions/1'):
                             response = await client.get(url)
                             self.assertEqual(response.status_code, 200, response.text)

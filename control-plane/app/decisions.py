@@ -9,8 +9,14 @@ from datetime import datetime, timezone
 from .incident_signals import RESOURCE_RULES
 from .incidents import DEFINITIONS, POLICY, IncidentStorageError, iso
 
-POLICY_VERSION = "1.0.0"
+POLICY_VERSION = "1.1.0"
 RULES = {
+    "php_pool_queue": {"action":"diagnose_php_pool", "priority":4,
+        "dependencies":["prometheus_unavailable", "linux_collection", "moodle_collection", "moodle_https", "cpu_high", "memory_high", "disk_low"],
+        "title":"Examiner la file PHP-FPM et le profil autorise",
+        "steps":["Verifier la file et les processus du pool avec des observations recentes.",
+                 "Verifier les ressources et les dependances avant un changement de profil.",
+                 "Controler Moodle et revenir au profil precedent si le changement n'est pas confirme."]},
     "prometheus_unavailable": {"action":"inspect_prometheus", "priority":1, "dependencies":[],
         "title":"Verifier la lecture de Prometheus", "steps":["Consulter les cibles et les journaux de Prometheus.", "Verifier la connectivite locale et les delais de reponse."]},
     "linux_collection": {"action":"inspect_linux_collection", "priority":1, "dependencies":["prometheus_unavailable"],
@@ -110,6 +116,13 @@ def evidence_problem(incident, point):
                 or evidence.get("direction") != direction
                 or not (value >= trigger if direction == "upper" else value <= trigger)):
             return "trigger_evidence_inconsistent"
+    elif key == "php_pool_queue":
+        keys=("active_processes","idle_processes","total_processes","listen_queue")
+        if (evidence.get("pool") != "www" or not all(number(evidence.get(k),0,100000) for k in keys)
+                or evidence["listen_queue"] <= 0 or evidence["idle_processes"] != 0
+                or evidence["active_processes"] <= 0 or evidence["active_processes"] != evidence["total_processes"]
+                or not number(evidence.get("scrape_age_seconds"),0,30)):
+            return "pool_evidence_inconsistent"
     elif key == "moodle_https" and evidence.get("probe_success") is not False:
         return "trigger_evidence_inconsistent"
     elif key == "analysis_history":

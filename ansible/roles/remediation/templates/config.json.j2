@@ -5,5 +5,6 @@
   "https_port": 8443,
   "ca_file": "/opt/moodle/tls/lab-ca.crt",
   "restoration_marker": "/opt/moodle/backups/restoration-active",
-  "policy_required": {{ remediation_policy_activation.stat.exists | bool | to_json }}
+  "policy_required": {{ remediation_policy_activation.stat.exists | bool | to_json }},
+  "php_profiles_enabled": {{ remediation_php_profiles_enabled | bool | to_json }}
 }

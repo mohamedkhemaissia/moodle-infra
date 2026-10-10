@@ -21,7 +21,8 @@ NAMES = {service: PROJECT + "-" + service + "-1" for service in ("php", "apache"
 def config_read(path):
     config = strict_json(Path(path).read_text())
     required={"api_url", "data_dir", "hostname", "https_port", "ca_file", "restoration_marker"}
-    if set(config) not in (required,required | {"policy_required"}) or type(config.get("policy_required",False)) is not bool:
+    if (not required <= set(config) or set(config) - required - {"policy_required", "php_profiles_enabled"}
+            or any(type(config.get(k, False)) is not bool for k in ("policy_required", "php_profiles_enabled"))):
         raise ValueError("Configuration de remediation invalide.")
     config["api_url"] = local_url(config["api_url"])
     if config["hostname"] != "moodle-pfe.test" or type(config["https_port"]) is not int or not 1 <= config["https_port"] <= 65535 or \

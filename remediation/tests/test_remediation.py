@@ -31,7 +31,7 @@ def decision(incident_id=1, now=None):
     return {"status": "available", "mode": "simulation", "snapshot_usable": True,
             "policy_sha256": POLICY_SHA, "decision": {
                 "incident_id": incident_id, "signal_key": "moodle_https", "incident_status": "open",
-                "latest_state": "triggered", "status": "recommendation", "policy_version": "1.0.0",
+                "latest_state": "triggered", "status": "recommendation", "policy_version": "1.1.0",
                 "policy_sha256": POLICY_SHA, "input_evaluated_at": iso(stamp), "valid_until": iso(stamp + 90),
                 "context": "policy-v1", "decision_id": "a" * 64, "evidence": {"probe_success": False},
                 "recommended_action": {"id": "diagnose_moodle_https", "kind": "diagnostic_recommendation", "executable": False}}}

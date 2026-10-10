@@ -161,7 +161,7 @@ export default function Operations({ now, refreshToken }) {
           <Badge state={data.status} /></div>
         <p className="ops-caption">Exécution {data.id} · terminée le {date(data.finished_at)}</p>
         {run.kind === 'remediations' ? <p className={`run-verdict ${recoveryProven(data) ? 'good' : 'warning'}`}>
-          {recoveryProven(data) ? 'Récupération confirmée par HTTPS et une nouvelle sonde Prometheus.' :
+          {recoveryProven(data) ? 'Correction confirmée par les contrôles HTTPS et les nouvelles mesures.' :
             data.status === 'blocked' ? 'Action bloquée par les contrôles de remédiation.' : 'Récupération non confirmée dans ce journal.'}</p>
           : <p className="ops-note">Diagnostic terminé : consultez le rapport pour connaître les résultats des contrôles.</p>}
         {data.report?.reason && <p className="ops-caption">Motif enregistré : {data.report.reason}</p>}
