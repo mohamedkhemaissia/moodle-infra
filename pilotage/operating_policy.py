@@ -15,6 +15,8 @@ from .recovery import authorize, note
 SCHEMA = "pilotage_policy"
 APPLICATION_ID = 0x4D504F4C
 ACTION = "start_php_stopped"
+PROFILE_ACTION = "apply_php_fpm_profile"
+ACTIONS = (ACTION, PROFILE_ACTION)
 MODES = ("observation", "assisted", "automatic")
 DDL = (
     "CREATE TABLE schema_info(id INTEGER PRIMARY KEY CHECK(id=1),version INTEGER NOT NULL,application_id INTEGER NOT NULL)",
@@ -112,11 +114,11 @@ def decision_reference(document, incident_id, now):
         d=document["decision"]
         if (type(incident_id) is not int or not 1 <= incident_id <= 9223372036854775807
                 or document["status"] != "available" or document["snapshot_usable"] is not True
-                or d["incident_id"] != incident_id or d["signal_key"] != "moodle_https"
+                or d["incident_id"] != incident_id
                 or d["status"] != "recommendation" or d["incident_status"] != "open"
-                or d["latest_state"] != "triggered" or d["evidence"].get("probe_success") is not False
-                or d["recommended_action"]["id"] != "diagnose_moodle_https"):
+                or d["latest_state"] != "triggered"):
             raise ValueError("signal")
+        correction_action(d)
         for key in ("input_evaluated_at","valid_until"):
             parsed=datetime.fromisoformat(d[key].replace("Z","+00:00"))
             if parsed.tzinfo is None:
@@ -134,6 +136,20 @@ def decision_reference(document, incident_id, now):
         return d,expiry,encoded
     except (ValueError,KeyError,TypeError,OverflowError,AttributeError):
         raise PolicyBlocked("recent_confirmed_moodle_decision_required") from None
+
+
+def correction_action(d):
+    if (d.get("signal_key") == "moodle_https" and d.get("recommended_action", {}).get("id") == "diagnose_moodle_https"
+            and d.get("evidence", {}).get("probe_success") is False):
+        return ACTION
+    e = d.get("evidence", {})
+    if (d.get("signal_key") == "php_pool_queue" and d.get("recommended_action", {}).get("id") == "diagnose_php_pool"
+            and e.get("pool") == "www" and e.get("idle_processes") == 0
+            and type(e.get("listen_queue")) in (int, float) and 0 < e["listen_queue"] <= 100000
+            and type(e.get("active_processes")) in (int, float) and 0 < e["active_processes"] <= 100000
+            and e.get("active_processes") == e.get("total_processes")):
+        return PROFILE_ACTION
+    raise ValueError("Correction non autorisee pour ce signal.")
 
 
 class PolicyStore:
@@ -206,11 +222,11 @@ class PolicyStore:
             worker=cursor.execute("SELECT * FROM worker_state WHERE id=1").fetchone()
             status="unknown" if worker is None else "stale" if not 0 <= now-worker["observed_at"] <= 90 else worker["status"]
             return {"status":"available","evaluated_at":iso(now),"policy":public_policy(row),
-                "allowed_actions":[ACTION],"worker":{"status":status,"last_checked_at":iso(worker["observed_at"]) if worker else None,
+                "allowed_actions":list(ACTIONS),"worker":{"status":status,"last_checked_at":iso(worker["observed_at"]) if worker else None,
                     "run_id":worker["run_id"] if worker else None},
                 "semantics":{"observation":"Mesures et diagnostics ; aucune correction.",
                     "assisted":"Correction lancee manuellement sur le serveur.",
-                    "automatic":"Le worker peut demarrer PHP confirme arrete ; aucune autre correction automatique.",
+                    "automatic":"Demarrage de PHP arrete ou profil PHP-FPM prevalide ; chaque action conserve ses conditions techniques.",
                     "evaluation":"Approbation humaine de l'incident requise avant toute correction pendant une evaluation.",
                     "suspension":"Bloque les nouvelles autorisations ; une action deja autorisee peut finir sa verification."}}
 
@@ -257,9 +273,9 @@ class PolicyStore:
                 return self.approval_public(old,now),False
             d,expiry,encoded=decision_reference(document,incident_id,now)
             approval=cursor.execute("""INSERT INTO approvals VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL) RETURNING *""",
-                (uuid.uuid4().hex,incident_id,ACTION,revision,d["context"],actor["id"],actor["version"],actor["username"],reason,now,expiry,client_key,payload,encoded)).fetchone()
+                (uuid.uuid4().hex,incident_id,correction_action(d),revision,d["context"],actor["id"],actor["version"],actor["username"],reason,now,expiry,client_key,payload,encoded)).fetchone()
             self.event(cursor,actor,"action_approved",row,now,{"approval_id":approval["id"],"incident_id":incident_id,
-                "action_id":ACTION,"reason":reason,"decision_id":d["decision_id"],"valid_until":iso(expiry)})
+                "action_id":correction_action(d),"reason":reason,"decision_id":d["decision_id"],"valid_until":iso(expiry)})
             return self.approval_public(approval,now),True
 
     @staticmethod
@@ -275,7 +291,7 @@ class PolicyStore:
             WHERE a.incident_id=%s AND a.action_id=%s AND a.revision=%s AND a.context=%s AND a.used_by IS NULL
             AND a.created_at<=%s AND a.valid_until>%s AND u.active AND u.role='admin' AND u.version=a.actor_version
             ORDER BY a.created_at DESC LIMIT 1 FOR SHARE OF u""",
-            (d["incident_id"],ACTION,row["revision"],d["context"],now,now)).fetchone()
+            (d["incident_id"],correction_action(d),row["revision"],d["context"],now,now)).fetchone()
         if approval is None: raise PolicyBlocked("evaluation_approval_required")
         return approval
 
@@ -317,7 +333,7 @@ class PolicyStore:
             if approval: cursor.execute("UPDATE approvals SET used_by=%s WHERE id=%s",(run_id,approval["id"]))
             actor={"username":"worker_automatique" if automatic else "commande_locale"}
             self.event(cursor,actor,"action_authorized",row,checked,{"run_id":run_id,"incident_id":d["incident_id"],
-                "action_id":ACTION,"approval_id":approval["id"] if approval else None,"decision_id":d["decision_id"]})
+                "action_id":correction_action(d),"approval_id":approval["id"] if approval else None,"decision_id":d["decision_id"]})
             return {"policy":policy,"approval_id":approval["id"] if approval else None,"authorized_at":iso(checked),
                 "trigger_mode":"automatic" if automatic else "manual"}
 

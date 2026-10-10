@@ -8,9 +8,11 @@ Ce lot met en œuvre le choix du niveau d’autonomie, sa suspension et le conte
 | --- | --- |
 | Observation | Mesures, incidents, recommandations et diagnostics en lecture seule. Aucune correction autorisée. |
 | Assisté | L’administrateur lance `sudo moodle-remediate --incident-id N` depuis le serveur. La commande applique la politique actuelle puis les contrôles techniques. |
-| Automatique | Un worker systemd examine les recommandations et peut démarrer PHP confirmé arrêté. L’activation exige une confirmation explicite de l’administrateur. |
+| Automatique | Un worker systemd examine les recommandations et peut remettre PHP arrêté en service ou appliquer un profil PHP-FPM préparé. L’activation exige une confirmation explicite de l’administrateur. |
 
-L’unique correction autorisée dans ce lot est `start_php_stopped`. Il ne redémarre pas un PHP encore actif, ne restaure aucune sauvegarde et ne modifie pas les profils PHP-FPM. La deuxième famille de correction du cahier des charges reste à implémenter et à évaluer.
+Deux corrections sont reconnues : `start_php_stopped` et `apply_php_fpm_profile`.
+La seconde exige sa préparation explicite et une politique enregistrée après celle-ci.
+Ses conditions, contrôles et limites figurent dans [les profils PHP-FPM](profils-php-fpm.md).
 
 ## Administration et évaluation
 

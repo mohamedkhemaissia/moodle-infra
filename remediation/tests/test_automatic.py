@@ -44,3 +44,10 @@ class WorkerTests(unittest.TestCase):
         result,code=self.run_once()
         self.assertEqual((result['status'],code),('blocked',0))
         self.assertEqual(self.executor.call_count,1)
+
+    def test_pool_profile_uses_same_guarded_executor_only_when_feature_is_enabled(self):
+        self.reader.return_value['decisions'] = [{"signal_key":"php_pool_queue","status":"recommendation","incident_id":7}]
+        self.assertEqual(self.run_once()[0]['status'],'idle'); self.executor.assert_not_called()
+        self.config['php_profiles_enabled'] = True
+        self.assertEqual(self.run_once()[0]['status'],'completed')
+        self.assertEqual(self.executor.call_args.args[2],7)

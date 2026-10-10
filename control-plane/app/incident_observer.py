@@ -46,11 +46,14 @@ def error_code(result):
     return "unexpected_observation_error" if isinstance(result,Exception) else None
 
 
-async def poll(prometheus, anomalies, store, now, *, model_enabled=True):
+async def poll(prometheus, anomalies, store, now, *, model_enabled=True, applications_enabled=False):
     metrics, anomaly, anomaly_error = None,None,None
     calls = [prometheus.summary(now)]
     if anomalies is not None:
         calls.append(anomalies.summary(now))
+    if applications_enabled:
+        from .application_metrics import summary
+        calls.append(summary(prometheus, now))
     results = await asyncio.gather(*calls,return_exceptions=True)
     prometheus_error = error_code(results[0])
     if prometheus_error is None:
@@ -63,8 +66,9 @@ async def poll(prometheus, anomalies, store, now, *, model_enabled=True):
             prometheus_error = prometheus_error or anomaly_error
     elif model_enabled:
         anomaly_error = "model_unavailable"
+    applications = results[-1] if applications_enabled and not isinstance(results[-1], BaseException) else None
     signals = observations(metrics,anomaly,prometheus_error=prometheus_error,
-                           anomaly_error=anomaly_error,model_enabled=model_enabled)
+                           anomaly_error=anomaly_error,model_enabled=model_enabled,applications=applications)
     point = int(now.timestamp())//POLICY["interval_seconds"]*POLICY["interval_seconds"]
     completed_at = time.time()
     if completed_at < now.timestamp():
@@ -106,7 +110,8 @@ async def run(directory, *, once=False):
                 anomalies = AnomalyService(prometheus,bundle) if bundle is not None else None
                 while not stop.is_set():
                     started = loop.time()
-                    result = await poll(prometheus,anomalies,store,datetime.now(timezone.utc),model_enabled=bool(model_directory))
+                    result = await poll(prometheus,anomalies,store,datetime.now(timezone.utc),model_enabled=bool(model_directory),
+                                        applications_enabled=os.getenv("APPLICATION_METRICS_ENABLED", "false") == "true")
                     print(json.dumps(result,ensure_ascii=False,allow_nan=False),flush=True)
                     if once:
                         return

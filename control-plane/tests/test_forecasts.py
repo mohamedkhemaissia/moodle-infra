@@ -219,7 +219,7 @@ class ForecastAPITests(unittest.IsolatedAsyncioTestCase):
             response = await client.get("/api/v1/forecasts/summary")
             health = await client.get("/api/v1/health")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(health.json()["version"], "0.14.0")
+        self.assertEqual(health.json()["version"], "0.15.0")
         data = response.json()
         self.assertEqual(data["status"], "available")
         self.assertTrue(data["experimental"])

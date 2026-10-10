@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from pilotage.auth import AuthDenied
 from pilotage.operating_policy import (DDL, PolicyStore, PolicyBlocked, PolicyConflict,
-    PolicyStorageError, admission, digest, decision_reference)
+    PolicyStorageError, admission, digest, decision_reference, PROFILE_ACTION)
 
 BASE=1791396000.0
 PRINCIPAL={"kind":"human","user":{"id":1},"version":1,"session_hash":"a"*64}
@@ -200,3 +200,18 @@ class PolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(PolicyBlocked,"authorization_clock_inconsistent"):
                 self.dispatch(policy,now=None)
         self.assertEqual(self.store.sql.execute("SELECT count(*) FROM authorizations").fetchone()[0],0)
+
+    def test_evaluation_approval_is_bound_to_the_profile_action_not_only_the_incident(self):
+        policy,_ = self.update(evaluation_context=True)
+        self.approve()
+        d = document()
+        d['decision'].update(signal_key='php_pool_queue',recommended_action={'id':'diagnose_php_pool'},
+            evidence={'pool':'www','idle_processes':0,'active_processes':5,'total_processes':5,'listen_queue':2})
+        with self.assertRaisesRegex(PolicyBlocked,'evaluation_approval_required'):
+            self.store.dispatch(d,policy,run_id='f'*32,automatic=False,reserve=lambda:None,now=BASE+5)
+        approval,_ = self.store.approve(PRINCIPAL,d,incident_id=5,revision=2,
+            reason='Approuver ce profil pour cet incident PHP',client_key='9'*32,now=BASE+5)
+        self.assertEqual(approval['action_id'],PROFILE_ACTION)
+        value = self.store.dispatch(d,policy,run_id='f'*32,automatic=False,reserve=lambda:None,now=BASE+6)
+        self.assertEqual(value['approval_id'],approval['id'])
+        self.assertEqual(self.store.history()['items'][0]['details']['action_id'],PROFILE_ACTION)

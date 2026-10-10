@@ -16,13 +16,13 @@ aux encadrants est la reference et n'est pas modifie par les changements de code
 | Historique PostgreSQL separe de Moodle | `pilotage`, role `control_plane_database` | Migration activee sur le pilote ; resume des incidents, observateur et ancienne correction PHP consultables apres la bascule. |
 | Anomalies et previsions 5/10/15 minutes | `ml`, `app/anomalies.py`, `app/forecasts.py` | Modeles experimentaux et rejeu historique testes. Donnees annotees et comparaison aux references restent a completer ; Ridge ne depasse pas actuellement la persistance sur le CPU. |
 | Incidents, decisions et diagnostics | `app/incidents.py`, `app/decisions.py`, `diagnostics` | Incidents confirmes et persistants, decisions en simulation et diagnostics Runner. Persistances des decisions et actions depuis l'interface a completer. |
-| Corrections encadrees | `remediation`, `scripts/validate_php_recovery.py` | Remise en service PHP validee manuellement en 66,385 s, sans secours, le 07/10. Ajouter les profils PHP-FPM et les politiques assistees/automatiques ; mesurer les repetitions. |
+| Corrections encadrees | `remediation`, politiques, scripts de validation | Remise en service PHP validee manuellement en 66,385 s le 07/10 puis automatiquement en 86,237 s sans secours le 10/10. Politiques fusionnees et CI verte confirmees. Profils PHP-FPM 5/8, autorisations, retour precedent et affichage implementes et verifies localement dans ce lot ; deploiement a confirmer. Essais de charge et repetitions reportes a la recette finale. |
 | Authentification administrateur/lecteur | `pilotage/auth.py`, `app/auth.py`, role `authentication`, composants React | Comptes et roles testes par l'operateur ; corrections des sessions concurrentes et delais de tests poussees, CI reussie le 08/10. |
 | Verification continue | `.github/workflows/ci.yml`, `ci` | Tests Python, React, syntaxe Ansible, images, stockage PostgreSQL 16 et exporteurs applicatifs reels valides dans les lots precedents. Ce lot ajoute le test du catalogue avec Restic et un depot temporaire. |
 | Validation finale et livrables | Tests de charge, scenarios documentes, rapport | Completer les charges authentifiees, deux familles de corrections repetees, deux PRA complets, UML, runbooks, rapport et presentation. |
 
-Ordre restant : valider les demandes de test et leur approbation ; raccorder
-leur execution isolee et la reprise applicative ; politiques, modes et seconde famille
-de corrections ; validation mesuree ; rapport et presentation. Les interruptions
+Ordre de travail : deployer les profils sans essais de panne ou de charge ;
+completer la supervision et les autres exigences restantes ; recette mesuree finale ;
+rapport et presentation. Les interruptions
 locales de collecte sont conservees comme donnees manquantes, sans interpolation
 pour rendre artificiellement disponibles les modeles.

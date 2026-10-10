@@ -8,6 +8,8 @@ except ImportError:
     from diagnostics.store import DiagnosticStore, DiagnosticStorageError
 
 ACTION = "start_php_stopped"
+PROFILE_ACTION = "apply_php_fpm_profile"
+ACTIONS = (ACTION, PROFILE_ACTION)
 
 
 class RemediationStore(DiagnosticStore):
@@ -29,7 +31,9 @@ class RemediationStore(DiagnosticStore):
                 connection.execute("SELECT incident_id FROM claims LIMIT 1")
         return changed
 
-    def reserve(self, identifier, incident_id, now, container_id):
+    def reserve(self, identifier, incident_id, now, container_id, *, action_id=ACTION):
+        if action_id not in ACTIONS:
+            raise ValueError("Correction non autorisee.")
         with self.connect(write=True) as connection:
             connection.execute("BEGIN IMMEDIATE")
             run = connection.execute("SELECT incident_id,status FROM runs WHERE id=?", (identifier,)).fetchone()
@@ -40,8 +44,8 @@ class RemediationStore(DiagnosticStore):
             last = connection.execute("SELECT MAX(claimed_at) FROM claims").fetchone()[0]
             if last is not None and now - last < 300:
                 return "cooldown_or_clock_inconsistent"
-            connection.execute("INSERT INTO claims VALUES(?,?,?,?,?)", (incident_id, ACTION, identifier, now, container_id))
-            connection.execute("UPDATE runs SET action_id=? WHERE id=?", (ACTION, identifier))
+            connection.execute("INSERT INTO claims VALUES(?,?,?,?,?)", (incident_id, action_id, identifier, now, container_id))
+            connection.execute("UPDATE runs SET action_id=? WHERE id=?", (action_id, identifier))
         return None
 
     def detail(self, identifier):
@@ -58,16 +62,20 @@ class RemediationStore(DiagnosticStore):
     def finish(self, identifier, status, now, **kwargs):
         decision = kwargs.get("decision")
         if decision:
-            kwargs["decision"] = {**decision, "source_action_id": decision["action_id"], "action_id": ACTION}
+            action = decision.get("correction_action", ACTION)
+            if action not in ACTIONS:
+                raise ValueError("Correction non autorisee.")
+            kwargs["decision"] = {**decision, "source_action_id": decision["action_id"], "action_id": action}
         return super().finish(identifier, status, now, **kwargs)
 
     def summary(self):
         result = super().summary()
         result["mode"] = "manual_guarded"
         result["action"] = ACTION
+        result["actions"] = list(ACTIONS)
         result["automatic_execution_enabled"] = False
         result["semantics"] = {
-            "completed": "PHP demarre et Moodle confirme par HTTPS et une nouvelle sonde Prometheus.",
+            "completed": "Controle apres correction confirme ; voir le rapport et les mesures propres a l'action.",
             "reservation": "Intention d'action enregistree avant Docker ; ne prouve pas son execution.",
             "running": "Etat incomplet si le processus a subi une interruption brutale.",
             "action": "Une seule tentative par incident ; lancement manuel sur le serveur."}
