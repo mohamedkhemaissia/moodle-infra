@@ -12,6 +12,7 @@ from pilotage_backup.core import BackupError, json_value, parse_utc, sha_file, r
 
 ARCHIVES=('moodle.pgdump','moodledata.tar','code.tar','configuration.tar','infrastructure.tar','manifest.txt')
 MAX_ARCHIVE=512*1024*1024
+MAX_CODE_ARCHIVE=1024*1024*1024
 MAX_EXPANDED=2*1024*1024*1024
 
 
@@ -45,10 +46,14 @@ def fetch_moodle(config,job,directory,commands):
     if set(checks)!=set(ARCHIVES):raise BackupError('backup_checksum_manifest_invalid')
     for name in ARCHIVES:
         target=directory/name
-        if shutil.disk_usage(directory).free<config['min_free_mb']*1024*1024+MAX_ARCHIVE:
+        # Le code Moodle archive depasse 512 Mio ; sa copie reste bornee a 1 Gio.
+        # Les autres fichiers conservent leur plafond et la reserve disque est
+        # controlee avant chaque telechargement avec le plafond du fichier.
+        limit=MAX_CODE_ARCHIVE if name=='code.tar' else MAX_ARCHIVE
+        if shutil.disk_usage(directory).free<config['min_free_mb']*1024*1024+limit:
             raise BackupError('insufficient_test_space')
         with open(target,'xb') as output:
-            commands.run([wrapper,'--no-cache','--no-lock','dump',job['snapshot_id'],source+'/'+name],output=output,max_bytes=MAX_ARCHIVE)
+            commands.run([wrapper,'--no-cache','--no-lock','dump',job['snapshot_id'],source+'/'+name],output=output,max_bytes=limit)
         if sha_file(target)!=checks[name]:raise BackupError('backup_checksum_mismatch')
     text=read_file(directory/'manifest.txt',65536).decode()
     if len(text)>65536 or 'Format sauvegarde : moodle-pfe-v1\n' not in text:

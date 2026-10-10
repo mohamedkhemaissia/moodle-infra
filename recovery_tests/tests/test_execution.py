@@ -1,5 +1,6 @@
 """Protections des archives, isolation et parcours Runner sans Docker actif."""
 import copy
+import hashlib
 import io
 import json
 import os
@@ -72,8 +73,68 @@ class ArchiveTests(unittest.TestCase):
             with self.assertRaises(BackupError):archives.fetch_moodle(CONFIG,JOB,directory,commands)
         self.assertEqual(list(directory.iterdir()),[])
 
+    def download_fixture(self, *, large_code=False):
+        payloads={name:b'archive' for name in archives.ARCHIVES}
+        payloads['moodle.pgdump']=b'PGDMP-test-only'
+        payloads['manifest.txt']=(
+            'Format sauvegarde : moodle-pfe-v1\n'
+            'Instant sans ecritures UTC : 2026-10-09T10:59:00Z\n'
+            'Projet Compose : moodle-pilote\nBase : moodle\n'
+            'Moodle : 5.2.3\nURL source : https://moodle-pfe.test\n').encode()
+        checks={name:hashlib.sha256(data).hexdigest() for name,data in payloads.items()}
+        if large_code:
+            digest=hashlib.sha256();chunk=bytes(1024*1024)
+            for _ in range(600):digest.update(chunk)
+            checks['code.tar']=digest.hexdigest()
+        manifest=''.join(checks[name]+'  '+name+'\n' for name in archives.ARCHIVES).encode()
+        transfers=[]
+        def run(args,**kwargs):
+            name=Path(args[-1]).name
+            if name=='SHA256SUMS':return manifest
+            transfers.append(name)
+            output=kwargs['output']
+            if name=='code.tar' and large_code:
+                # Un vrai processus et un fichier creux de 600 Mio reproduisent
+                # le volume rejete, sans allouer cette taille en memoire.
+                return runtime.Commands(10).run([sys.executable,'-c',
+                    'import os;os.ftruncate(1,600*1024*1024)'],
+                    output=output,max_bytes=kwargs['max_bytes'])
+            output.write(payloads[name]);output.flush()
+            return b''
+        return SimpleNamespace(run=run),transfers,checks
+
+    def test_code_archive_above_512_mib_is_streamed_and_checksum_verified(self):
+        directory=self.root/'archives';directory.mkdir()
+        commands,transfers,checks=self.download_fixture(large_code=True)
+        with patch.object(archives,'snapshot_source',return_value=('/wrapper','/archive')), \
+                patch.object(archives.shutil,'disk_usage',return_value=SimpleNamespace(free=4*1024**3)):
+            fields=archives.fetch_moodle(CONFIG,JOB,directory,commands)
+        self.assertEqual((directory/'code.tar').stat().st_size,600*1024*1024)
+        self.assertEqual(archives.sha_file(directory/'code.tar'),checks['code.tar'])
+        self.assertEqual(fields['Moodle'],'5.2.3')
+        self.assertEqual(transfers,list(archives.ARCHIVES))
+
+    def test_larger_code_download_requires_its_disk_reserve_before_transfer(self):
+        directory=self.root/'archives';directory.mkdir()
+        commands,transfers,_=self.download_fixture()
+        free=CONFIG['min_free_mb']*1024*1024+archives.MAX_CODE_ARCHIVE-1
+        with patch.object(archives,'snapshot_source',return_value=('/wrapper','/archive')), \
+                patch.object(archives.shutil,'disk_usage',return_value=SimpleNamespace(free=free)), \
+                self.assertRaisesRegex(BackupError,'^insufficient_test_space$'):
+            archives.fetch_moodle(CONFIG,JOB,directory,commands)
+        self.assertEqual(transfers,['moodle.pgdump','moodledata.tar'])
+        self.assertFalse((directory/'code.tar').exists())
+
 
 class RuntimeTests(unittest.TestCase):
+    def test_code_and_other_archives_still_reject_output_above_their_caps(self):
+        for name,limit,size in [('code.tar',archives.MAX_CODE_ARCHIVE,1024*1024*1024+1),
+                                ('moodledata.tar',archives.MAX_ARCHIVE,600*1024*1024)]:
+            with self.subTest(archive=name),tempfile.TemporaryFile() as output:
+                with self.assertRaisesRegex(BackupError,'^test_output_too_large$'):
+                    runtime.Commands(5).run([sys.executable,'-c','import os;os.ftruncate(1,'+str(size)+')'],
+                        output=output,max_bytes=limit)
+
     def test_process_deadline_and_output_limit_are_enforced(self):
         command=runtime.Commands(5)
         with self.assertRaisesRegex(BackupError,'timeout'):
