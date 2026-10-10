@@ -104,6 +104,8 @@ class OperatingPolicyPostgreSQLTests(unittest.TestCase):
 
     def test_revoked_or_changed_approver_cannot_authorize_evaluation_action(self):
         policy,_=self.update(evaluation_context=True);self.approve()
+        # La protection du dernier administrateur reste active dans ce scenario.
+        self.auth.add_user('admin-secours','Administrateur de test','admin',PASSWORD,now=BASE+3)
         self.auth.update_user(self.user['id'],active=False,now=BASE+4)
         with self.assertRaisesRegex(PolicyBlocked,'evaluation_approval_required'):self.dispatch(policy)
         with raw_connect(self.config) as connection:
