@@ -1,4 +1,45 @@
 ---
+- name: Valider les parametres Alertmanager
+  ansible.builtin.assert:
+    that:
+      - monitoring_alertmanager_port | int > 1024
+      - monitoring_alertmanager_port | int < 65536
+      - monitoring_alertmanager_port | int not in [monitoring_prometheus_port | int, monitoring_node_exporter_port | int, monitoring_blackbox_port | int, monitoring_application_php_port | int, monitoring_application_postgres_port | int]
+      - monitoring_alert_scope is match('^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$')
+      - not monitoring_alert_email_enabled | bool or monitoring_alert_smtp_smarthost | length > 0
+      - not monitoring_alert_email_enabled | bool or monitoring_alert_smtp_from | length > 0
+      - not monitoring_alert_email_enabled | bool or monitoring_alert_email_to | length > 0
+  when: monitoring_alertmanager_enabled | bool
+
+- name: Verifier le fichier SMTP gere localement par l operateur
+  ansible.builtin.stat:
+    path: "{{ monitoring_alert_smtp_password_source }}"
+    get_checksum: false
+    get_mime: false
+  register: monitoring_smtp_secret
+  when: monitoring_alertmanager_enabled | bool and monitoring_alert_email_enabled | bool and monitoring_alert_smtp_username | length > 0
+  no_log: true
+
+- name: Exiger un secret SMTP local sans le lire ni le generer
+  ansible.builtin.assert:
+    that:
+      - monitoring_smtp_secret.stat.exists
+      - monitoring_smtp_secret.stat.isreg | default(false)
+      - not monitoring_smtp_secret.stat.islnk | default(false)
+      - monitoring_smtp_secret.stat.size | default(0) > 0
+      - monitoring_smtp_secret.stat.size | default(0) <= 4096
+  when: monitoring_alertmanager_enabled | bool and monitoring_alert_email_enabled | bool and monitoring_alert_smtp_username | length > 0
+  no_log: true
+
+- name: Proteger le secret SMTP pour le compte Alertmanager
+  ansible.builtin.file:
+    path: "{{ monitoring_alert_smtp_password_source }}"
+    owner: root
+    group: '65534'
+    mode: '0440'
+  when: monitoring_alertmanager_enabled | bool and monitoring_alert_email_enabled | bool and monitoring_alert_smtp_username | length > 0
+  no_log: true
+
 - name: Creer les repertoires de supervision
   ansible.builtin.file:
     path: "{{ item }}"
@@ -10,6 +51,38 @@
     - "{{ monitoring_base_dir }}"
     - "{{ monitoring_base_dir }}/prometheus"
     - "{{ monitoring_base_dir }}/blackbox"
+
+- name: Creer les repertoires des regles et notifications
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ monitoring_base_dir }}/prometheus/rules"
+    - "{{ monitoring_base_dir }}/alertmanager"
+  when: monitoring_alertmanager_enabled | bool
+
+- name: Installer les regles de supervision Moodle
+  ansible.builtin.template:
+    src: alerts.yml.j2
+    dest: "{{ monitoring_base_dir }}/prometheus/rules/moodle.yml"
+    owner: root
+    group: root
+    mode: '0644'
+  when: monitoring_alertmanager_enabled | bool
+  notify: Redemarrer Prometheus
+
+- name: Installer le routage Alertmanager
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: "{{ monitoring_base_dir }}/alertmanager/alertmanager.yml"
+    owner: root
+    group: root
+    mode: '0644'
+  when: monitoring_alertmanager_enabled | bool
+  notify: Redemarrer Alertmanager
 
 - name: Creer le repertoire textfile des mesures de conteneurs
   ansible.builtin.file:
@@ -87,6 +160,20 @@
       - /etc/prometheus/prometheus.yml
   changed_when: false
 
+- name: Valider la configuration Alertmanager avec amtool
+  ansible.builtin.command:
+    argv: >-
+      {{ ['docker', 'run', '--rm', '--network', 'none', '--read-only',
+      '--user', '65534:65534', '--cap-drop', 'ALL',
+      '--security-opt', 'no-new-privileges:true', '--volume',
+      monitoring_base_dir ~ '/alertmanager:/etc/alertmanager:ro']
+      + (['--volume', monitoring_alert_smtp_password_source ~ ':/run/secrets/smtp-password:ro']
+      if monitoring_alert_email_enabled | bool and monitoring_alert_smtp_username | length > 0 else [])
+      + ['--entrypoint', '/bin/amtool', monitoring_alertmanager_image,
+      'check-config', '/etc/alertmanager/alertmanager.yml'] }}
+  changed_when: false
+  when: monitoring_alertmanager_enabled | bool
+
 - name: Demarrer les services de supervision
   community.docker.docker_compose_v2:
     project_src: "{{ monitoring_base_dir }}"
@@ -94,6 +181,7 @@
     state: present
     pull: missing
     recreate: auto
+    remove_orphans: true
     wait: true
     wait_timeout: 60
 
@@ -110,6 +198,34 @@
   retries: 12
   delay: 5
 
+- name: Attendre qu Alertmanager soit pret
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ monitoring_alertmanager_port }}/-/ready"
+    status_code: 200
+    use_proxy: false
+  register: monitoring_alertmanager_ready
+  until: monitoring_alertmanager_ready.status | default(0) == 200
+  retries: 12
+  delay: 5
+  when: monitoring_alertmanager_enabled | bool
+
+- name: Verifier le raccordement Prometheus vers Alertmanager
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ monitoring_prometheus_port }}/api/v1/alertmanagers"
+    return_content: true
+    status_code: 200
+    use_proxy: false
+  register: monitoring_alertmanager_discovery
+  until: >-
+    monitoring_alertmanager_discovery.json is defined and
+    monitoring_alertmanager_discovery.json.status == 'success' and
+    (monitoring_alertmanager_discovery.json.data.activeAlertmanagers | length) == 1 and
+    monitoring_alertmanager_discovery.json.data.activeAlertmanagers[0].url ==
+    'http://127.0.0.1:' ~ monitoring_alertmanager_port ~ '/api/v2/alerts'
+  retries: 12
+  delay: 5
+  when: monitoring_alertmanager_enabled | bool
+
 - name: Verifier la collecte des cibles attendues
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ monitoring_prometheus_port }}/api/v1/targets"
@@ -121,7 +237,8 @@
     monitoring_targets.json is defined and
     monitoring_targets.json.status == 'success' and
     ((['prometheus', 'linux', 'blackbox_exporter', 'moodle_https']
-    + (['moodle_phpfpm', 'moodle_postgres'] if monitoring_application_metrics_enabled | bool else []))
+    + (['moodle_phpfpm', 'moodle_postgres'] if monitoring_application_metrics_enabled | bool else [])
+    + (['alertmanager'] if monitoring_alertmanager_enabled | bool else []))
     | difference(monitoring_targets.json.data.activeTargets
     | selectattr('health', 'equalto', 'up') | map(attribute='labels.job') | list) | length) == 0
   retries: 12

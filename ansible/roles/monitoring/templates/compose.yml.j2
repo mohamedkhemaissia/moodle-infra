@@ -20,6 +20,37 @@ services:
         max-size: "10m"
         max-file: "3"
 
+{% if monitoring_alertmanager_enabled | bool %}
+  alertmanager:
+    image: "{{ monitoring_alertmanager_image }}"
+    restart: unless-stopped
+    network_mode: host
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--data.retention={{ monitoring_alertmanager_retention }}"
+      - "--web.listen-address=127.0.0.1:{{ monitoring_alertmanager_port }}"
+      - "--cluster.listen-address="
+    volumes:
+      - "{{ monitoring_base_dir }}/alertmanager:/etc/alertmanager:ro"
+      - alertmanager_data:/alertmanager
+{% if monitoring_alert_email_enabled | bool and monitoring_alert_smtp_username | length > 0 %}
+      - "{{ monitoring_alert_smtp_password_source }}:/run/secrets/smtp-password:ro"
+{% endif %}
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=8m"]
+    mem_limit: 96m
+    cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+{% endif %}
+
   node-exporter:
     image: "{{ monitoring_node_exporter_image }}"
     restart: unless-stopped
@@ -66,3 +97,6 @@ services:
 
 volumes:
   prometheus_data:
+{% if monitoring_alertmanager_enabled | bool %}
+  alertmanager_data:
+{% endif %}
