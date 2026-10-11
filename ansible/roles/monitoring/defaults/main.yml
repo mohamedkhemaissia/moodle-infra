@@ -11,6 +11,17 @@ monitoring_node_exporter_port: 9100
 monitoring_scrape_interval: 15s
 monitoring_retention_time: 7d
 monitoring_retention_size: 1GB
+monitoring_alertmanager_enabled: false
+monitoring_alertmanager_image: quay.io/prometheus/alertmanager:v0.34.1@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
+monitoring_alertmanager_port: 9093
+monitoring_alertmanager_retention: 120h
+monitoring_alert_scope: moodle-pilote
+monitoring_alert_email_enabled: false
+monitoring_alert_smtp_smarthost: ''
+monitoring_alert_smtp_from: ''
+monitoring_alert_smtp_username: ''
+monitoring_alert_email_to: ''
+monitoring_alert_smtp_password_source: /etc/moodle-alertmanager/smtp-password
 monitoring_application_metrics_enabled: false
 monitoring_container_metrics_enabled: false
 monitoring_container_textfile_dir: "{{ container_monitoring_textfile_dir | default('/var/lib/moodle-container-monitoring/textfile') }}"
