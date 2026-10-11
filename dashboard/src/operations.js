@@ -1,5 +1,6 @@
 import { validateBackupDocument, validatePilotageBackupDocument } from './backups.js';
 import { validateApplications } from './applicationMetrics.js';
+import { validateContainers } from './containerMetrics.js';
 import { validateCatalog } from './backupCatalog.js';
 import { validateRecoveryDocument } from './recoveryRequests.js';
 import { validateProfiles } from './phpProfiles.js';
@@ -21,6 +22,7 @@ export function validateDocument(kind, value) {
   if (kind === 'recovery_requests' || kind === 'recovery_request') return validateRecoveryDocument(kind, value);
   if (kind === 'backup_catalog') return validateCatalog(value);
   if (kind === 'applications') return validateApplications(value);
+  if (kind === 'containers') return validateContainers(value);
   if (kind === 'backup') return validateBackupDocument(value);
   if (kind === 'pilotage_backup') return validatePilotageBackupDocument(value);
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail();
@@ -128,4 +130,26 @@ export function requestPath(kind, { status = '', offset = 0, incidentId = null, 
     return `/api/v1/${kind}?limit=10&offset=${offset}${incidentId === null ? '' : '&incident_id=' + incidentId}`;
   }
   throw new Error('Lecture non autorisée.');
+}
+
+export function operationRequests(section, { status = '', offset = 0, incidentId = null,
+  diagnosticOffset = 0, remediationOffset = 0, run = null } = {}) {
+  if (section === 'analysis') return [{ key: 'forecast', kind: 'forecast', path: requestPath('forecast') }];
+  if (section === 'incidents') {
+    const requests = [
+      { key: 'summary', kind: 'summary', path: requestPath('summary') },
+      { key: 'incidents', kind: 'incidents', path: requestPath('incidents', { status, offset }) },
+    ];
+    if (incidentId !== null) requests.push({ key: 'decision', kind: 'decision', path: requestPath('decision', { incidentId }) });
+    return requests;
+  }
+  if (section === 'audits') {
+    const requests = [
+      { key: 'diagnostics', kind: 'runs', path: requestPath('diagnostics', { incidentId, offset: diagnosticOffset }) },
+      { key: 'remediations', kind: 'runs', path: requestPath('remediations', { incidentId, offset: remediationOffset }) },
+    ];
+    if (run) requests.push({ key: 'run', kind: 'run', path: requestPath(run.kind, { runId: run.id }) });
+    return requests;
+  }
+  throw new Error('Vue des opérations inconnue.');
 }

@@ -29,8 +29,14 @@ services:
       - "--path.rootfs=/host"
       - "--web.listen-address=127.0.0.1:{{ monitoring_node_exporter_port }}"
       - "--no-collector.timex"
+{% if monitoring_container_metrics_enabled | bool %}
+      - "--collector.textfile.directory=/container-metrics"
+{% endif %}
     volumes:
       - "/:/host:ro,rslave"
+{% if monitoring_container_metrics_enabled | bool %}
+      - "{{ monitoring_container_textfile_dir }}:/container-metrics:ro"
+{% endif %}
     mem_limit: 128m
     cpus: "0.25"
     logging:

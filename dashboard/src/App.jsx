@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Operations from './Operations.jsx';
 import { useMetrics } from './useMetrics.js';
 import { useAuth } from './Auth.jsx';
 import Accounts from './Accounts.jsx';
 import Backups from './Backups.jsx';
 import ApplicationServices from './ApplicationServices.jsx';
+import Containers from './Containers.jsx';
 import Reports from './Reports.jsx';
 import Policies from './Policies.jsx';
 import PHPProfiles from './PHPProfiles.jsx';
 import { initials, canManageUsers } from './authClient.js';
+import { NAVIGATION, sectionFromHash } from './navigation.js';
 
 // Sidebar structure adapted from BootstrapDash Corona React (MIT).
 const numberFormat = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
@@ -118,39 +120,71 @@ function MetricCard({ label, value, icon, hint, color }) {
   </article>;
 }
 
-const navigation = [
-  { id: 'main', title: 'Tableau de bord', icon: 'grid', color: '#8f5fe8' },
-  { id: 'applications', title: 'Services Moodle', icon: 'server', color: '#0090e7' },
-  { id: 'analysis', title: 'Prévisions', icon: 'chart', color: '#00d25b' },
-  { id: 'incidents', title: 'Incidents et décisions', icon: 'alert', color: '#ffab00' },
-  { id: 'audits', title: 'Journaux d’exécution', icon: 'clock', color: '#0090e7' },
-  { id: 'backups', title: 'Sauvegardes', icon: 'disk', color: '#8f5fe8' },
-  { id: 'policies', title: 'Politiques', icon: 'server', color: '#0090e7' },
-  { id: 'php-profiles', title: 'Profils PHP-FPM', icon: 'server', color: '#00d25b' },
-  { id: 'reports', title: 'Rapports', icon: 'chart', color: '#0090e7' },
-];
+export function SectionContent({ section, now, refreshToken, metrics, onNavigate }) {
+  switch (section) {
+    case 'main': return <section id="resources" className="metrics-grid" aria-label="Mesures actuelles">
+      <MetricCard label="CPU utilisé" value={metrics.cpu_usage_percent} icon="cpu" color="#0090e7" hint="Moyenne sur 2 minutes" />
+      <MetricCard label="Mémoire utilisée" value={metrics.memory_usage_percent} icon="memory" color="#00d25b" hint="Part de la mémoire utilisée" />
+      <MetricCard label="Disque disponible" value={metrics.disk_available_percent} icon="disk" color="#8f5fe8" hint="Espace disponible sur le disque racine" />
+    </section>;
+    case 'applications': return <ApplicationServices now={now} refreshToken={refreshToken} />;
+    case 'containers': return <Containers now={now} refreshToken={refreshToken} />;
+    case 'analysis': case 'incidents': case 'audits':
+      return <Operations section={section} now={now} refreshToken={refreshToken} onNavigate={onNavigate} />;
+    case 'backups': return <Backups now={now} refreshToken={refreshToken} />;
+    case 'policies': return <Policies refreshToken={refreshToken} />;
+    case 'php-profiles': return <PHPProfiles now={now} refreshToken={refreshToken} />;
+    case 'reports': return <Reports refreshToken={refreshToken} />;
+    case 'accounts': return <Accounts />;
+    default: return null;
+  }
+}
 
 export default function App() {
   const auth = useAuth();
   const avatar = initials(auth.user);
-  const items = auth.enabled ? [...navigation, { id: 'accounts',
-    title: canManageUsers(auth.user) ? 'Comptes et accès' : 'Mon compte', icon: 'server', color: '#0090e7' }] : navigation;
+  const items = auth.enabled ? [...NAVIGATION, { id: 'accounts',
+    title: canManageUsers(auth.user) ? 'Comptes et accès' : 'Mon compte',
+    description: 'Gestion du compte et des accès au pilotage.', icon: 'server', color: '#0090e7' }] : NAVIGATION;
   const [operationsRefresh, setOperationsRefresh] = useState(0);
-  const [activeSection, setActiveSection] = useState('main');
+  const [activeSection, setActiveSection] = useState(() => sectionFromHash(globalThis.window?.location.hash, auth.enabled));
   const [menuOpen, setMenuOpen] = useState(false);
-  const { error, busy, now, view, refresh } = useMetrics();
+  const { error, busy, now, view, refresh } = useMetrics(activeSection === 'main');
+  const current = items.find((item) => item.id === activeSection) || items[0];
+  useEffect(() => {
+    const followLocation = () => {
+      setActiveSection(sectionFromHash(window.location.hash, auth.enabled)); setMenuOpen(false);
+    };
+    followLocation();
+    window.addEventListener('hashchange', followLocation);
+    window.addEventListener('popstate', followLocation);
+    return () => {
+      window.removeEventListener('hashchange', followLocation);
+      window.removeEventListener('popstate', followLocation);
+    };
+  }, [auth.enabled]);
+  const navigate = (id) => {
+    const section = sectionFromHash('#' + id, auth.enabled);
+    if (window.location.hash !== '#' + section) window.history.pushState(null, '', '#' + section);
+    setActiveSection(section); setMenuOpen(false); window.scrollTo(0, 0);
+  };
   const metrics = view.metrics;
-  const notice = view.reason === 'error' ? error : view.reason === 'stale'
+  const notice = activeSection !== 'main' ? null : view.reason === 'error' ? error : view.reason === 'stale'
     ? 'Les données sont anciennes. Actualisez pour obtenir des mesures récentes.'
     : view.reason === 'clock' ? 'L’heure des mesures est incohérente. Les valeurs sont indisponibles.'
       : view.reason === 'ready' && view.collection.linux.status !== 'up'
         ? 'La collecte des ressources est indisponible. Les mesures concernées sont masquées.' : null;
-  const update = () => { refresh(); setOperationsRefresh((value) => value + 1); };
+  const update = () => { if (activeSection === 'main') refresh(); setOperationsRefresh((value) => value + 1); };
+  const refreshing = activeSection === 'main' && busy;
 
   return <div className={`container-scroller app-shell ${menuOpen ? 'menu-open' : ''}`}>
-    <a className="skip-link" href="#main">Aller au contenu</a>
+    <a className="skip-link" href="#content" onClick={(event) => {
+      event.preventDefault(); document.getElementById('content')?.focus();
+    }}>Aller au contenu</a>
     <aside className="sidebar sidebar-offcanvas" id="sidebar" aria-label="Menu principal">
-      <div className="sidebar-brand-wrapper"><a className="sidebar-brand" href="#main" onClick={() => setMenuOpen(false)}>
+      <div className="sidebar-brand-wrapper"><a className="sidebar-brand" href="#main" onClick={(event) => {
+        event.preventDefault(); navigate('main');
+      }}>
         <span className="brand-mark"><Icon name="server" size={26} /></span><span>Moodle<span className="brand-caption">BeeCoders</span></span>
       </a></div>
       <div className="profile-desc"><span className="profile-initials">{avatar}</span><div className="profile-name">
@@ -158,8 +192,8 @@ export default function App() {
       <nav aria-label="Navigation principale"><ul className="nav">
         <li className="nav-category">Navigation</li>
         {items.map((item) => <li key={item.id} className={`nav-item menu-items ${activeSection === item.id ? 'active' : ''}`}>
-          <a className="nav-link" href={`#${item.id}`} aria-current={activeSection === item.id ? 'location' : undefined}
-            onClick={() => { setActiveSection(item.id); setMenuOpen(false); }}>
+          <a className="nav-link" href={`#${item.id}`} aria-current={activeSection === item.id ? 'page' : undefined}
+            onClick={(event) => { event.preventDefault(); navigate(item.id); }}>
             <span className="menu-icon" style={{ color: item.color }}><Icon name={item.icon} size={18} /></span>
             <span className="menu-title">{item.title}</span></a></li>)}
       </ul></nav>
@@ -176,24 +210,13 @@ export default function App() {
           {auth.enabled && <div className="session-actions"><span className="session-role">{canManageUsers(auth.user) ? 'Administrateur' : 'Lecteur'}</span>
             <button className="refresh-button" onClick={auth.logout}>Déconnexion</button></div>}</div>
       </header>
-      <main id="main" className="content-wrapper">
-        <div className="page-heading"><div><h1>Tableau de bord</h1><p>Ressources, prévisions et suivi des incidents.</p></div>
-          <button className="refresh-button" type="button" aria-label="Actualiser le tableau de bord" onClick={update} disabled={busy}>
-            <Icon name="refresh" size={17} className={busy ? 'spin' : ''} /><span>{busy ? 'Actualisation…' : 'Actualiser'}</span>
+      <main id="content" className="content-wrapper" tabIndex={-1}>
+        <div className="page-heading"><div><h1>{current.title}</h1><p>{current.description}</p></div>
+          <button className="refresh-button" type="button" aria-label={`Actualiser ${current.title}`} onClick={update} disabled={refreshing}>
+            <Icon name="refresh" size={17} className={refreshing ? 'spin' : ''} /><span>{refreshing ? 'Actualisation…' : 'Actualiser'}</span>
           </button></div>
         {(notice || auth.message) && <div className="notice" role="status"><Icon name="alert" size={18} /><span>{auth.message || notice}</span></div>}
-        <section id="resources" className="metrics-grid" aria-label="Mesures actuelles">
-          <MetricCard label="CPU utilisé" value={metrics.cpu_usage_percent} icon="cpu" color="#0090e7" hint="Moyenne sur 2 minutes" />
-          <MetricCard label="Mémoire utilisée" value={metrics.memory_usage_percent} icon="memory" color="#00d25b" hint="Part de la mémoire utilisée" />
-          <MetricCard label="Disque disponible" value={metrics.disk_available_percent} icon="disk" color="#8f5fe8" hint="Espace disponible sur le disque racine" />
-        </section>
-        <ApplicationServices now={now} refreshToken={operationsRefresh} />
-        <Operations now={now} refreshToken={operationsRefresh} />
-        <Backups now={now} refreshToken={operationsRefresh} />
-        <Policies refreshToken={operationsRefresh} />
-        <PHPProfiles now={now} refreshToken={operationsRefresh} />
-        <Reports refreshToken={operationsRefresh} />
-        <Accounts />
+        <SectionContent section={activeSection} now={now} refreshToken={operationsRefresh} metrics={metrics} onNavigate={navigate} />
         <footer className="page-footer"><span>BeeCoders · Pilotage Moodle</span><span>Interface Corona · v0.3.0</span></footer>
       </main>
     </div>

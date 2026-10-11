@@ -221,6 +221,27 @@
   delay: 5
   when: control_plane_application_metrics_enabled | default(false) | bool
 
+- name: Verifier le suivi des conteneurs par le proxy du tableau de bord
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ dashboard_port }}/api/v1/metrics/containers"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+    headers: "{{ dashboard_read_headers }}"
+  no_log: "{{ dashboard_auth_activation.stat.exists }}"
+  register: dashboard_containers_response
+  until: >-
+    dashboard_containers_response.status | default(0) == 200 and
+    dashboard_containers_response.json is defined and
+    dashboard_containers_response.json.mode | default('') == 'read_only' and
+    dashboard_containers_response.json.collector.status | default('') == 'up' and
+    (dashboard_containers_response.json.containers | length) == (control_plane_container_metrics_targets | length) and
+    (dashboard_containers_response.json.containers | selectattr('state', 'equalto', 'unknown') | list | length) == 0
+  retries: 12
+  delay: 5
+  when: control_plane_container_metrics_enabled | default(false) | bool
+
 - name: Verifier le catalogue via le meme proxy que le navigateur
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ dashboard_port }}/api/v1/backups/catalog?scope=moodle&limit=1"
