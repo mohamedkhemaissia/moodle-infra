@@ -58,10 +58,18 @@ class Programs:
             ('prometheus', 'monitoring_prometheus_image'), ('promtool', 'monitoring_prometheus_image'),
             ('alertmanager', 'monitoring_alertmanager_image'), ('amtool', 'monitoring_alertmanager_image'))}
         self.running = {}
+        self.volumes = set()
         self.prefix = 'ci-alertmanager-' + uuid.uuid4().hex[:12]
 
     def path(self, path):
         return str(path) if self.bin_dir else '/fixture/' + str(path.relative_to(self.directory))
+
+    def storage_path(self, binary):
+        if not self.bin_dir:
+            return '/' + binary
+        path = self.directory / (binary + '-data')
+        path.mkdir(exist_ok=True)
+        return str(path)
 
     def command(self, binary, *arguments, server=False, name=None):
         if self.bin_dir:
@@ -70,8 +78,14 @@ class Programs:
         command += ['--detach'] if server else ['--rm']
         command += ['--network', 'host' if server else 'none', '--read-only', '--user', '65534:65534',
                     '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
-                    '--volume', str(self.directory) + ':/fixture:rw', '--tmpfs', '/tmp:rw,noexec,nosuid,size=8m',
-                    '--memory', '192m', '--cpus', '0.5', '--entrypoint', '/bin/' + binary, self.images[binary]]
+                    '--volume', str(self.directory) + ':/fixture:ro', '--tmpfs', '/tmp:rw,noexec,nosuid,size=8m',
+                    '--memory', '192m', '--cpus', '0.5']
+        if server:
+            # Docker gere les donnees du compte 65534 et les reutilise au redemarrage.
+            volume = self.prefix + '-' + binary + '-data'
+            self.volumes.add(volume)
+            command += ['--volume', volume + ':' + self.storage_path(binary)]
+        command += ['--entrypoint', '/bin/' + binary, self.images[binary]]
         return command + list(arguments)
 
     def check(self, binary, *arguments):
@@ -102,11 +116,20 @@ class Programs:
                 process.wait(timeout=5)
             log.close()
         else:
+            # L arret gracieux ecrit notamment les silences avant de recreer Alertmanager.
+            subprocess.run(['docker', 'stop', '--time', '10', current], check=True, capture_output=True, timeout=30)
+            logs = subprocess.run(['docker', 'logs', current], capture_output=True, timeout=10)
+            with (self.directory / (binary + '.log')).open('ab') as log:
+                log.write(logs.stdout + logs.stderr)
             subprocess.run(['docker', 'rm', '--force', current], check=True, capture_output=True, timeout=30)
 
     def close(self):
         for binary in list(self.running):
             self.stop(binary)
+        if self.volumes:
+            subprocess.run(['docker', 'volume', 'rm', *sorted(self.volumes)], check=True,
+                           capture_output=True, timeout=30)
+            self.volumes.clear()
 
 
 def write_yaml(path, document):
@@ -185,17 +208,13 @@ def integration(programs):
     prom_url = 'http://127.0.0.1:' + str(prom_port)
     fixture_url = 'http://127.0.0.1:' + str(server.server_port)
     directory = programs.directory
-    am_data, prom_data = directory / 'alertmanager-data', directory / 'prometheus-data'
-    for path in (am_data, prom_data):
-        path.mkdir(mode=0o777)
-        path.chmod(0o777)  # Repertoires ephemeres, utilisables par l UID non privilegie des images.
     alertmanager = render('alertmanager')
     alertmanager['route'].update(group_wait='1s', group_interval='2s', repeat_interval='1h')
     alertmanager['route']['routes'][0].update(group_wait='1s', group_interval='2s', repeat_interval='1h')
     alertmanager['receivers'][0]['webhook_configs'] = [{'url': fixture_url + '/notifications', 'send_resolved': True}]
     am_config = directory / 'alertmanager.yml'
     write_yaml(am_config, alertmanager)
-    am_args = ('--config.file=' + programs.path(am_config), '--storage.path=' + programs.path(am_data),
+    am_args = ('--config.file=' + programs.path(am_config), '--storage.path=' + programs.storage_path('alertmanager'),
                '--web.listen-address=127.0.0.1:' + str(am_port), '--cluster.listen-address=')
 
     def received(name, status):
@@ -205,6 +224,10 @@ def integration(programs):
 
     def active(name):
         return [item for item in request(am_url + '/api/v2/alerts') if item['labels']['alertname'] == name]
+
+    def prometheus_active(name):
+        return [item for item in request(prom_url + '/api/v1/alerts')['data']['alerts']
+                if item['labels']['alertname'] == name]
 
     def post_alerts(items):
         now = datetime.now(timezone.utc)
@@ -228,16 +251,27 @@ def integration(programs):
                    'scrape_configs': [{'job_name': 'moodle_https', 'static_configs': [
                        {'targets': ['127.0.0.1:' + str(server.server_port)]}]}]})
         programs.start('prometheus', '--config.file=' + programs.path(live_config),
-                       '--storage.tsdb.path=' + programs.path(prom_data),
+                       '--storage.tsdb.path=' + programs.storage_path('prometheus'),
                        '--web.listen-address=127.0.0.1:' + str(prom_port))
         wait_for(lambda: request(prom_url + '/-/ready'), 'Prometheus reste indisponible.')
         with mutex:
             state['probe_success'] = 0
         wait_for(lambda: received('MoodleHTTPSUnavailable', 'firing'), 'Notification de panne HTTPS absente.')
         with mutex:
+            state['probe_success'] = 1
+        wait_for(lambda: received('MoodleHTTPSUnavailable', 'resolved'), 'Retablissement HTTPS non notifie.')
+        previous = len(received('MoodleHTTPSUnavailable', 'firing'))
+        with mutex:
+            state['probe_success'] = 0
+        wait_for(lambda: len(received('MoodleHTTPSUnavailable', 'firing')) > previous,
+                 'Nouvelle panne HTTPS non notifiee apres retablissement.')
+        with mutex:
             state['collection'] = False
         wait_for(lambda: received('MoodleHTTPSCollectionUnavailable', 'firing'), 'Perte de collecte non notifiee.')
-        wait_for(lambda: received('MoodleHTTPSUnavailable', 'resolved'), 'Ancienne panne HTTPS non resolue lors de la perte de collecte.')
+        # La collecte perdue inhibe les notifications HTTPS, meme une resolution.
+        # Verifier l etat de la regle sans confondre absence de mesure et retablissement.
+        wait_for(lambda: not prometheus_active('MoodleHTTPSUnavailable'),
+                 'Panne HTTPS encore declaree sans collecte disponible.')
         with mutex:
             state.update(collection=True, probe_success=1)
         wait_for(lambda: received('MoodleHTTPSCollectionUnavailable', 'resolved'), 'Reprise de collecte non notifiee.')
