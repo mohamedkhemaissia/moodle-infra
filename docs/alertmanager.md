@@ -35,6 +35,8 @@ changements et quatre heures entre repetitions identiques. Les alertes critiques
 attendent dix secondes, avec un intervalle d'une minute et une repetition d'une
 heure. Une alerte de collecte inhibe les notifications dependantes du meme job
 et du meme perimetre. Les autres services restent visibles.
+Cette inhibition peut aussi masquer une notification de resolution dependante
+pendant la perte de collecte : le service est alors inconnu, pas confirme retabli.
 
 ## Deploiement sur la VM
 
@@ -136,6 +138,11 @@ et Alertmanager reels verifie la notification de panne, la perte de collecte,
 la resolution, le regroupement, la deduplication, l'inhibition limitee au bon
 job et la conservation d'un silence apres redemarrage. Le webhook utilise est
 une fixture locale ephemere ; aucune notification n'est envoyee a un tiers.
+La resolution HTTPS est verifiee lors d'un retablissement avec collecte active.
+Lors d'une perte de collecte, le test verifie separement l'alerte de collecte et
+le retrait de l'alerte de service dans Prometheus. Les donnees Docker du test
+utilisent des volumes temporaires conserves au redemarrage puis supprimes en
+fin d'execution ; les journaux sont recuperes avant le nettoyage.
 
 ```bash
 python -B ci/pull_ci_images.py alertmanager && python -B ci/run_alertmanager_tests.py
