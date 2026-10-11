@@ -1,0 +1,71 @@
+---
+- name: Creer les repertoires du suivi des conteneurs
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ container_monitoring_base_dir }}"
+    - "{{ container_monitoring_state_dir }}"
+    - "{{ container_monitoring_textfile_dir }}"
+    - "{{ container_monitoring_config_dir }}"
+
+- name: Installer le collecteur sans dependance Python supplementaire
+  ansible.builtin.copy:
+    src: "{{ container_monitoring_source_dir }}/collector.py"
+    dest: "{{ container_monitoring_base_dir }}/collector.py"
+    owner: root
+    group: root
+    mode: "0644"
+  register: container_monitoring_script
+
+- name: Installer les seuls services Compose autorises a la collecte
+  ansible.builtin.copy:
+    content: "{{ {'targets': container_monitoring_targets} | to_nice_json }}\n"
+    dest: "{{ container_monitoring_config_dir }}/config.json"
+    owner: root
+    group: root
+    mode: "0644"
+  register: container_monitoring_config
+
+- name: Valider la liste des services sans appeler Docker
+  ansible.builtin.command:
+    argv: [/usr/bin/python3, -B, "{{ container_monitoring_base_dir }}/collector.py", --config,
+           "{{ container_monitoring_config_dir }}/config.json", --validate-config]
+  changed_when: false
+
+- name: Installer le service et le timer de collecte
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [moodle-container-metrics.service, moodle-container-metrics.timer]
+  register: container_monitoring_units
+
+- name: Recharger les unites systemd modifiees
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: container_monitoring_units.changed
+
+- name: Verifier si une premiere collecte est necessaire
+  ansible.builtin.stat:
+    path: "{{ container_monitoring_textfile_dir }}/containers.prom"
+  register: container_monitoring_initial
+
+- name: Effectuer une premiere collecte en lecture seule
+  ansible.builtin.systemd_service:
+    name: moodle-container-metrics.service
+    state: started
+  when: >-
+    not container_monitoring_initial.stat.exists or container_monitoring_script.changed or
+    container_monitoring_config.changed
+
+- name: Activer le timer du suivi des conteneurs
+  ansible.builtin.systemd_service:
+    name: moodle-container-metrics.timer
+    enabled: true
+    state: started

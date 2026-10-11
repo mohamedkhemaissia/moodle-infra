@@ -1,0 +1,6 @@
+.container-table-scroll { overflow-x: auto; }
+.container-table-scroll table { min-width: 700px; }
+.container-table-scroll th[scope="row"] { color: #e6e8ef; }
+.container-table-scroll strong { font-weight: 500; }
+.container-table-scroll small { display: block; margin-top: 7px; color: #b5b9c6; font-size: .75rem; overflow-wrap: anywhere; }
+.container-table-scroll td:not(:nth-child(2)) { white-space: nowrap; }

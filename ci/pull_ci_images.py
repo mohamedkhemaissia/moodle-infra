@@ -45,6 +45,10 @@ def images_for(profile: str, root: Path = ROOT) -> list[str]:
                   application['application_monitoring_postgres_image'],
                   moodle['moodle_postgres_image'], moodle['moodle_php_base_image'],
                   monitoring['monitoring_prometheus_image']]
+    elif profile == 'container-metrics':
+        monitoring = defaults('monitoring')
+        images = [moodle['moodle_postgres_image'], monitoring['monitoring_prometheus_image'],
+                  monitoring['monitoring_node_exporter_image'].replace('prom/node-exporter:', 'quay.io/prometheus/node-exporter:')]
     else:
         raise ValueError('Profil CI inconnu.')
     if any(not isinstance(value, str) or not value or value.startswith('-') or
@@ -90,7 +94,7 @@ def pull_image(image: str, *, run=subprocess.run, sleep=time.sleep):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('profile', choices=['recovery-tests', 'application-metrics'])
+    parser.add_argument('profile', choices=['recovery-tests', 'application-metrics', 'container-metrics'])
     args = parser.parse_args()
     try:
         images = images_for(args.profile)

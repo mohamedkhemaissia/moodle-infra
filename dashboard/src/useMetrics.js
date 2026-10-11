@@ -7,7 +7,7 @@ import {
   validateSnapshot,
 } from './snapshot.js';
 
-export function useMetrics() {
+export function useMetrics(enabled = true) {
   const [snapshot, setSnapshot] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(true);
@@ -21,6 +21,7 @@ export function useMetrics() {
   }, []);
 
   useEffect(() => {
+    if (!enabled) { setBusy(false); return; }
     let active = true;
     let nextPoll;
     let controller;
@@ -95,7 +96,7 @@ export function useMetrics() {
       clearTimeout(timeout);
       controller?.abort();
     };
-  }, [refreshToken]);
+  }, [refreshToken, enabled]);
 
   return {
     snapshot,

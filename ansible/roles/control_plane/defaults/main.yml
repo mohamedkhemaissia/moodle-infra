@@ -7,6 +7,8 @@ control_plane_port: 8000
 control_plane_prometheus_url: http://127.0.0.1:9090
 control_plane_max_scrape_age_seconds: 60
 control_plane_application_metrics_enabled: false
+control_plane_container_metrics_enabled: false
+control_plane_container_metrics_targets: "{{ container_monitoring_targets | default([{'project': 'moodle-pilote', 'service': 'apache'}, {'project': 'moodle-pilote', 'service': 'php'}, {'project': 'moodle-pilote', 'service': 'postgres'}]) }}"
 control_plane_application_php_pool: www
 control_plane_application_pg_database: "{{ application_monitoring_database | default('moodle') }}"
 control_plane_memory_limit: 256m
@@ -80,6 +82,8 @@ control_plane_source_files:
   - app/models.py
   - app/prometheus.py
   - app/application_metrics.py
+  - app/container_metrics.py
+  - tests/test_container_metrics.py
   - app/php_profiles.py
   - tests/test_php_profiles_api.py
   - tests/test_application_metrics.py
