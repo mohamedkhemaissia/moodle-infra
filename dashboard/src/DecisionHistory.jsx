@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { decisionLabels, loadHistory, makeHistoryReport, downloadHistory } from './decisionHistory.js';
 import './reports.css';
 import './decisionHistory.css';
+import { CompactTable, DetailsPanel, StatusBadge } from './ApplicationServices.jsx';
 
 const date = (value) => value ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'UTC' }).format(Date.parse(value)) + ' UTC' : 'En attente';
 
@@ -15,25 +16,31 @@ export function HistoryView({ value, selectedId, onSelect, now = Date.now() }) {
     <p className={status === 'running' ? 'ops-caption' : 'catalog-warning'} role="status">
       {status === 'running' ? 'Observateur actif' : status === 'waiting' ? 'Première collecte en attente' : 'Collecte obsolète ou horloge incohérente'}
       {' · Dernière collecte : ' + date(value.coverage.last_input_at)}</p>
-    {value.items.length ? <div className="ops-table-wrap"><table className="reports-table"><thead><tr>
-      <th>Entrée / incident</th><th>Signal</th><th>Décision</th><th>Première évaluation</th><th>Dernière confirmation</th><th>Preuves</th>
-    </tr></thead><tbody>{value.items.map((entry) => <tr key={entry.id}>
-      <td>#{entry.id} / #{entry.incident_id}</td><td>{entry.decision.signal_key}</td><td>{decisionLabels[entry.status]}</td>
-      <td>{date(entry.first_observed_at)}</td><td>{date(entry.last_observed_at)}<small className="own-account">{entry.observations} observation(s)</small></td>
-      <td><button className="refresh-button" aria-expanded={selectedId === entry.id} onClick={() => onSelect(selectedId === entry.id ? null : entry.id)}>Consulter</button></td>
-    </tr>)}</tbody></table></div> : <p className="ops-empty">Aucune décision enregistrée pour ce filtre.</p>}
+    {value.items.length ? <CompactTable caption="Historique des décisions" rows={value.items} rowKey={(entry) => entry.id} selectedKey={selectedId} columns={[
+      { key: 'entry', label: 'Entrée / incident', render: (entry) => <>#{entry.id} / #{entry.incident_id}</> },
+      { key: 'status', label: 'Décision', render: (entry) => <StatusBadge state={entry.status} label={decisionLabels[entry.status]} /> },
+      { key: 'date', label: 'Première évaluation', render: (entry) => date(entry.first_observed_at) },
+      { key: 'action', label: 'Recommandation', render: (entry) => entry.decision.recommended_action?.title || 'Aucune action proposée' },
+      { key: 'details', label: 'Preuves', render: (entry) => <button className="ops-button" aria-label={'Consulter la décision ' + entry.id}
+        aria-expanded={selectedId === entry.id} onClick={() => onSelect(selectedId === entry.id ? null : entry.id)}>Consulter</button> },
+    ]} /> : <p className="ops-empty">Aucune décision enregistrée pour ce filtre.</p>}
     {selected && <article className="history-detail" aria-label={'Preuves de la décision ' + selected.id}>
       <h3>Décision #{selected.id} · Incident #{selected.incident_id}</h3>
-      <p>{selected.decision.explanation}</p><p>Motifs : {selected.decision.reason_codes.join(', ')}</p>
+      <p>{selected.decision.explanation}</p>
       <p>{selected.decision.recommended_action?.title || 'Aucune action proposée pour cet état.'}</p>
       {selected.decision.recommended_action && <ul>{selected.decision.recommended_action.steps.map((step, index) => <li key={index}>{step}</li>)}</ul>}
-      <dl><dt>Date des données</dt><dd>{date(selected.decision.input_evaluated_at)}</dd>
+      <dl><dt>Dernière confirmation</dt><dd>{date(selected.last_observed_at)} · {selected.observations} observation(s)</dd></dl>
+      <DetailsPanel title="Mesures, motifs et références techniques">
+        <dl><dt>Signal</dt><dd>{selected.decision.signal_key}</dd>
+          <dt>Motifs</dt><dd>{selected.decision.reason_codes.join(', ')}</dd>
+          <dt>Date des données</dt><dd>{date(selected.decision.input_evaluated_at)}</dd>
         <dt>Contexte / modèle</dt><dd>{selected.decision.context}</dd>
         <dt>Politique</dt><dd>{selected.decision.policy_version} · {selected.decision.policy_sha256}</dd>
         <dt>Identifiant de décision</dt><dd>{selected.decision.decision_id}</dd></dl>
       <h4>Mesures à la première évaluation</h4><pre>{JSON.stringify(selected.decision.evidence, null, 2)}</pre>
-      <details><summary>Politique et état de l’observateur conservés</summary>
-        <pre>{JSON.stringify({ policy: selected.policy, collector: selected.collector }, null, 2)}</pre></details>
+      <h4>Politique et état de l’observateur conservés</h4>
+      <pre>{JSON.stringify({ policy: selected.policy, collector: selected.collector }, null, 2)}</pre>
+      </DetailsPanel>
       <p className="ops-note">Une décision archivée ne permet aucune exécution. Toute action exige une évaluation actuelle.</p>
     </article>}
   </>;

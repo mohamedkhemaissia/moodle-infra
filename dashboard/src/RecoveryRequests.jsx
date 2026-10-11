@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useAuth } from './Auth.jsx';
 import { useReadings } from './useReadings.js';
 import { jsonRequest } from './authClient.js';
+import { catalogCurrent, catalogPath } from './backupCatalog.js';
+import { displayDate } from './navigation.js';
+import { CompactTable, StatusBadge } from './ApplicationServices.jsx';
 import { canManageRecovery, approvalCurrent, canStartTest, canCancelRequest, executionLabels, requestLabels, requestKey, requestPath, validateRecoveryMutation } from './recoveryRequests.js';
 
 const dates = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'medium' });
@@ -110,14 +113,16 @@ export function RequestsArea({ reading, onOpen, offset, onPage, now }) {
   return <>
     {!value ? <p className="ops-empty" role="status">{reading.pending ? 'Lecture des demandes…' : reading.error || 'Journal des demandes indisponible.'}</p>
       : value.total === 0 ? <p className="ops-empty">Aucune demande enregistrée.</p> : <>
-        <div className="ops-table-wrap"><table className="catalog-table"><thead><tr>
-          <th>Création</th><th>Sauvegarde</th><th>Demandeur</th><th>Décision</th><th>Test</th><th>Détail</th>
-        </tr></thead><tbody>{value.items.map((row) => <tr key={row.id}>
-          <td>{date(row.created_at)}</td><td>{scopeName(row.scope)}<br /><code>{row.snapshot_id.slice(0, 12)}</code></td>
-          <td>{row.requested_by.username}</td><td>{row.status === 'approved' && row.execution.status === 'not_dispatched' && !approvalCurrent(row, now) ? 'Approbation expirée' : requestLabels[row.status]}</td>
-          <td>{executionLabels[row.execution.status]}</td>
-          <td><button className="refresh-button" onClick={() => onOpen(row.id)}>Consulter</button></td>
-        </tr>)}</tbody></table></div>
+        <CompactTable caption="Demandes de restauration" rows={value.items} rowKey={(row) => row.id} columns={[
+          { key: 'point', label: 'Point / demande', render: (row) => <>{scopeName(row.scope)}<small><code title={row.snapshot_id}>{row.snapshot_id.slice(0, 12)}</code></small>
+            <small title={row.id}>Demande {row.id.slice(0, 8)}</small></> },
+          { key: 'date', label: 'Création', render: (row) => date(row.created_at) },
+          { key: 'decision', label: 'Décision', render: (row) => row.status === 'approved' && row.execution.status === 'not_dispatched' && !approvalCurrent(row, now) ? 'Approbation expirée' : requestLabels[row.status] },
+          { key: 'test', label: 'Résultat', render: (row) => <StatusBadge state={row.execution.status === 'succeeded' ? 'operational' :
+            row.execution.status === 'failed' ? 'failed' : ['queued', 'running'].includes(row.execution.status) ? 'running' : 'unknown'} label={executionLabels[row.execution.status]} /> },
+          { key: 'details', label: 'Détails', render: (row) => <button className="ops-button" aria-label={'Consulter la demande ' + row.id}
+            onClick={() => onOpen(row.id)}>Consulter</button> },
+        ]} />
         <div className="catalog-pagination"><button disabled={offset === 0} onClick={() => onPage(Math.max(0, offset-10))}>Précédent</button>
           <span>{value.total} demande{value.total > 1 ? 's' : ''}</span>
           <button disabled={!value.has_more || offset >= 10000} onClick={() => onPage(offset+10)}>Suivant</button></div>
@@ -125,7 +130,7 @@ export function RequestsArea({ reading, onOpen, offset, onPage, now }) {
   </>;
 }
 
-export default function RecoveryRequests({ now, refreshToken, selection, onCloseSelection }) {
+export default function RecoveryRequests({ now, refreshToken, selection, onSelectPoint, onCloseSelection }) {
   const auth = useAuth();
   const admin = canManageRecovery(auth);
   const [offset, setOffset] = useState(0);
@@ -133,6 +138,7 @@ export default function RecoveryRequests({ now, refreshToken, selection, onClose
   const [changed, setChanged] = useState(0);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [choosing, setChoosing] = useState(false);
   const token = `${refreshToken}:${changed}`;
   const readings = useReadings(auth?.enabled ? [{ key: 'requests', kind: 'recovery_requests',
     path: `/api/v1/recovery/requests?limit=10&offset=${offset}` }] : [], token, now);
@@ -148,7 +154,10 @@ export default function RecoveryRequests({ now, refreshToken, selection, onClose
   if (!auth?.enabled) return null;
   return <div className="backup-area" id="recovery-requests">
     <div className="backup-area-heading"><h3>Demandes de test de restauration</h3><span className="ops-badge neutral">Approbation</span></div>
-    <p className="ops-caption">Choisissez un point dans le catalogue. Les administrateurs enregistrent les demandes et les décisions ; les lecteurs consultent leur historique.</p>
+    <p className="ops-caption">Les administrateurs préparent et approuvent les demandes ; les lecteurs consultent leur historique.</p>
+    {admin && onSelectPoint && !selection && !choosing && <button className="ops-button" onClick={() => setChoosing(true)}>Préparer une demande</button>}
+    {admin && choosing && !selection && <RecoveryPointPicker now={now} refreshToken={token} onClose={() => setChoosing(false)}
+      onSelect={(point) => { onSelectPoint(point); setChoosing(false); }} />}
     {notice && <p className="catalog-warning" role="status">{notice}</p>}
     {admin && selection && <RequestForm key={selection.scope+selection.point.id} selection={selection} auth={auth}
       onClose={onCloseSelection} onCreated={(id) => { setSelected(id); setOffset(0); setChanged((value) => value+1); onCloseSelection(); setNotice('Demande enregistrée. Consultez son état et ses décisions.'); }} />}
@@ -172,5 +181,37 @@ export function ExecutionReport({report}) {
     {report.database_check === 'passed' && <p>Base restaurée vérifiée.</p>}
     <p>{Object.values(report.cleanup).every(Boolean) ? 'Environnement de test supprimé.' : 'Nettoyage incomplet.'}</p>
     <p className="ops-caption">La plateforme en service n’a pas été modifiée par ce test.</p>
+  </div>;
+}
+
+// Kept outside the consultation catalogue; no request is created by selecting a point.
+function RecoveryPointPicker({ now, refreshToken, onSelect, onClose }) {
+  const [scope, setScope] = useState('moodle');
+  const [offset, setOffset] = useState(0);
+  const [identifier, setIdentifier] = useState('');
+  const { catalog: reading } = useReadings([{ key: 'catalog', kind: 'backup_catalog', path: catalogPath(scope, offset) }], refreshToken, now);
+  const current = catalogCurrent(reading.data, now) && reading.data.scope === scope;
+  const point = current ? reading.data.items.find((row) => row.id === identifier) : null;
+  return <div className="recovery-form-card">
+    <h4>Choisir le point à vérifier</h4>
+    <div className="auth-form recovery-form">
+      <label>Périmètre<select value={scope} onChange={(event) => { setScope(event.target.value); setOffset(0); setIdentifier(''); }}>
+        <option value="moodle">Moodle</option><option value="pilotage">PostgreSQL du pilotage</option></select></label>
+      <label>Point de reprise<select value={point ? identifier : ''} disabled={!current} onChange={(event) => setIdentifier(event.target.value)}>
+        <option value="">Sélectionner un point</option>
+        {current && reading.data.items.map((row) => <option key={row.id} value={row.id}>
+          {displayDate(row.archived_at)} · {row.id.slice(0, 12)}</option>)}
+      </select></label>
+      {!current && <p role="status">{reading.pending ? 'Lecture des points de reprise…' : reading.error || 'Catalogue indisponible ou ancien. Actualiser avant de choisir un point.'}</p>}
+      {current && reading.data.total === 0 && <p>Aucun point disponible pour ce périmètre.</p>}
+      {current && <div className="catalog-pagination">
+        <button disabled={offset === 0} onClick={() => { setOffset((value) => Math.max(0, value - 10)); setIdentifier(''); }}>Précédent</button>
+        <span>Page {offset / 10 + 1}</span>
+        <button disabled={!reading.data.has_more || offset >= 190} onClick={() => { setOffset((value) => value + 10); setIdentifier(''); }}>Suivant</button>
+      </div>}
+      {point && <code className="recovery-reference">{point.id}</code>}
+      <div className="recovery-actions"><button className="refresh-button" disabled={!point} onClick={() => onSelect({ scope, point })}>Continuer la demande</button>
+        <button className="refresh-button" onClick={onClose}>Fermer</button></div>
+    </div>
   </div>;
 }

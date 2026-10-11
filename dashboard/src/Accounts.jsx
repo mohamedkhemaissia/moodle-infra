@@ -39,12 +39,12 @@ export function AccountRow({ user, currentUserId, busy, onUpdate }) {
   const own = user.id === currentUserId;
   const explanation = own ? 'Votre compte : le rôle et la désactivation doivent être gérés par un autre administrateur.' : undefined;
   return <tr>
-    <td>{user.display_name}{own && <small className="own-account">Votre compte</small>}</td><td>{user.username}</td><td>
+    <th scope="row" data-label="Compte">{user.display_name}{own && <small className="own-account">Votre compte</small>}</th><td data-label="Identifiant">{user.username}</td><td data-label="Rôle">
       <select aria-label={'Rôle de ' + user.username} value={user.role} disabled={busy || own} title={explanation}
         onChange={(event) => onUpdate(user, { role: event.target.value })}>
         <option value="reader">Lecteur</option><option value="admin">Administrateur</option>
-      </select></td><td>{user.active ? 'Actif' : 'Désactivé'}</td>
-    <td><button className="refresh-button" disabled={busy || own} title={explanation}
+      </select></td><td data-label="État">{user.active ? 'Actif' : 'Désactivé'}</td>
+    <td data-label="Action"><button className="refresh-button" disabled={busy || own} title={explanation}
       onClick={() => onUpdate(user, { active: !user.active })}>{user.active ? 'Désactiver' : 'Réactiver'}</button></td>
   </tr>;
 }
@@ -86,8 +86,8 @@ function UserManager() {
   function field(name, value) { setForm((current) => ({ ...current, [name]: value })); }
   return <>
     {(error || notice) && <p className={error ? 'auth-error' : 'account-notice'} role={error ? 'alert' : 'status'}>{error || notice}</p>}
-    <div className="account-table-wrap"><table className="account-table"><thead><tr>
-      <th>Compte</th><th>Identifiant</th><th>Rôle</th><th>État</th><th>Action</th>
+    <div className="compact-table-wrap"><table className="compact-table account-table"><caption className="sr-only">Comptes et accès</caption><thead><tr>
+      <th scope="col">Compte</th><th scope="col">Identifiant</th><th scope="col">Rôle</th><th scope="col">État</th><th scope="col">Action</th>
     </tr></thead><tbody>{users.map((user) => <AccountRow key={user.id} user={user} currentUserId={auth.user.id}
       busy={busy} onUpdate={update} />)}</tbody></table></div>
     <p className="account-notice">Votre rôle et la désactivation de votre compte doivent être gérés par un autre administrateur.

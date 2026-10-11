@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useReadings } from './useReadings.js';
 import { catalogCurrent, catalogPath } from './backupCatalog.js';
+import { CompactTable, DetailsPanel, StatusBadge } from './ApplicationServices.jsx';
 
 const dates = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'medium' });
 const date = (value) => value ? dates.format(Date.parse(value)) : 'Non enregistré';
@@ -17,12 +18,12 @@ const reasons = {
   not_configured: 'Le catalogue de ces sauvegardes n’est pas activé.',
 };
 
-export function CatalogArea({ reading, now, scope, offset, onScope, onPage, onRequest }) {
+export function CatalogArea({ reading, now, scope, offset, onScope, onPage }) {
   const value = reading.data;
-  const current = catalogCurrent(value, now);
+  const current = catalogCurrent(value, now) && value.scope === scope;
   return <div className="backup-area backup-catalog">
     <div className="backup-area-heading"><h3>Catalogue des points de reprise</h3>
-      <span className={'ops-badge ' + (current ? 'good' : 'neutral')}>{current ? 'Catalogue récent' : 'État inconnu'}</span></div>
+      <StatusBadge state={current ? 'operational' : reading.stale ? 'stale' : 'unknown'} label={current ? 'Catalogue récent' : undefined} /></div>
     <div className="catalog-tabs" role="group" aria-label="Type de sauvegarde">
       {[['moodle', 'Moodle'], ['pilotage', 'PostgreSQL du pilotage']].map(([key, label]) =>
         <button key={key} type="button" aria-pressed={scope === key} onClick={() => onScope(key)}>{label}</button>)}
@@ -35,18 +36,19 @@ export function CatalogArea({ reading, now, scope, offset, onScope, onPage, onRe
       {value.latest_success_presence === 'absent' && <p className="catalog-warning" role="status">
         Le dernier point confirmé localement est absent du dépôt consulté. Vérifier le dépôt avant une reprise.</p>}
       {value.total === 0 ? <p className="ops-empty">Aucun point de ce type n’a été trouvé dans le dépôt.</p> : <>
-        <div className="ops-table-wrap"><table className="catalog-table">
-          <caption className="catalog-caption">Points de reprise {scope === 'moodle' ? 'Moodle' : 'PostgreSQL du pilotage'}</caption>
-          <thead><tr><th>Référence</th><th>Début d’archivage</th><th>Instant des données</th><th>Hôte d’origine</th><th>Confirmation</th>{onRequest && <th>Test isolé</th>}</tr></thead>
-          <tbody>{value.items.map((point) => <tr key={point.id}>
-            <td><details><summary><code>{point.id.slice(0, 12)}</code></summary>
-              <span className="catalog-id" aria-label="Identifiant complet du point">{point.id}</span></details></td>
-            <td>{date(point.archived_at)}</td><td>{date(point.recovery_at)}</td><td>{point.hostname}</td>
-            <td>{point.success_recorded ? 'Dernière sauvegarde confirmée' : 'Présent dans le dépôt'}</td>
-            {onRequest && <td><button className="refresh-button" onClick={() => onRequest({ scope, point })}>
-              Demander un test</button></td>}
-          </tr>)}</tbody>
-        </table></div>
+        <CompactTable caption={'Points de reprise ' + (scope === 'moodle' ? 'Moodle' : 'PostgreSQL du pilotage')}
+          rows={value.items} rowKey={(point) => point.id} columns={[
+            { key: 'point', label: 'Point de reprise', render: (point) => <><code title={point.id}>{point.id.slice(0, 12)}</code>
+              <small>{scope === 'moodle' ? 'Moodle' : 'Pilotage'}</small></> },
+            { key: 'date', label: 'Archivage', render: (point) => date(point.archived_at) },
+            { key: 'state', label: 'État', render: (point) => point.success_recorded ? 'Sauvegarde confirmée' : 'Archivé' },
+            { key: 'availability', label: 'Disponibilité', render: () => 'Présent dans le dépôt' },
+          ]} details={(point) => <dl><dt>Identifiant complet du point</dt><dd className="recovery-reference">{point.id}</dd>
+                <dt>Périmètre</dt><dd>{scope === 'moodle' ? 'Moodle' : 'PostgreSQL du pilotage'}</dd>
+                <dt>Instant des données</dt><dd>{date(point.recovery_at)}</dd>
+                <dt>Hôte d’origine</dt><dd>{point.hostname}</dd>
+                <dt>Confirmation</dt><dd>{point.success_recorded ? 'Dernière sauvegarde confirmée' : 'Aucune confirmation locale associée'}</dd>
+                <dt>Restauration / intégrité</dt><dd>Non vérifiées par le catalogue</dd></dl>} />
         <div className="catalog-pagination">
           <button type="button" disabled={offset === 0} onClick={() => onPage(Math.max(0, offset-10))}>Précédent</button>
           <span>Page {Math.floor(offset/10)+1} sur {Math.max(1, Math.ceil(value.listed_total/10))}</span>
@@ -54,14 +56,14 @@ export function CatalogArea({ reading, now, scope, offset, onScope, onPage, onRe
         </div>
       </>}
       {value.truncated && <p className="ops-caption">Les 200 points les plus récents sont affichables ici sur {value.total} recensés.</p>}
-      <p className="ops-section-note">La date d’archivage indique le début du transfert vers le dépôt.
+      <DetailsPanel title="Comprendre le catalogue"><p className="ops-caption">La date d’archivage indique le début du transfert vers le dépôt.
         L’instant des données provient du dernier enregistrement de sauvegarde confirmé.
-        La présence d’un point ne prouve pas sa restauration.</p>
+        La présence d’un point ne prouve pas sa restauration.</p></DetailsPanel>
     </>}
   </div>;
 }
 
-export default function BackupCatalog({ now, refreshToken, onRequest }) {
+export default function BackupCatalog({ now, refreshToken }) {
   const [selection, setSelection] = useState({ scope: 'moodle', offset: 0 });
   const { scope, offset } = selection;
   const readings = useReadings([{ key: 'catalog', kind: 'backup_catalog', path: catalogPath(scope, offset) }], refreshToken, now);
@@ -72,7 +74,6 @@ export default function BackupCatalog({ now, refreshToken, onRequest }) {
     if (offset > last) setSelection((previous) => ({ ...previous, offset: last }));
   }, [readings.catalog.data, offset]);
   return <CatalogArea reading={readings.catalog} now={now} scope={scope} offset={offset}
-    onRequest={onRequest}
     onScope={(value) => setSelection({ scope: value, offset: 0 })}
     onPage={(value) => setSelection((previous) => ({ ...previous, offset: value }))} />;
 }

@@ -83,7 +83,7 @@ test('the actual panel shows resources and hides old data without action control
   const current = markup(now);
   assert.match(current, /Démarré/); assert.match(current, /1 Mio/);
   assert.match(current, /moodle-pilote/);
-  assert.doesNotMatch(current, /<button|\/var\/run|\/opt\//);
+  assert.doesNotMatch(current, />Exécuter|>Redémarrer|\/var\/run|\/opt\//);
   const old = markup(now + 61_000);
   assert.match(old, /État inconnu/); assert.doesNotMatch(old, /1 Mio|Démarré/);
 });
