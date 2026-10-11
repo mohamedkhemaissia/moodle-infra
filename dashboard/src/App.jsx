@@ -3,6 +3,7 @@ import Operations from './Operations.jsx';
 import { useMetrics } from './useMetrics.js';
 import { useAuth } from './Auth.jsx';
 import Accounts from './Accounts.jsx';
+import DecisionHistory from './DecisionHistory.jsx';
 import Backups from './Backups.jsx';
 import ApplicationServices from './ApplicationServices.jsx';
 import Containers from './Containers.jsx';
@@ -135,6 +136,7 @@ export function SectionContent({ section, now, refreshToken, metrics, onNavigate
     case 'policies': return <Policies refreshToken={refreshToken} />;
     case 'php-profiles': return <PHPProfiles now={now} refreshToken={refreshToken} />;
     case 'reports': return <Reports refreshToken={refreshToken} />;
+    case 'decision-history': return <DecisionHistory refreshToken={refreshToken} now={now} />;
     case 'accounts': return <Accounts />;
     default: return null;
   }

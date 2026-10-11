@@ -1,14 +1,14 @@
 # Moteur de décision en simulation
 
-L’API 0.5.0 calcule des recommandations à partir des incidents persistants. Ce moteur utilise des règles explicites. Isolation Forest fournit un signal expérimental distinct ; il ne choisit aucune correction et ne détermine aucune cause de panne.
+L’API calcule des recommandations à partir des incidents persistants. Ce moteur utilise des règles explicites. Isolation Forest fournit un signal expérimental distinct ; il ne choisit aucune correction et ne détermine aucune cause de panne.
 
 ## Du signal à la recommandation
 
-Les incidents, les dix signaux et le dernier passage de l’observateur sont lus dans une même transaction SQLite en lecture seule. Cette lecture reste cohérente lorsqu’un nouveau cycle de l’observateur est écrit simultanément. Aucun schéma de base n’est modifié.
+Les incidents, les onze signaux et le dernier passage de l’observateur sont lus dans une même transaction en lecture seule (PostgreSQL sur le pilote, SQLite pendant la transition). Cette lecture reste cohérente lorsqu’un nouveau cycle de l’observateur est écrit simultanément.
 
 Avant de proposer un diagnostic, le moteur vérifie :
 
-- Un passage de l’observateur récent, une horloge cohérente et les dix signaux traités.
+- Un passage de l’observateur récent, une horloge cohérente et tous les signaux traités.
 - Un même instant d’observation pour les signaux et l’incident concerné.
 - Un signal toujours déclenché et confirmé deux fois dans le contexte courant.
 - Des dépendances de collecte exploitables et des preuves compatibles avec le signal.
@@ -29,6 +29,7 @@ Après une interruption de cadence ou un changement de contexte, une nouvelle co
 | Mémoire élevée | Examiner consommateurs, swap et événements OOM. |
 | Disque disponible faible | Examiner l’occupation et la rétention avant toute suppression. |
 | Anomalie statistique | Examiner le contexte expérimental et les mesures opérationnelles. |
+| File PHP-FPM persistante | Examiner la capacité et les observations du pool avant un changement de profil. |
 
 Les incidents de qualité des données sont prioritaires, puis viennent la disponibilité, le disque, la mémoire et le CPU, et les anomalies statistiques. Les épisodes liés sont référencés ; leur coexistence ne constitue aucune preuve de causalité.
 
@@ -39,6 +40,8 @@ Les incidents de qualité des données sont prioritaires, puis viennent la dispo
 | `/api/v1/decisions/summary` | Recommandations pour les épisodes ouverts et comptages par état. |
 | `/api/v1/decisions/{incident_id}` | Recommandation pour un épisode, y compris son état résolu. |
 | `/api/v1/decisions/policies` | Catalogue des règles et empreinte de la politique. |
+| `/api/v1/decisions/history` | Transitions persistantes, filtres par état et incident, pagination par identifiant. |
+| `/api/v1/decisions/history/{entry_id}` | Mesures, justification, politique et observateur archivés pour une transition. |
 
 Les états sont `recommendation`, `blocked`, `monitoring` et `closed`. Les codes de raison expliquent les conditions manquantes. `available` indique que le calcul de la réponse fonctionne ; `snapshot_usable` décrit séparément l’état des observations. Une liste vide est valide lorsque tous les épisodes sont résolus.
 
@@ -52,9 +55,9 @@ L’incident `analysis_history` demande 420 secondes d’historique continu. Lor
 
 `control_plane_decisions_enabled` active le moteur et exige que les incidents soient activés. Le groupe Moodle reçoit cette variable dans `ansible/inventories/group_vars/moodle/decisions.yml`. Ansible reconstruit l’image, exécute les tests et vérifie le nouvel endpoint en mode simulation. Les délais et la correction du contrôle de santé précédemment installés sont conservés.
 
-Les lectures de décision n’interrogent pas Prometheus et n’écrivent ni incidents ni événements. Elles ne lancent aucune commande, notification ou exécution Ansible. Les recommandations sont calculées à la lecture et ne constituent pas encore un journal de décisions persistant. Le moteur fonctionne avec le stockage existant et les mêmes dépendances Python.
+Les lectures de décision n’interrogent pas Prometheus et n’écrivent ni incidents ni événements. Elles ne lancent aucune commande, notification ou exécution Ansible. L’évaluation actuelle reste calculée à la lecture ; son champ `persisted:false` décrit cette réponse exacte. L’observateur conserve séparément les transitions significatives dans le [journal des décisions](decision-journal.md).
 
-L’étape suivante devra ajouter les diagnostics d’exécution, un catalogue de corrections validées, la revalidation immédiate avant une action, les autorisations, la limitation des tentatives, la vérification du résultat et le journal d’exécution. Ansible Runner n’est pas intégré dans cette version.
+Les diagnostics, corrections, autorisations et journaux d’exécution existent déjà dans les modules dédiés. Une ancienne décision archivée ne remplace jamais leur revalidation des mesures, de la politique et des droits avant une action.
 
 ## Références techniques
 

@@ -172,7 +172,8 @@ class DatabaseSnapshot:
             include_recovery = self.connection.execute("SELECT to_regnamespace('pilotage_recovery')").fetchone()[0] is not None
             include_execution = include_recovery and self.connection.execute("SELECT to_regclass('pilotage_recovery.executions')").fetchone()[0] is not None
             include_policy = self.connection.execute("SELECT to_regnamespace('pilotage_policy')").fetchone()[0] is not None
-            self.inventory=validate_inventory(self.connection.execute(inventory_sql(include_recovery,include_execution,include_policy)).fetchone()[0],database=self.config['dbname'])
+            include_decisions = self.connection.execute("SELECT to_regnamespace('pilotage_decisions')").fetchone()[0] is not None
+            self.inventory=validate_inventory(self.connection.execute(inventory_sql(include_recovery,include_execution,include_policy,include_decisions)).fetchone()[0],database=self.config['dbname'])
             return self
         except Exception:
             if hasattr(self,'connection'):self.connection.close()

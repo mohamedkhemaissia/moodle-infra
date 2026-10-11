@@ -5,6 +5,14 @@ les mesures Linux, HTTPS, PHP-FPM, PostgreSQL et les trois conteneurs du pilote.
 L'observateur d'incidents, ses journaux et les workers de correction conservent
 leur fonctionnement. Redis reste reporte.
 
+Recette confirmee par l'operateur le 11/10/2026 apres merge de la PR #10 :
+premier passage Ansible `ok=21 changed=8 failed=0`, second passage
+`ok=19 changed=0 failed=0`. Prometheus charge 16 regles, sans erreur et sans
+alerte active au moment du controle. L'interface Alertmanager 0.34.1 est
+accessible ; le cluster desactive est attendu pour l'instance unique.
+Le relais SMTP reste desactive, donc aucune notification email reelle n'est
+encore validee. Cette recette ne doit pas etre rejouee comme un nouveau lot.
+
 ## Configuration livree
 
 Prometheus charge les regles et les transmet a Alertmanager sur

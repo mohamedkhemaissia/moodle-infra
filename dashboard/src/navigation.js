@@ -5,6 +5,7 @@ export const NAVIGATION = [
   { id: 'analysis', title: 'Prévisions', description: 'Estimation des ressources à 5, 10 et 15 minutes.', icon: 'chart', color: '#00d25b' },
   { id: 'incidents', title: 'Incidents et décisions', description: 'Épisodes détectés et recommandations de correction.', icon: 'alert', color: '#ffab00' },
   { id: 'audits', title: 'Journaux d’exécution', description: 'Historique des diagnostics et des remédiations.', icon: 'clock', color: '#0090e7' },
+  { id: 'decision-history', title: 'Historique des décisions', description: 'Recommandations conservées avec leurs mesures et leur justification.', icon: 'clock', color: '#ffab00' },
   { id: 'backups', title: 'Sauvegardes', description: 'Suivi des sauvegardes et des points de reprise.', icon: 'disk', color: '#8f5fe8' },
   { id: 'policies', title: 'Politiques', description: 'Règles qui encadrent les corrections.', icon: 'server', color: '#0090e7' },
   { id: 'php-profiles', title: 'Profils PHP-FPM', description: 'Configuration des profils de capacité PHP-FPM.', icon: 'server', color: '#00d25b' },

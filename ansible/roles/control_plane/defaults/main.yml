@@ -38,6 +38,7 @@ control_plane_incident_data_dir: /var/lib/moodle-control-plane/incidents
 control_plane_incident_observer_memory_limit: 192m
 control_plane_incident_observer_cpu_limit: "0.25"
 control_plane_decisions_enabled: false
+control_plane_decision_journal_enabled: false
 control_plane_diagnostics_enabled: false
 control_plane_diagnostics_data_dir: /var/lib/moodle-diagnostics
 control_plane_diagnostics_store_source: "{{ playbook_dir }}/../../diagnostics/store.py"
@@ -60,6 +61,7 @@ control_plane_source_files:
   - pilotage/recovery_cli.py
   - pilotage/recovery_execution.py
   - pilotage/operating_policy.py
+  - pilotage/decision_journal.py
   - app/__init__.py
   - app/main.py
   - app/auth.py
