@@ -1,0 +1,5 @@
+---
+monitoring_alertmanager_enabled: true
+# Les alertes sont consultables via un tunnel SSH. Le SMTP reste desactive
+# tant que l'operateur n'a pas configure son relais et son destinataire.
+monitoring_alert_email_enabled: false

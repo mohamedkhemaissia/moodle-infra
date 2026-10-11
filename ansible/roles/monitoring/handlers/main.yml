@@ -1,4 +1,14 @@
 ---
+- name: Redemarrer Alertmanager
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_base_dir }}"
+    project_name: "{{ monitoring_project_name }}"
+    state: restarted
+    services:
+      - alertmanager
+    dependencies: false
+  when: monitoring_alertmanager_enabled | bool
+
 - name: Redemarrer Prometheus
   community.docker.docker_compose_v2:
     project_src: "{{ monitoring_base_dir }}"

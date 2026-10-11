@@ -1,0 +1,190 @@
+{% macro fresh(job) -%}
+(max(up{job="{{ job }}"}) == 1)
+and on() (time() - max(timestamp(up{job="{{ job }}"})) <= 60)
+and on() (time() - max(timestamp(up{job="{{ job }}"})) >= 0)
+{%- endmacro %}
+{% macro metric_fresh(metric, job) -%}
+(time() - max(timestamp({{ metric }}{job="{{ job }}"})) <= 60)
+and on() (time() - max(timestamp({{ metric }}{job="{{ job }}"})) >= 0)
+{%- endmacro %}
+{% macro labels(category, severity, job) %}
+          environment: pfe
+          scope: {{ monitoring_alert_scope | to_json }}
+          category: {{ category }}
+          severity: {{ severity }}
+          source_job: {{ job }}
+{% endmacro %}
+groups:
+  - name: moodle-collection
+    rules:
+{% set sources = [('Linux', 'linux', ''), ('Blackbox', 'blackbox_exporter', ''), ('HTTPS', 'moodle_https', 'probe_success'), ('Alertmanager', 'alertmanager', '')] %}
+{% if monitoring_application_metrics_enabled | bool %}
+{% set sources = sources + [('PHP', 'moodle_phpfpm', 'phpfpm_up'), ('Postgres', 'moodle_postgres', 'pg_up')] %}
+{% endif %}
+{% for name, job, metric in sources %}
+      - alert: Moodle{{ name }}CollectionUnavailable
+        expr: >-
+          (max(up{job="{{ job }}"}) != 1)
+          or absent(max(up{job="{{ job }}"}))
+          or (time() - max(timestamp(up{job="{{ job }}"})) > 60)
+          or (time() - max(timestamp(up{job="{{ job }}"})) < 0)
+{% if metric %}
+          or ((absent(max({{ metric }}{job="{{ job }}"}))
+          or (max({{ metric }}{job="{{ job }}"}) < 0)
+          or (max({{ metric }}{job="{{ job }}"}) > 1)
+          or (time() - max(timestamp({{ metric }}{job="{{ job }}"})) > 60)
+          or (time() - max(timestamp({{ metric }}{job="{{ job }}"})) < 0))
+          and on() ({{ fresh(job) | indent(10) }}))
+{% endif %}
+        for: 1m
+        labels:
+{{ labels('collection', 'warning', job) }}
+        annotations:
+          summary: "Collecte {{ job }} indisponible ou incomplete"
+          description: "Etat du service inconnu : verifier la collecte avant de conclure a une panne."
+{% endfor %}
+
+      - alert: MoodleHostMetricsUnavailable
+        expr: >-
+          (absent(max(node_cpu_seconds_total{job="linux",mode="idle"}))
+          or absent(max(node_memory_MemAvailable_bytes{job="linux"}))
+          or absent(max(node_memory_MemTotal_bytes{job="linux"}))
+          or absent(max(node_filesystem_avail_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"}))
+          or absent(max(node_filesystem_size_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"})))
+          and on() ({{ fresh('linux') | indent(10) }})
+        for: 1m
+        labels:
+{{ labels('collection', 'warning', 'linux') }}
+        annotations:
+          summary: "Mesures de ressources Linux incompletes"
+          description: "Ne pas interpreter une mesure absente comme une ressource disponible."
+
+  - name: moodle-service
+    rules:
+      - alert: MoodleHTTPSUnavailable
+        expr: >-
+          (max(probe_success{job="moodle_https"}) == 0)
+          and on() ({{ fresh('moodle_https') | indent(10) }})
+          and on() ({{ metric_fresh('probe_success', 'moodle_https') | indent(10) }})
+        for: 1m
+        labels:
+{{ labels('service', 'critical', 'moodle_https') }}
+        annotations:
+          summary: "Sonde HTTPS Moodle en echec"
+          description: "La page de connexion ne repond pas correctement ; un parcours pedagogique reste a verifier."
+{% if monitoring_application_metrics_enabled | bool %}
+{% for name, job, metric in [('PHP', 'moodle_phpfpm', 'phpfpm_up'), ('Postgres', 'moodle_postgres', 'pg_up')] %}
+      - alert: Moodle{{ name }}Unavailable
+        expr: >-
+          (max({{ metric }}{job="{{ job }}"}) == 0)
+          and on() ({{ fresh(job) | indent(10) }})
+          and on() ({{ metric_fresh(metric, job) | indent(10) }})
+        for: 1m
+        labels:
+{{ labels('service', 'critical', job) }}
+        annotations:
+          summary: "Service {{ name }} inaccessible depuis son exporteur"
+          description: "Collecte recente confirmee ; verifier le service et ses dependances."
+{% endfor %}
+      - alert: MoodlePHPPoolQueue
+        expr: >-
+          (max(phpfpm_listen_queue{job="moodle_phpfpm",pool="www"}) > 0)
+          and on() (max(phpfpm_idle_processes{job="moodle_phpfpm",pool="www"}) == 0)
+          and on() (max(phpfpm_active_processes{job="moodle_phpfpm",pool="www"}) > 0)
+          and on() (max(phpfpm_up{job="moodle_phpfpm"}) == 1)
+          and on() ({{ fresh('moodle_phpfpm') | indent(10) }})
+          and on() ({{ metric_fresh('phpfpm_up', 'moodle_phpfpm') | indent(10) }})
+          and on() ({{ metric_fresh('phpfpm_listen_queue', 'moodle_phpfpm') | indent(10) }})
+          and on() ({{ metric_fresh('phpfpm_idle_processes', 'moodle_phpfpm') | indent(10) }})
+          and on() ({{ metric_fresh('phpfpm_active_processes', 'moodle_phpfpm') | indent(10) }})
+        for: 2m
+        labels:
+{{ labels('resource', 'warning', 'moodle_phpfpm') }}
+        annotations:
+          summary: "File d attente PHP-FPM persistante"
+          description: "Le pool www attend sans processus libre ; cette alerte ne declenche aucun changement de profil."
+{% endif %}
+
+  - name: moodle-host
+    rules:
+      - alert: MoodleCPUHigh
+        expr: >-
+          (100 * (1 - avg(rate(node_cpu_seconds_total{job="linux",mode="idle"}[2m]))) >= 85)
+          and on() ({{ fresh('linux') | indent(10) }})
+        for: 3m
+        labels:
+{{ labels('resource', 'warning', 'linux') }}
+        annotations:
+          summary: "CPU de l hote Moodle eleve"
+          description: "Utilisation moyenne superieure ou egale a 85 pour cent pendant trois minutes."
+      - alert: MoodleMemoryHigh
+        expr: >-
+          (100 * (1 - max(node_memory_MemAvailable_bytes{job="linux"}) / max(node_memory_MemTotal_bytes{job="linux"})) >= 90)
+          and on() (max(node_memory_MemTotal_bytes{job="linux"}) > 0)
+          and on() ({{ fresh('linux') | indent(10) }})
+        for: 3m
+        labels:
+{{ labels('resource', 'warning', 'linux') }}
+        annotations:
+          summary: "Memoire de l hote Moodle elevee"
+          description: "Au moins 90 pour cent de la memoire utilisee pendant trois minutes."
+      - alert: MoodleDiskLow
+        expr: >-
+          (100 * min(node_filesystem_avail_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"}
+          / node_filesystem_size_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"}) <= 10)
+          and on() ({{ fresh('linux') | indent(10) }})
+        for: 5m
+        labels:
+{{ labels('resource', 'critical', 'linux') }}
+        annotations:
+          summary: "Espace disque racine Moodle faible"
+          description: "Au plus 10 pour cent libres pendant cinq minutes ; verifier les volumes et la retention."
+{% if monitoring_container_metrics_enabled | bool %}
+{% set targets = container_monitoring_targets | default([{'project':'moodle-pilote','service':'apache'}, {'project':'moodle-pilote','service':'php'}, {'project':'moodle-pilote','service':'postgres'}]) %}
+{% macro inventory_fresh() -%}
+(max(moodle_container_collection_success{job="linux"}) == 1)
+and on() (time() - max(moodle_container_inventory_timestamp_seconds{job="linux"}) <= 90)
+and on() (time() - max(moodle_container_inventory_timestamp_seconds{job="linux"}) >= 0)
+and on() (max(node_textfile_scrape_error{job="linux"}) == 0)
+{% for target in targets %}
+and on() (count(moodle_container_instances{job="linux",project={{ target.project | to_json }},compose_service={{ target.service | to_json }}}) == 1)
+{% endfor %}
+{%- endmacro %}
+  - name: moodle-containers
+    rules:
+      - alert: MoodleContainerCollectionUnavailable
+        expr: >-
+          ((max(moodle_container_collection_success{job="linux"}) != 1)
+          or absent(max(moodle_container_collection_success{job="linux"}))
+          or absent(max(moodle_container_inventory_timestamp_seconds{job="linux"}))
+          or (time() - max(moodle_container_inventory_timestamp_seconds{job="linux"}) > 90)
+          or (time() - max(moodle_container_inventory_timestamp_seconds{job="linux"}) < 0)
+          or (max(node_textfile_scrape_error{job="linux"}) != 0)
+          or absent(max(node_textfile_scrape_error{job="linux"}))
+{% for target in targets %}
+          or absent(max(moodle_container_instances{job="linux",project={{ target.project | to_json }},compose_service={{ target.service | to_json }}}))
+{% endfor %}
+          ) and on() ({{ fresh('linux') | indent(10) }})
+        for: 1m
+        labels:
+{{ labels('collection', 'warning', 'linux') }}
+        annotations:
+          summary: "Inventaire des conteneurs indisponible ou ancien"
+          description: "La collecte Docker est inconnue ; aucun arret de conteneur n est deduit."
+      - alert: MoodleContainerUnavailable
+        expr: >-
+          (max by (project, compose_service) (
+{% for target in targets %}
+          {% if not loop.first %}or {% endif %}(moodle_container_instances{job="linux",project={{ target.project | to_json }},compose_service={{ target.service | to_json }}} != 1)
+          or (moodle_container_running{job="linux",project={{ target.project | to_json }},compose_service={{ target.service | to_json }}} != 1)
+{% endfor %}
+          ) >= 0)
+          and on() ({{ fresh('linux') | indent(10) }})
+          and on() ({{ inventory_fresh() | trim | indent(10) }})
+        for: 1m
+        labels:
+{{ labels('container', 'critical', 'linux') }}
+        annotations:
+          summary: "Conteneur Moodle absent arrete ou duplique"
+          description: "Verifier le service Compose identifie ; son etat ne remplace pas le controle fonctionnel Moodle."
+{% endif %}
