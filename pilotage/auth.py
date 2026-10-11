@@ -187,6 +187,11 @@ class AuthStore:
                 raise AuthConflict("Compte inconnu.")
             target_role = role if role is not None else row["role"]
             target_active = active if active is not None else row["active"]
+            if actor_id == identifier:
+                if not target_active:
+                    raise AuthConflict("Vous ne pouvez pas désactiver votre propre compte.")
+                if target_role != row["role"]:
+                    raise AuthConflict("Vous ne pouvez pas modifier votre propre rôle.")
             if row["role"] == "admin" and row["active"] and (target_role != "admin" or not target_active):
                 others = cursor.execute("SELECT count(*) AS count FROM users WHERE role='admin' AND active AND id<>%s",
                                         (identifier,)).fetchone()["count"]

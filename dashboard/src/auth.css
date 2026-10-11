@@ -25,3 +25,4 @@
 .session-actions { display: flex; align-items: center; gap: 12px; }
 .session-role { font-size: 11px; color: #a7acc3; }
 @media (max-width: 720px) { .session-role { display: none; } .session-actions { gap: 8px; } .auth-card { padding: 26px; } .navbar-end .today { display: none; } }
+.own-account { display: block; margin-top: 4px; color: #9daac1; }

@@ -112,6 +112,21 @@ class PostgreSQLAccountsTests(unittest.TestCase):
         self.assertEqual(sum(results), 1)
         self.assertEqual(sum(user['role'] == 'admin' and user['active'] for user in self.store.users()), 1)
 
+    def test_administrator_cannot_disable_or_demote_self_with_another_active_admin(self):
+        self.store.add_user('kais', 'Kais', 'admin', PASSWORD, now=BASE)
+        session = self.store.login('hamma', PASSWORD, now=BASE)
+        before = self.store.users()
+        audit_before = self.store.events(actor_id=self.admin['id'])
+        for kwargs in ({'role': 'reader'}, {'active': False}, {'role': 'reader', 'active': False}):
+            with self.assertRaisesRegex(AuthConflict, 'propre'):
+                self.store.update_user(self.admin['id'], actor_id=self.admin['id'], now=BASE + 1, **kwargs)
+        self.assertEqual(self.store.users(), before)
+        self.assertEqual(self.store.events(actor_id=self.admin['id']), audit_before)
+        self.assertEqual(self.store.authenticate(session['token'], now=BASE + 2)['user']['role'], 'admin')
+        # Une requete sans changement reste inoffensive.
+        self.assertEqual(self.store.update_user(self.admin['id'], actor_id=self.admin['id'],
+                         role='admin', active=True, now=BASE + 3), before[0])
+
     def test_password_change_revokes_old_sessions_and_preserves_only_new_cookie(self):
         first = self.store.login('ahmed', PASSWORD, now=BASE)
         other = self.store.login('ahmed', PASSWORD, now=BASE + 1)
@@ -181,6 +196,15 @@ class PostgreSQLAccountsTests(unittest.TestCase):
                         json={'username': 'kais', 'display_name': 'Kais', 'role': 'reader', 'password': PASSWORD})
                     self.assertEqual(created.status_code, 201)
                     self.assertNotIn('password_hash', created.json())
+                    promoted = await admin.patch('/api/v1/users/' + str(created.json()['id']),
+                        headers=admin_headers, json={'role': 'admin'})
+                    self.assertEqual(promoted.status_code, 200)
+                    for body in ({'active': False}, {'role': 'reader'}):
+                        refused = await admin.patch('/api/v1/users/' + str(self.admin['id']),
+                            headers=admin_headers, json=body)
+                        self.assertEqual(refused.status_code, 409)
+                        self.assertIn('propre', refused.json()['detail'])
+                    self.assertEqual((await admin.get('/api/v1/auth/session')).json()['user']['role'], 'admin')
                     disabled = await admin.patch('/api/v1/users/' + str(self.reader['id']),
                         headers=admin_headers, json={'active': False})
                     self.assertEqual(disabled.status_code, 200)

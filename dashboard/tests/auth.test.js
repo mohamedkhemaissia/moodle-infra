@@ -59,7 +59,7 @@ test('Les composants React affichent la connexion et la gestion des comptes selo
   const server = await createServer({ server: { middlewareMode: true }, appType: 'custom' });
   t.after(() => server.close());
   const { AuthContext, LoginForm } = await server.ssrLoadModule('/src/Auth.jsx');
-  const { default: Accounts } = await server.ssrLoadModule('/src/Accounts.jsx');
+  const { default: Accounts, AccountRow } = await server.ssrLoadModule('/src/Accounts.jsx');
   const login = renderToStaticMarkup(React.createElement(LoginForm, { onLogin() {} }));
   assert.match(login, /Connexion au pilotage/);
   assert.match(login, /type="password"/);
@@ -77,4 +77,12 @@ test('Les composants React affichent la connexion et la gestion des comptes selo
   assert.match(admin, /Comptes et accès/);
   assert.match(admin, /Créer un compte/);
   assert.match(admin, /Administrateur/);
+  const own = renderToStaticMarkup(React.createElement(AccountRow,
+    { user, currentUserId: user.id, busy: false, onUpdate() {} }));
+  assert.match(own, /Votre compte/);
+  assert.match(own, /<select[^>]+disabled=""/);
+  assert.match(own, /<button[^>]+disabled=""/);
+  const other = renderToStaticMarkup(React.createElement(AccountRow,
+    { user, currentUserId: 2, busy: false, onUpdate() {} }));
+  assert.doesNotMatch(other, /disabled=""/);
 });
