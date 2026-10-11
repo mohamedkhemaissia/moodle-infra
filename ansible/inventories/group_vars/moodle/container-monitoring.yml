@@ -1,0 +1,7 @@
+---
+monitoring_container_metrics_enabled: true
+control_plane_container_metrics_enabled: true
+container_monitoring_targets:
+  - {project: moodle-pilote, service: apache}
+  - {project: moodle-pilote, service: php}
+  - {project: moodle-pilote, service: postgres}

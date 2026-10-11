@@ -615,3 +615,24 @@
   retries: 24
   delay: 5
   when: control_plane_application_metrics_enabled | bool
+
+- name: Verifier le suivi protege des conteneurs dans l API
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/metrics/containers"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+    headers: "{{ control_plane_read_headers }}"
+  no_log: "{{ pilotage_auth_activation.stat.exists }}"
+  register: control_plane_containers_response
+  until: >-
+    control_plane_containers_response.status | default(0) == 200 and
+    control_plane_containers_response.json is defined and
+    control_plane_containers_response.json.mode | default('') == 'read_only' and
+    control_plane_containers_response.json.collector.status | default('') == 'up' and
+    (control_plane_containers_response.json.containers | length) == (control_plane_container_metrics_targets | length) and
+    (control_plane_containers_response.json.containers | selectattr('state', 'equalto', 'unknown') | list | length) == 0
+  retries: 12
+  delay: 5
+  when: control_plane_container_metrics_enabled | bool

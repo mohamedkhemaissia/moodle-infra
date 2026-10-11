@@ -31,6 +31,10 @@ dashboard_source_files:
   - src/RecoveryRequests.jsx
   - src/recoveryRequests.js
   - src/ApplicationServices.jsx
+  - src/Containers.jsx
+  - src/containerMetrics.js
+  - src/containers.css
+  - tests/containers.test.js
   - src/PHPProfiles.jsx
   - src/phpProfiles.js
   - tests/phpProfiles.test.js
@@ -40,6 +44,8 @@ dashboard_source_files:
   - src/authClient.js
   - src/auth.css
   - src/App.jsx
+  - src/navigation.js
+  - tests/navigation.test.js
   - src/Policies.jsx
   - src/policies.js
   - src/policies.css
