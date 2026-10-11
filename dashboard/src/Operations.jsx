@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { RESOURCES, analysisReady, decisionCurrent, recoveryProven, requestPath } from './operations.js';
+import { RESOURCES, analysisReady, decisionCurrent, recoveryProven, requestPath, operationRequests } from './operations.js';
 import { useReadings } from './useReadings.js';
 
 const numbers = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
@@ -68,7 +68,7 @@ function RunList({ title, kind, result, offset, setOffset, select, selected }) {
   </article>;
 }
 
-export default function Operations({ now, refreshToken }) {
+export default function Operations({ now, refreshToken, section = 'incidents', onNavigate }) {
   const [filter, setFilter] = useState('');
   const [offset, setOffset] = useState(0);
   const [incidentId, setIncidentId] = useState(null);
@@ -76,35 +76,28 @@ export default function Operations({ now, refreshToken }) {
   const [remediationOffset, setRemediationOffset] = useState(0);
   const [run, setRun] = useState(null);
   const [localRefresh, setLocalRefresh] = useState(0);
-  const requests = [
-    { key: 'forecast', kind: 'forecast', path: requestPath('forecast') },
-    { key: 'summary', kind: 'summary', path: requestPath('summary') },
-    { key: 'incidents', kind: 'incidents', path: requestPath('incidents', { status: filter, offset }) },
-    { key: 'diagnostics', kind: 'runs', path: requestPath('diagnostics', { incidentId, offset: diagnosticOffset }) },
-    { key: 'remediations', kind: 'runs', path: requestPath('remediations', { incidentId, offset: remediationOffset }) },
-  ];
-  if (incidentId !== null) requests.push({ key: 'decision', kind: 'decision', path: requestPath('decision', { incidentId }) });
-  if (run) requests.push({ key: 'run', kind: 'run', path: requestPath(run.kind, { runId: run.id }) });
+  const requests = operationRequests(section, { status: filter, offset, incidentId,
+    diagnosticOffset, remediationOffset, run });
   const readings = useReadings(requests, `${refreshToken}:${localRefresh}`, now);
   function selectIncident(id) {
     setIncidentId(id); setDiagnosticOffset(0); setRemediationOffset(0); setRun(null);
   }
-  const selectedIncident = readings.incidents.data?.items.find((item) => item.id === incidentId);
-  const collector = readings.summary.data?.collector;
+  const selectedIncident = readings.incidents?.data?.items.find((item) => item.id === incidentId);
+  const collector = readings.summary?.data?.collector;
   const collectorAge = collector ? Math.max(collector.age_seconds, collector.input_age_seconds) +
     Math.max(0, (now - Date.parse(readings.summary.data.evaluated_at)) / 1000) : null;
   const collectorReady = collector?.status === 'running' && Number.isFinite(collectorAge) && collectorAge <= 90;
 
   return <>
-    <section id="analysis" className="panel ops-panel" aria-labelledby="analysis-heading">
+    {section === 'analysis' && <section id="analysis" className="panel ops-panel" aria-labelledby="analysis-heading">
       <div className="panel-heading"><div><h2 id="analysis-heading">Prévisions des ressources</h2>
         <p>Estimation de la consommation à 5, 10 et 15 minutes.</p></div>
         <span className="subtle-badge">Expérimental</span></div>
       <div className="forecast-body"><Forecasts result={readings.forecast} now={now} /></div>
       <p className="ops-section-note">Les prévisions sont expérimentales.</p>
-    </section>
+    </section>}
 
-    <section id="incidents" className="panel ops-panel" aria-labelledby="incidents-heading">
+    {section === 'incidents' && <section id="incidents" className="panel ops-panel" aria-labelledby="incidents-heading">
       <div className="panel-heading"><div><h2 id="incidents-heading">Incidents et recommandations</h2>
         <p>Suivre les épisodes détectés et consulter le diagnostic proposé.</p></div>
         <button className="ops-button" onClick={() => setLocalRefresh((n) => n + 1)}>Actualiser les incidents</button></div>
@@ -131,7 +124,8 @@ export default function Operations({ now, refreshToken }) {
         </>}</Reading>
         {incidentId !== null && <article className="decision-card" aria-label={`Décision incident ${incidentId}`}>
           <div className="ops-toolbar"><h3>Incident #{incidentId}{selectedIncident ? ` · ${selectedIncident.title}` : ''}</h3>
-            <button className="ops-button" onClick={() => selectIncident(null)}>Voir tous les journaux</button></div>
+            <button className="ops-button" onClick={() => selectIncident(null)}>Fermer le détail</button>
+            {onNavigate && <button className="ops-button" onClick={() => onNavigate('audits')}>Voir les journaux</button>}</div>
           <Reading result={readings.decision}>{(data) => { const decision = data.decision;
             const current = decisionCurrent(data, now);
             return <><Badge state={decision.status === 'recommendation' && !current ? 'blocked' : decision.status} />
@@ -143,15 +137,16 @@ export default function Operations({ now, refreshToken }) {
                 {decision.valid_until ? ` · validité jusqu’à ${date(decision.valid_until)}` : ''}</p>
               <details><summary>Motifs et preuves du signal</summary><pre>{JSON.stringify({ reasons: decision.reason_codes, evidence: decision.evidence }, null, 2)}</pre></details>
             </>; }}</Reading>
-          <p className="ops-note">Les recommandations sont calculées en simulation. Les journaux ci-dessous retracent les exécutions réellement enregistrées.</p>
+          <p className="ops-note">Les recommandations sont calculées en simulation. Le menu Journaux d’exécution retrace les exécutions réellement enregistrées.</p>
         </article>}
       </div>
-    </section>
+    </section>}
 
-    <section id="audits" className="panel ops-panel" aria-labelledby="audits-heading">
+    {section === 'audits' && <section id="audits" className="panel ops-panel" aria-labelledby="audits-heading">
       <div className="panel-heading"><div><h2 id="audits-heading">Diagnostics et remédiations</h2>
         <p>{incidentId === null ? 'Historique de tous les incidents.' : `Historique de l’incident #${incidentId}.`}</p></div>
-        <span className="subtle-badge">Consultation</span></div>
+        {incidentId !== null ? <button className="ops-button" onClick={() => selectIncident(null)}>Tous les journaux</button>
+          : <span className="subtle-badge">Consultation</span>}</div>
       <div className="ops-grid"><RunList title="Diagnostics" kind="diagnostics" result={readings.diagnostics}
         offset={diagnosticOffset} setOffset={setDiagnosticOffset} select={setRun} selected={run?.kind === 'diagnostics' ? run.id : null} />
         <RunList title="Remédiations" kind="remediations" result={readings.remediations}
@@ -170,6 +165,6 @@ export default function Operations({ now, refreshToken }) {
         <a className="ops-json-link" href={requestPath(run.kind, { runId: data.id })} target="_blank" rel="noreferrer">Ouvrir le journal JSON ↗</a>
       </>}</Reading></div>}
       <p className="ops-section-note">Exécutions lancées manuellement par l’opérateur.</p>
-    </section>
+    </section>}
   </>;
 }

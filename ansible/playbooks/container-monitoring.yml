@@ -1,0 +1,10 @@
+---
+- name: Collecter et afficher les ressources des conteneurs du pilote
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - container_monitoring
+    - monitoring
+    - control_plane
+    - dashboard

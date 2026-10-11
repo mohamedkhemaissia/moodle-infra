@@ -11,6 +11,15 @@
     - "{{ monitoring_base_dir }}/prometheus"
     - "{{ monitoring_base_dir }}/blackbox"
 
+- name: Creer le repertoire textfile des mesures de conteneurs
+  ansible.builtin.file:
+    path: "{{ monitoring_container_textfile_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: monitoring_container_metrics_enabled | bool
+
 - name: Copier le certificat public de confiance Moodle
   ansible.builtin.copy:
     src: "{{ monitoring_moodle_ca_source }}"

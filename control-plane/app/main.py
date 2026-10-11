@@ -10,6 +10,7 @@ from typing import Literal
 
 from .models import MetricsSummary
 from .application_metrics import summary as application_metrics_summary, queries as application_queries
+from .container_metrics import summary as container_metrics_summary, parse_targets, DEFAULT_TARGETS
 from .auth import Settings as AuthSettings, install as install_auth
 from .recovery_requests import install as install_recovery_requests
 from .operating_policy import install as install_operating_policy
@@ -56,6 +57,7 @@ def create_app(
     recovery_execution_enabled: bool | None = None,
     policies_enabled: bool | None = None,
     policy_store=None,
+    container_metrics_enabled: bool | None = None,
 ) -> FastAPI:
     authentication = AuthSettings.load(auth_enabled, auth_origins, auth_secure_cookie, auth_worker_hash_file)
     backup_file = backup_status_file if backup_status_file is not None else os.getenv("BACKUP_STATUS_FILE", "")
@@ -88,6 +90,14 @@ def create_app(
     application_pool = os.getenv("APPLICATION_PHP_POOL", "www")
     application_database = os.getenv("APPLICATION_PG_DATABASE", "moodle")
     application_queries(application_pool, application_database)
+    if container_metrics_enabled is None:
+        setting = os.getenv("CONTAINER_METRICS_ENABLED", "false")
+        if setting not in ("true", "false"):
+            raise ValueError("CONTAINER_METRICS_ENABLED doit valoir true ou false.")
+        container_metrics_enabled = setting == "true"
+    if type(container_metrics_enabled) is not bool:
+        raise ValueError("Activation des mesures de conteneurs invalide.")
+    container_targets = parse_targets(os.getenv("CONTAINER_METRICS_TARGETS", DEFAULT_TARGETS))
     model_directory = forecasts_dir if forecasts_dir is not None else os.getenv("FORECASTS_DIR", "")
 
     anomaly_directory = anomalies_dir if anomalies_dir is not None else os.getenv("ANOMALIES_DIR", "")
@@ -156,7 +166,7 @@ def create_app(
     application = FastAPI(
         title="Pilotage Moodle",
         description="Supervision, analyses experimentales et historique des incidents observes du pilote Moodle.",
-        version="0.15.0",
+        version="0.16.0",
         lifespan=lifespan,
     )
     install_auth(application, authentication)
@@ -165,7 +175,19 @@ def create_app(
 
     @application.get("/api/v1/health", tags=["Sante"])
     async def health():
-        return {"status": "ok", "service": "moodle-control-plane", "version": "0.15.0"}
+        return {"status": "ok", "service": "moodle-control-plane", "version": "0.16.0"}
+
+    @application.get("/api/v1/metrics/containers", tags=["Supervision"])
+    async def container_metrics(request: Request, response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        if not container_metrics_enabled:
+            raise HTTPException(503, detail="Le suivi des conteneurs n'est pas configure.")
+        try:
+            return await container_metrics_summary(request.app.state.prometheus, datetime.now(timezone.utc), container_targets)
+        except PrometheusUnavailable as exc:
+            raise HTTPException(503, detail="Prometheus est indisponible.") from exc
+        except PrometheusInvalidResponse as exc:
+            raise HTTPException(502, detail="Les mesures de conteneurs sont inexploitables.") from exc
 
     @application.get("/api/v1/metrics/applications", tags=["Supervision"])
     async def application_metrics(request: Request, response: Response):

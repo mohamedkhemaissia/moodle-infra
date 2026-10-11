@@ -8,6 +8,7 @@ on:
       - 'ansible/**'
       - 'ansible.cfg'
       - 'control-plane/**'
+      - 'container_monitoring/**'
       - 'dashboard/**'
       - 'diagnostics/**'
       - 'remediation/**'
@@ -25,6 +26,7 @@ on:
       - 'ansible/**'
       - 'ansible.cfg'
       - 'control-plane/**'
+      - 'container_monitoring/**'
       - 'dashboard/**'
       - 'diagnostics/**'
       - 'remediation/**'
@@ -224,6 +226,10 @@ jobs:
         run: python -B ci/pull_ci_images.py application-metrics
       - name: Verifier les acces limites et les metriques reelles
         run: python -B ci/run_application_metrics_tests.py
+      - name: Telecharger les images du suivi des conteneurs
+        run: python -B ci/pull_ci_images.py container-metrics
+      - name: Verifier les conteneurs reels via Node Exporter Prometheus et l API
+        run: python -B ci/run_container_metrics_tests.py
 
   backup-catalog:
     name: Catalogue Restic - Python ${{ matrix.python-version }}
