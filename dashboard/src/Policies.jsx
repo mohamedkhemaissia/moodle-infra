@@ -3,6 +3,7 @@ import { useAuth } from './Auth.jsx';
 import { canManageUsers, jsonRequest } from './authClient.js';
 import { ACTION_NAMES, MODE_NAMES, approvalPayload, loadPolicies, policyPayload, validatePolicy } from './policies.js';
 import './policies.css';
+import { CompactTable, DetailsPanel } from './ApplicationServices.jsx';
 
 const date = (value) => new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(value));
 const key = () => crypto.randomUUID().replaceAll('-', '');
@@ -16,9 +17,11 @@ export function PolicyView({ data, admin, form, change, save, approve, busy, app
       <div><dt>Corrections</dt><dd>{policy.suspended ? 'Suspendues' : policy.mode === 'observation' ? 'Désactivées' : 'Autorisées sous contrôle'}</dd></div>
       <div><dt>Période d’évaluation</dt><dd>{policy.evaluation_context ? 'Active — approbation requise' : 'Inactive'}</dd></div>
       <div><dt>Worker</dt><dd>{workerNames[data.worker.status]}</dd></div></dl>
-    <p>Version {policy.revision} · {policy.updated_by} · {date(policy.updated_at)}</p>
-    <p className="policy-description">Observation : consultation et diagnostics. Assisté : correction lancée manuellement depuis le serveur.
-      Automatique : remise en service de PHP arrêté ou application d’un profil PHP-FPM préparé, selon les mesures et les ressources disponibles.</p>
+    <DetailsPanel title="Comprendre les modes et la version active">
+      <p>Version {policy.revision} · {policy.updated_by} · {date(policy.updated_at)}</p>
+      <p className="policy-description">Observation : consultation et diagnostics. Assisté : correction lancée manuellement depuis le serveur.
+        Automatique : remise en service de PHP arrêté ou application d’un profil PHP-FPM préparé, selon les mesures et les ressources disponibles.</p>
+    </DetailsPanel>
     {admin && <form className="auth-form policy-form" onSubmit={save}>
       <label>Mode de pilotage<select value={form.mode} disabled={busy} onChange={(e) => change('mode', e.target.value)}>
         {Object.entries(MODE_NAMES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -37,12 +40,19 @@ export function PolicyView({ data, admin, form, change, save, approve, busy, app
         <label>Motif d’approbation<input required minLength={15} maxLength={500} value={approval.reason} disabled={busy} onChange={(e) => changeApproval('reason', e.target.value)} /></label>
         <button className="refresh-button" disabled={busy}>Approuver l’intervention proposée</button>
       </form></details>}
-    <h3 className="policy-history-heading">Historique des politiques</h3>
+    <DetailsPanel title="Historique des politiques" className="policy-history-heading">
     <p>{data.events.length} événements affichés sur {data.eventTotal}.</p>
-    <div className="account-table-wrap"><table className="account-table"><thead><tr><th>Date</th><th>Opération</th><th>Auteur</th><th>Version</th><th>Motif / référence</th></tr></thead>
-      <tbody>{data.events.map((row) => <tr key={row.id}><td>{date(row.at)}</td><td>{ACTION_NAMES[row.action]}</td><td>{row.actor}</td><td>{row.revision}</td>
-        <td>{row.details.after?.reason || row.details.reason || (row.details.incident_id ? `Incident ${row.details.incident_id}` : '—')}</td></tr>)}</tbody></table></div>
+    {data.events.length > 0 && <CompactTable caption="Audit des politiques" rows={data.events} rowKey={(row) => row.id} columns={[
+      { key: 'date', label: 'Date', render: (row) => date(row.at) },
+      { key: 'operation', label: 'Opération', render: (row) => ACTION_NAMES[row.action] },
+      { key: 'author', label: 'Auteur', render: (row) => row.actor },
+      { key: 'version', label: 'Version', render: (row) => row.revision },
+    ]} details={(row) => <>
+        <p>{row.details.after?.reason || row.details.reason || (row.details.incident_id ? `Incident ${row.details.incident_id}` : '—')}</p>
+        <pre>{JSON.stringify(row.details, null, 2)}</pre>
+      </>} />}
     {data.events.length === 0 && <p>Aucun changement enregistré.</p>}
+    </DetailsPanel>
   </>;
 }
 

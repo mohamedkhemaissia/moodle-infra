@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { RESOURCES, analysisReady, decisionCurrent, recoveryProven, requestPath, operationRequests } from './operations.js';
 import { useReadings } from './useReadings.js';
+import { CompactTable, DetailsPanel, StatusBadge as Badge } from './ApplicationServices.jsx';
+import { observerCurrent } from './navigation.js';
 
 const numbers = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
 const dates = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'medium' });
@@ -8,20 +10,9 @@ const date = (value) => {
   const milliseconds = typeof value === 'number' ? value * 1000 : Date.parse(value);
   return Number.isFinite(milliseconds) && Math.abs(milliseconds) <= 8.64e15 ? dates.format(milliseconds) : '—';
 };
-const labels = { open: 'Ouvert', resolved: 'Résolu', completed: 'Terminé', blocked: 'Bloqué', failed: 'Échec',
-  running: 'En cours', timeout: 'Délai dépassé', canceled: 'Annulé', interrupted: 'Interrompu',
-  recommendation: 'Recommandation', monitoring: 'Sous observation', closed: 'Incident résolu',
-  warning: 'Avertissement', critical: 'Critique', info: 'Information' };
 const reasons = { insufficient_contiguous_history: 'Historique continu insuffisant pour calculer les prévisions.',
   linux_collection_unavailable: 'La collecte Linux ne fournit pas de données récentes.',
   incomplete_or_unhealthy_collection: 'Des mesures sont absentes, anciennes ou issues d’une collecte en échec.' };
-
-function Badge({ state }) {
-  const tone = ['completed', 'resolved'].includes(state) ? 'good' :
-    ['failed', 'critical', 'timeout'].includes(state) ? 'bad' :
-    ['blocked', 'warning', 'open'].includes(state) ? 'warning' : 'neutral';
-  return <span className={`ops-badge ${tone}`}>{labels[state] || 'État inconnu'}</span>;
-}
 
 function Reading({ result, children, empty = 'Aucune donnée disponible.' }) {
   if (result.pending) return <p className="ops-empty" role="status">Lecture en cours…</p>;
@@ -38,19 +29,29 @@ function Pager({ document, offset, setOffset, name }) {
   </div>;
 }
 
-function Forecasts({ result, now }) {
+export function Forecasts({ result, now }) {
   return <article className="forecast-card" aria-label="Prévisions des ressources">
     <Reading result={result}>{(data) => analysisReady(data, now) ? <>
-      <div className="ops-table-wrap"><table><thead><tr><th>Ressource</th>
-        {['5', '10', '15'].map((h) => <th key={h}>+{h} min</th>)}</tr></thead>
-        <tbody>{RESOURCES.map(([key, title]) => <tr key={key}><th>{title}</th>
-          {['5', '10', '15'].map((h) => { const value = data.forecasts[h].metrics[key];
-            return <td key={h}><strong>{numbers.format(value.value)} %</strong><small>
-              {value.method === 'ridge' ? 'Ridge' : 'Persistance'}</small></td>; })}</tr>)}</tbody></table></div>
-      <p className="ops-caption">Données du {date(data.input_evaluated_at)}.</p>
+      <CompactTable caption="Prévisions des ressources à 5, 10 et 15 minutes" rows={RESOURCES} rowKey={([key]) => key}
+        columns={[{ key: 'resource', label: 'Ressource', render: ([, title]) => title },
+          ...['5', '10', '15'].map((h) => ({ key: h, label: '+' + h + ' min',
+            render: ([key]) => <strong>{numbers.format(data.forecasts[h].metrics[key].value)} %</strong> }))]} />
+      <DetailsPanel title="Méthodes et données de prévision"><p className="ops-caption">Données du {date(data.input_evaluated_at)}.</p>
+        <pre>{JSON.stringify(data.forecasts, null, 2)}</pre></DetailsPanel>
     </> : <p className="ops-empty">{reasons[data.reason] || 'Analyse indisponible avec les données actuelles.'}
       {data.required_history_seconds ? ` Historique requis : ${data.required_history_seconds / 60} minutes.` : ''}</p>}</Reading>
   </article>;
+}
+
+export function IncidentTable({ items, selectedId, onSelect }) {
+  return <CompactTable caption="Incidents Moodle" rows={items} rowKey={(item) => item.id} selectedKey={selectedId} columns={[
+    { key: 'incident', label: 'Incident', render: (item) => <strong>#{item.id} · {item.title}</strong> },
+    { key: 'severity', label: 'Gravité', render: (item) => <Badge state={item.severity} /> },
+    { key: 'status', label: 'Statut', render: (item) => <Badge state={item.status} /> },
+    { key: 'date', label: 'Ouverture', render: (item) => date(item.opened_at) },
+    { key: 'action', label: 'Recommandation', render: (item) => <button className="ops-button" aria-label={`Consulter incident ${item.id}`}
+      aria-expanded={selectedId === item.id} onClick={() => onSelect(item.id)}>Consulter</button> },
+  ]} />;
 }
 
 function RunList({ title, kind, result, offset, setOffset, select, selected }) {
@@ -68,10 +69,10 @@ function RunList({ title, kind, result, offset, setOffset, select, selected }) {
   </article>;
 }
 
-export default function Operations({ now, refreshToken, section = 'incidents', onNavigate }) {
-  const [filter, setFilter] = useState('');
+export default function Operations({ now, refreshToken, section = 'incidents', incidentFocus = null, onNavigate }) {
+  const [filter, setFilter] = useState('open');
   const [offset, setOffset] = useState(0);
-  const [incidentId, setIncidentId] = useState(null);
+  const [incidentId, setIncidentId] = useState(incidentFocus);
   const [diagnosticOffset, setDiagnosticOffset] = useState(0);
   const [remediationOffset, setRemediationOffset] = useState(0);
   const [run, setRun] = useState(null);
@@ -82,11 +83,9 @@ export default function Operations({ now, refreshToken, section = 'incidents', o
   function selectIncident(id) {
     setIncidentId(id); setDiagnosticOffset(0); setRemediationOffset(0); setRun(null);
   }
+  useEffect(() => { if (incidentFocus !== null) selectIncident(incidentFocus); }, [incidentFocus]);
   const selectedIncident = readings.incidents?.data?.items.find((item) => item.id === incidentId);
-  const collector = readings.summary?.data?.collector;
-  const collectorAge = collector ? Math.max(collector.age_seconds, collector.input_age_seconds) +
-    Math.max(0, (now - Date.parse(readings.summary.data.evaluated_at)) / 1000) : null;
-  const collectorReady = collector?.status === 'running' && Number.isFinite(collectorAge) && collectorAge <= 90;
+  const collectorReady = observerCurrent(readings.summary?.data, now);
 
   return <>
     {section === 'analysis' && <section id="analysis" className="panel ops-panel" aria-labelledby="analysis-heading">
@@ -112,14 +111,7 @@ export default function Operations({ now, refreshToken, section = 'incidents', o
         }}><option value="">Tous</option><option value="open">Ouverts</option><option value="resolved">Résolus</option></select></label>
           </div>
         <Reading result={readings.incidents}>{(data) => <>
-          {data.items.length ? <div className="ops-table-wrap"><table className="incident-table"><thead><tr>
-            <th>Incident</th><th>État</th><th>Ouverture</th><th>Dernière observation</th><th>Résolution</th><th>Lecture</th>
-          </tr></thead><tbody>{data.items.map((item) => <tr key={item.id} className={incidentId === item.id ? 'selected' : ''}>
-            <td><strong>#{item.id} · {item.title}</strong><small>{labels[item.severity] || item.severity}</small></td>
-            <td><Badge state={item.status} /></td><td>{date(item.opened_at)}</td><td>{date(item.last_observed_at)}</td>
-            <td>{date(item.resolved_at)}</td><td><button className="ops-button" onClick={() => selectIncident(item.id)}
-              aria-label={`Consulter incident ${item.id}`}>Consulter</button></td>
-          </tr>)}</tbody></table></div> : <p className="ops-empty">Aucun incident pour ce filtre.</p>}
+          {data.items.length ? <IncidentTable items={data.items} selectedId={incidentId} onSelect={selectIncident} /> : <p className="ops-empty">Aucun incident pour ce filtre.</p>}
           <Pager document={data} offset={offset} setOffset={(value) => { setOffset(value); selectIncident(null); }} name="incidents" />
         </>}</Reading>
         {incidentId !== null && <article className="decision-card" aria-label={`Décision incident ${incidentId}`}>
@@ -133,11 +125,15 @@ export default function Operations({ now, refreshToken, section = 'incidents', o
                 : <><p className="decision-explanation">{decision.explanation}</p>
                   {decision.recommended_action && <><h4>{decision.recommended_action.title}</h4><ol>
                     {decision.recommended_action.steps.map((step, index) => <li key={index}>{step}</li>)}</ol></>}</>}
-              <p className="ops-caption">Politique {decision.policy_version} · évaluation {date(data.evaluated_at)}
-                {decision.valid_until ? ` · validité jusqu’à ${date(decision.valid_until)}` : ''}</p>
-              <details><summary>Motifs et preuves du signal</summary><pre>{JSON.stringify({ reasons: decision.reason_codes, evidence: decision.evidence }, null, 2)}</pre></details>
+              <DetailsPanel title="Chronologie, politique et preuves du signal">
+                {selectedIncident && <dl className="summary-facts"><div><dt>Dernière observation</dt><dd>{date(selectedIncident.last_observed_at)}</dd></div>
+                  <div><dt>Résolution</dt><dd>{date(selectedIncident.resolved_at)}</dd></div></dl>}
+                <p className="ops-caption">Politique {decision.policy_version} · évaluation {date(data.evaluated_at)}
+                  {decision.valid_until ? ` · validité jusqu’à ${date(decision.valid_until)}` : ''}</p>
+                <pre>{JSON.stringify({ reasons: decision.reason_codes, evidence: decision.evidence }, null, 2)}</pre>
+              </DetailsPanel>
             </>; }}</Reading>
-          <p className="ops-note">Les recommandations sont calculées en simulation. Le menu Journaux d’exécution retrace les exécutions réellement enregistrées.</p>
+          <p className="ops-note">Les recommandations sont calculées en simulation. L’historique des exécutions retrace les opérations réellement enregistrées.</p>
         </article>}
       </div>
     </section>}
@@ -154,15 +150,17 @@ export default function Operations({ now, refreshToken, section = 'incidents', o
       {run && <div className="ops-body run-detail" aria-label="Détail de l’exécution"><Reading result={readings.run}>{(data) => <>
         <div className="ops-toolbar"><h3>{run.kind === 'remediations' ? 'Remédiation' : 'Diagnostic'} · incident #{data.incident_id}</h3>
           <Badge state={data.status} /></div>
-        <p className="ops-caption">Exécution {data.id} · terminée le {date(data.finished_at)}</p>
+        <p className="ops-caption">Terminée le {date(data.finished_at)}</p>
         {run.kind === 'remediations' ? <p className={`run-verdict ${recoveryProven(data) ? 'good' : 'warning'}`}>
           {recoveryProven(data) ? 'Correction confirmée par les contrôles HTTPS et les nouvelles mesures.' :
             data.status === 'blocked' ? 'Action bloquée par les contrôles de remédiation.' : 'Récupération non confirmée dans ce journal.'}</p>
           : <p className="ops-note">Diagnostic terminé : consultez le rapport pour connaître les résultats des contrôles.</p>}
-        {data.report?.reason && <p className="ops-caption">Motif enregistré : {data.report.reason}</p>}
-        <details><summary>Consulter le rapport et la trace d’exécution</summary><pre>{JSON.stringify({
-          report: data.report, events: data.events, action_reservation: data.action_reservation }, null, 2)}</pre></details>
-        <a className="ops-json-link" href={requestPath(run.kind, { runId: data.id })} target="_blank" rel="noreferrer">Ouvrir le journal JSON ↗</a>
+        <DetailsPanel title="Consulter le rapport et la trace d’exécution">
+          <p className="ops-caption">Exécution {data.id}</p>
+          {data.report?.reason && <p className="ops-caption">Motif enregistré : {data.report.reason}</p>}
+          <pre>{JSON.stringify({
+          report: data.report, events: data.events, action_reservation: data.action_reservation }, null, 2)}</pre>
+        <a className="ops-json-link" href={requestPath(run.kind, { runId: data.id })} target="_blank" rel="noreferrer">Ouvrir le journal JSON ↗</a></DetailsPanel>
       </>}</Reading></div>}
       <p className="ops-section-note">Exécutions lancées manuellement par l’opérateur.</p>
     </section>}

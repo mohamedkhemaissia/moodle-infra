@@ -81,7 +81,7 @@ test('the panel exposes complete identifiers while keeping unknown dates and fai
   const normal = render(value);
   assert.match(normal, /Catalogue récent|Archivé le|Instant des données|Non enregistré/);
   assert.match(normal, new RegExp('a'.repeat(64)));
-  assert.match(normal, /Dernière sauvegarde confirmée/);
+  assert.match(normal, /Sauvegarde confirmée/);
   assert.doesNotMatch(normal, /Restaurer|Supprimer|\/var\/lib|secret/);
   const stale = render(value, now+61000);
   assert.match(stale, /catalogue est ancien/);

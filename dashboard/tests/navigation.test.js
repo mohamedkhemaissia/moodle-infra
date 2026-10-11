@@ -41,20 +41,20 @@ test('each actual menu renders its own panel without the other views', async (t)
     const html = renderToStaticMarkup(React.createElement(AuthContext.Provider, { value: auth },
       React.createElement(SectionContent, { section, now: Date.now(), refreshToken: 0,
         metrics: { cpu_usage_percent: null, memory_usage_percent: null, disk_available_percent: null } })));
-    const expected = section === 'main' ? 'resources' : section;
+    const expected = section === 'main' ? 'overview' : section;
     assert.match(html, new RegExp(`<section[^>]*id="${expected}"`), section);
     for (const other of ids.filter((id) => id !== section)) {
-      assert.doesNotMatch(html, new RegExp(`<section[^>]*id="${other === 'main' ? 'resources' : other}"`), section + '/' + other);
+      assert.doesNotMatch(html, new RegExp(`<section[^>]*id="${other === 'main' ? 'overview' : other}"`), section + '/' + other);
     }
   }
   const previousWindow = globalThis.window;
   try {
-    for (const [section, title] of [['reports', 'Rapports'], ['containers', 'Conteneurs'], ['main', 'Tableau de bord']]) {
+    for (const [section, title] of [['reports', 'Rapports'], ['containers', 'Conteneurs'], ['main', 'Vue d’ensemble']]) {
       globalThis.window = { location: { hash: '#' + section } };
       const html = renderToStaticMarkup(React.createElement(AuthContext.Provider, { value: auth }, React.createElement(App)));
       assert.match(html, new RegExp(`<h1>${title}</h1>`));
       assert.match(html, new RegExp(`href="#${section}" aria-current="page"`));
-      if (section !== 'main') assert.doesNotMatch(html, /<section[^>]*id="resources"/);
+      if (section !== 'resources') assert.doesNotMatch(html, /<section[^>]*id="resources"/);
       if (section !== 'reports') assert.doesNotMatch(html, /<section[^>]*id="reports"/);
     }
   } finally {

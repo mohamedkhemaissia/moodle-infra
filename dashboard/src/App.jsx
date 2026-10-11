@@ -5,16 +5,15 @@ import { useAuth } from './Auth.jsx';
 import Accounts from './Accounts.jsx';
 import DecisionHistory from './DecisionHistory.jsx';
 import Backups from './Backups.jsx';
-import ApplicationServices from './ApplicationServices.jsx';
+import ApplicationServices, { DetailsPanel, Overview, ResourceMetrics } from './ApplicationServices.jsx';
 import Containers from './Containers.jsx';
 import Reports from './Reports.jsx';
 import Policies from './Policies.jsx';
 import PHPProfiles from './PHPProfiles.jsx';
 import { initials, canManageUsers } from './authClient.js';
-import { NAVIGATION, sectionFromHash } from './navigation.js';
+import { displayDate, NAVIGATION, NAVIGATION_GROUPS, sectionFromHash } from './navigation.js';
 
 // Sidebar structure adapted from BootstrapDash Corona React (MIT).
-const numberFormat = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
 const dateFormat = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
 function Icon({ name, size = 20, ...props }) {
@@ -109,29 +108,22 @@ function Icon({ name, size = 20, ...props }) {
   );
 }
 
-function MetricCard({ label, value, icon, hint, color }) {
-  return <article className="card metric-card" data-metric={label}>
-    <div className="metric-top"><span className="metric-icon" style={{ '--accent': color }}><Icon name={icon} size={23} /></span>
-      <span className="metric-label">{label}</span></div>
-    <div className={`metric-value ${value === null ? 'missing' : ''}`}>
-      {value === null ? '—' : numberFormat.format(value)}{value !== null && <span className="unit">%</span>}
-    </div>
-    <div className="meter" aria-hidden="true"><div style={{ width: `${value ?? 0}%`, background: color }} /></div>
-    <p className="metric-hint">{value === null ? 'Mesure indisponible' : hint}</p>
-  </article>;
-}
-
-export function SectionContent({ section, now, refreshToken, metrics, onNavigate }) {
+export function SectionContent({ section, now, refreshToken, metrics, view, incidentFocus, onNavigate }) {
+  const snapshot = view || { metrics, collection: {}, reason: 'pending' };
   switch (section) {
-    case 'main': return <section id="resources" className="metrics-grid" aria-label="Mesures actuelles">
-      <MetricCard label="CPU utilisé" value={metrics.cpu_usage_percent} icon="cpu" color="#0090e7" hint="Moyenne sur 2 minutes" />
-      <MetricCard label="Mémoire utilisée" value={metrics.memory_usage_percent} icon="memory" color="#00d25b" hint="Part de la mémoire utilisée" />
-      <MetricCard label="Disque disponible" value={metrics.disk_available_percent} icon="disk" color="#8f5fe8" hint="Espace disponible sur le disque racine" />
+    case 'main': return <Overview view={snapshot} now={now} refreshToken={refreshToken} onNavigate={onNavigate} />;
+    case 'resources': return <section id="resources" aria-label="Ressources de l’hôte Moodle">
+      <ResourceMetrics metrics={snapshot.metrics} />
+      <DetailsPanel title="Détails de la collecte"><dl className="summary-facts">
+        <div><dt>Collecte des ressources</dt><dd>{snapshot.collection.linux?.status === 'up' ? 'Récente' : 'Indisponible ou ancienne'}</dd></div>
+        <div><dt>Âge des mesures</dt><dd>{Number.isFinite(snapshot.collection.linux?.age) ? Math.round(snapshot.collection.linux.age) + ' s' : 'Inconnu'}</dd></div>
+        <div><dt>Lecture du dashboard</dt><dd>{displayDate(now / 1000)}</dd></div>
+      </dl></DetailsPanel>
     </section>;
-    case 'applications': return <ApplicationServices now={now} refreshToken={refreshToken} />;
+    case 'applications': return <ApplicationServices now={now} view={snapshot} refreshToken={refreshToken} />;
     case 'containers': return <Containers now={now} refreshToken={refreshToken} />;
     case 'analysis': case 'incidents': case 'audits':
-      return <Operations section={section} now={now} refreshToken={refreshToken} onNavigate={onNavigate} />;
+      return <Operations section={section} now={now} refreshToken={refreshToken} incidentFocus={incidentFocus} onNavigate={onNavigate} />;
     case 'backups': return <Backups now={now} refreshToken={refreshToken} />;
     case 'policies': return <Policies refreshToken={refreshToken} />;
     case 'php-profiles': return <PHPProfiles now={now} refreshToken={refreshToken} />;
@@ -140,6 +132,37 @@ export function SectionContent({ section, now, refreshToken, metrics, onNavigate
     case 'accounts': return <Accounts />;
     default: return null;
   }
+}
+
+export function SidebarNavigation({ items, activeSection, navigate }) {
+  const [expanded, setExpanded] = useState(() => NAVIGATION_GROUPS.filter((group) => group.sections.includes(activeSection)).map((group) => group.id));
+  useEffect(() => {
+    const group = NAVIGATION_GROUPS.find((group) => group.sections.includes(activeSection));
+    if (group) setExpanded((before) => before.includes(group.id) ? before : [...before, group.id]);
+  }, [activeSection]);
+  function link(item) {
+    return <li key={item.id} className={`nav-item menu-items ${activeSection === item.id ? 'active' : ''}`}>
+      <a className="nav-link" href={`#${item.id}`} aria-current={activeSection === item.id ? 'page' : undefined}
+        onClick={(event) => { event.preventDefault(); navigate(item.id); }}>
+        <span className="menu-icon"><Icon name={item.icon} size={18} /></span><span className="menu-title">{item.title}</span>
+      </a></li>;
+  }
+  function group(group) {
+    const members = group.sections.map((id) => items.find((item) => item.id === id)).filter(Boolean);
+    return <li key={group.id} className="nav-group">
+      <button className="nav-group-toggle" aria-expanded={expanded.includes(group.id)} aria-controls={'nav-' + group.id}
+        onClick={() => setExpanded((before) => before.includes(group.id) ? before.filter((id) => id !== group.id) : [...before, group.id])}>
+        <Icon name={group.icon} size={18} /><span>{group.title}</span><span className="nav-chevron" aria-hidden="true">⌄</span>
+      </button>
+      <ul id={'nav-' + group.id} className="nav-submenu" hidden={!expanded.includes(group.id)}>{members.map(link)}</ul>
+    </li>;
+  }
+  return <nav aria-label="Navigation principale"><ul className="nav">
+    {link(items.find((item) => item.id === 'main'))}
+    {NAVIGATION_GROUPS.slice(0, 2).map(group)}
+    {link(items.find((item) => item.id === 'backups'))}
+    {group(NAVIGATION_GROUPS[2])}
+  </ul></nav>;
 }
 
 export default function App() {
@@ -151,11 +174,13 @@ export default function App() {
   const [operationsRefresh, setOperationsRefresh] = useState(0);
   const [activeSection, setActiveSection] = useState(() => sectionFromHash(globalThis.window?.location.hash, auth.enabled));
   const [menuOpen, setMenuOpen] = useState(false);
-  const { error, busy, now, view, refresh } = useMetrics(activeSection === 'main');
+  const [incidentFocus, setIncidentFocus] = useState(null);
+  const metricsEnabled = ['main', 'resources', 'applications'].includes(activeSection);
+  const { error, busy, now, view, refresh } = useMetrics(metricsEnabled);
   const current = items.find((item) => item.id === activeSection) || items[0];
   useEffect(() => {
     const followLocation = () => {
-      setActiveSection(sectionFromHash(window.location.hash, auth.enabled)); setMenuOpen(false);
+      setActiveSection(sectionFromHash(window.location.hash, auth.enabled)); setIncidentFocus(null); setMenuOpen(false);
     };
     followLocation();
     window.addEventListener('hashchange', followLocation);
@@ -165,19 +190,27 @@ export default function App() {
       window.removeEventListener('popstate', followLocation);
     };
   }, [auth.enabled]);
-  const navigate = (id) => {
+  useEffect(() => {
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape' && menuOpen) { setMenuOpen(false); document.querySelector('.menu-toggle')?.focus(); }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [menuOpen]);
+  const navigate = (id, focusedIncident = null) => {
     const section = sectionFromHash('#' + id, auth.enabled);
     if (window.location.hash !== '#' + section) window.history.pushState(null, '', '#' + section);
-    setActiveSection(section); setMenuOpen(false); window.scrollTo(0, 0);
+    setIncidentFocus(focusedIncident); setActiveSection(section); setMenuOpen(false); window.scrollTo(0, 0);
+    window.requestAnimationFrame(() => document.getElementById('content')?.focus({ preventScroll: true }));
   };
   const metrics = view.metrics;
-  const notice = activeSection !== 'main' ? null : view.reason === 'error' ? error : view.reason === 'stale'
+  const notice = !metricsEnabled ? null : view.reason === 'error' ? error : view.reason === 'stale'
     ? 'Les données sont anciennes. Actualisez pour obtenir des mesures récentes.'
     : view.reason === 'clock' ? 'L’heure des mesures est incohérente. Les valeurs sont indisponibles.'
       : view.reason === 'ready' && view.collection.linux.status !== 'up'
         ? 'La collecte des ressources est indisponible. Les mesures concernées sont masquées.' : null;
-  const update = () => { if (activeSection === 'main') refresh(); setOperationsRefresh((value) => value + 1); };
-  const refreshing = activeSection === 'main' && busy;
+  const update = () => { if (metricsEnabled) refresh(); setOperationsRefresh((value) => value + 1); };
+  const refreshing = metricsEnabled && busy;
 
   return <div className={`container-scroller app-shell ${menuOpen ? 'menu-open' : ''}`}>
     <a className="skip-link" href="#content" onClick={(event) => {
@@ -191,14 +224,7 @@ export default function App() {
       </a></div>
       <div className="profile-desc"><span className="profile-initials">{avatar}</span><div className="profile-name">
         <strong>{auth.user.display_name}</strong><span>{canManageUsers(auth.user) ? 'Administrateur' : 'Lecteur'}</span></div></div>
-      <nav aria-label="Navigation principale"><ul className="nav">
-        <li className="nav-category">Navigation</li>
-        {items.map((item) => <li key={item.id} className={`nav-item menu-items ${activeSection === item.id ? 'active' : ''}`}>
-          <a className="nav-link" href={`#${item.id}`} aria-current={activeSection === item.id ? 'page' : undefined}
-            onClick={(event) => { event.preventDefault(); navigate(item.id); }}>
-            <span className="menu-icon" style={{ color: item.color }}><Icon name={item.icon} size={18} /></span>
-            <span className="menu-title">{item.title}</span></a></li>)}
-      </ul></nav>
+      <SidebarNavigation items={items} activeSection={activeSection} navigate={navigate} />
       <div className="sidebar-footer"><Icon name="server" size={16} /><span>Environnement pilote</span></div>
     </aside>
     {menuOpen && <button className="sidebar-backdrop" aria-label="Fermer le menu" onClick={() => setMenuOpen(false)} />}
@@ -218,7 +244,8 @@ export default function App() {
             <Icon name="refresh" size={17} className={refreshing ? 'spin' : ''} /><span>{refreshing ? 'Actualisation…' : 'Actualiser'}</span>
           </button></div>
         {(notice || auth.message) && <div className="notice" role="status"><Icon name="alert" size={18} /><span>{auth.message || notice}</span></div>}
-        <SectionContent section={activeSection} now={now} refreshToken={operationsRefresh} metrics={metrics} onNavigate={navigate} />
+        <SectionContent section={activeSection} now={now} refreshToken={operationsRefresh} metrics={metrics} view={view}
+          incidentFocus={incidentFocus} onNavigate={navigate} />
         <footer className="page-footer"><span>BeeCoders · Pilotage Moodle</span><span>Interface Corona · v0.3.0</span></footer>
       </main>
     </div>

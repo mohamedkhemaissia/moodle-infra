@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { PAGE_SIZE, REPORTS, loadReport, downloadReport } from './reports.js';
 import './reports.css';
+import { CompactTable, StatusBadge } from './ApplicationServices.jsx';
 
 const date = (value) => new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'UTC' }).format(Date.parse(value));
 
 export function ReportView({ report, pending, error, onDownload, onPage, onRefresh }) {
-  const preview = report?.kind === 'incidents' ? [0, 1, 5, 8] : report?.kind === 'recovery' ? [0, 1, 6, 9] : [0, 1, 3, 4];
+  const preview = report?.kind === 'incidents' ? [0, 4, 5, 8] : report?.kind === 'recovery' ? [0, 5, 6, 9] : [0, 1, 3, 4];
   return <>
     <div className="reports-actions">
       <button className="refresh-button" disabled={pending} onClick={onRefresh}>Actualiser le journal</button>
@@ -17,11 +18,17 @@ export function ReportView({ report, pending, error, onDownload, onPage, onRefre
         <p className="ops-caption">Lecture du {date(report.retrieved_at)} UTC · {report.rows.length} entrée{report.rows.length > 1 ? 's' : ''} sur {report.total}.</p>
         <p className="reports-scope">Page {report.offset / PAGE_SIZE + 1} · {report.filter}. Les exports comprennent les données de cette page.
           {(report.offset > 0 || report.has_more) && ' D’autres pages existent et ne sont pas incluses.'}</p>
-        {report.rows.length ? <div className="ops-table-wrap"><table className="reports-table"><thead><tr>
-          {preview.map((position) => <th key={position}>{report.columns[position]}</th>)}
-        </tr></thead><tbody>{report.rows.map((row) => <tr key={row[0]}>
-          {preview.map((position) => <td key={position}>{row[position] === '' ? '—' : row[position]}</td>)}
-        </tr>)}</tbody></table></div> : <p className="ops-empty">Aucune entrée sur cette page.</p>}
+        {report.rows.length ? <CompactTable caption={'Rapport ' + report.title} rows={report.rows} rowKey={(row) => row[0]} columns={[
+          ...preview.map((position) => ({ key: String(position), label: report.kind === 'incidents' && position === 0 ? 'Incident' :
+            report.kind === 'incidents' && position === 4 ? 'Gravité' : report.kind === 'recovery' && position === 0 ? 'Périmètre / demande' : report.columns[position],
+            render: (row) => report.kind === 'incidents' && position === 0 ? <strong>#{row[0]} · {row[1]}</strong> :
+              report.kind === 'incidents' && position === 4 ? <StatusBadge state={row[4]} /> :
+              report.kind === 'recovery' && position === 0 ? <><strong>{row[1]}</strong><small title={row[0]}>Demande {row[0].slice(0, 8)}</small></> :
+              row[position] === '' ? '—' : /^[a-f0-9]{32,64}$/.test(String(row[position])) ?
+                <code title={row[position]}>{row[position].slice(0, 12)}</code> : row[position] })),
+        ]} details={(row) => <dl>
+            {report.columns.map((column, index) => <div key={index}><dt>{column}</dt><dd>{row[index] === '' ? '—' : row[index]}</dd></div>)}
+          </dl>} /> : <p className="ops-empty">Aucune entrée sur cette page.</p>}
         <div className="ops-pagination"><span>{report.total} entrée{report.total > 1 ? 's' : ''} au moment de la lecture</span><div>
           <button disabled={pending || report.offset === 0} onClick={() => onPage(report.offset - PAGE_SIZE)}>Précédente</button>
           <button disabled={pending || !report.has_more || report.offset >= (report.kind === 'recovery' ? 10000 : 100000)}

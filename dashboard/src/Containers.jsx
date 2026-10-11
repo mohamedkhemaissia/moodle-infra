@@ -1,5 +1,6 @@
 import { useReadings } from './useReadings.js';
 import { containerView } from './containerMetrics.js';
+import { CompactTable, DetailsPanel, StatusBadge } from './ApplicationServices.jsx';
 import './backups.css';
 import './containers.css';
 
@@ -20,22 +21,23 @@ export function ContainerTable({ reading, now }) {
       Collecte indisponible ou ancienne. Les états et les ressources sont inconnus.</p>}
     {!reading.pending && !reading.error && view.fresh && view.rows.every((row) => row.state === 'unknown') &&
       <p className="catalog-warning" role="status">Les mesures des conteneurs Moodle ne sont pas encore disponibles.</p>}
-    {view.rows.length > 0 && <div className="container-table-scroll"><table className="catalog-table">
-      <caption className="catalog-caption">Conteneurs essentiels de Moodle</caption>
-      <thead><tr><th scope="col">Service</th><th scope="col">État Docker</th><th scope="col">CPU</th>
-        <th scope="col">Mémoire utilisée</th><th scope="col">Limite effective</th><th scope="col">Processus</th></tr></thead>
-      <tbody>{view.rows.map((row) => <tr key={`${row.project}/${row.service}`}>
-        <th scope="row"><strong>{serviceNames[row.service] || row.service}</strong><small>{row.project}</small></th>
-        <td><span className={`badge ${row.state === 'running' ? 'badge-success' : ['unknown', 'ambiguous'].includes(row.state) ? 'badge-muted' : 'badge-warning'}`}>
-          {names[row.state]}</span>{row.health && <small>{healthNames[row.health]}</small>}</td>
-        <td>{number(row.metrics.cpu_usage_percent, ' %')}</td>
-        <td>{number(row.metrics.memory_working_set_bytes === null ? null : row.metrics.memory_working_set_bytes / 1048576, ' Mio')}</td>
-        <td>{number(row.metrics.memory_limit_bytes === null ? null : row.metrics.memory_limit_bytes / 1048576, ' Mio')}</td>
-        <td>{number(row.metrics.pids)}</td>
-      </tr>)}</tbody></table></div>}
-    <p className="backup-association">CPU : 100 % correspond à un cœur utilisé. La mémoire exclut le cache inactif.
+    {view.rows.length > 0 && <CompactTable caption="Conteneurs essentiels de Moodle" rows={view.rows} rowKey={(row) => `${row.project}/${row.service}`}
+      columns={[
+        { key: 'name', label: 'Service', render: (row) => <><strong>{serviceNames[row.service] || row.service}</strong><small>{row.project}</small></> },
+        { key: 'state', label: 'État', render: (row) => <StatusBadge state={row.state === 'running' ? 'operational' :
+          ['unknown', 'ambiguous'].includes(row.state) ? reading.stale ? 'stale' : 'unknown' : 'warning'} label={names[row.state]} /> },
+        { key: 'health', label: 'Santé', render: (row) => <StatusBadge state={row.health === 'healthy' ? 'operational' :
+          row.health === 'unhealthy' ? 'degraded' : row.health === 'starting' ? 'warning' : 'unknown'} /> },
+        { key: 'resources', label: 'Ressources', render: (row) => <>{number(row.metrics.cpu_usage_percent, ' % CPU')}
+          <small>{number(row.metrics.memory_working_set_bytes === null ? null : row.metrics.memory_working_set_bytes / 1048576, ' Mio')}</small></> },
+      ]} details={(row) => <dl><dt>Projet / service</dt><dd>{row.project} / {row.service}</dd>
+            <dt>Limite mémoire effective</dt><dd>{number(row.metrics.memory_limit_bytes === null ? null : row.metrics.memory_limit_bytes / 1048576, ' Mio')}</dd>
+            <dt>Processus</dt><dd>{number(row.metrics.pids)}</dd><dt>Instances</dt><dd>{view.fresh ? row.instances ?? '—' : '—'}</dd>
+            <dt>Contrôle Docker</dt><dd>{healthNames[row.health] || 'Aucun contrôle confirmé'}</dd>
+            <dt>Âge des statistiques à la lecture</dt><dd>{number(row.stats_age_seconds, ' s')}</dd></dl>} />}
+    <DetailsPanel title="Comprendre les mesures"><p className="backup-association">CPU : 100 % correspond à un cœur utilisé. La mémoire exclut le cache inactif.
       Sans limite explicite, la limite effective peut correspondre à la RAM de l’hôte.
-      Un conteneur démarré ne garantit pas le fonctionnement de Moodle.</p>
+      Un conteneur démarré ne garantit pas le fonctionnement de Moodle.</p></DetailsPanel>
   </>;
 }
 
