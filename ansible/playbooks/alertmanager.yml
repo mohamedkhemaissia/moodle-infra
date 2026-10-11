@@ -1,0 +1,7 @@
+---
+- name: Deployer les alertes du pilote Moodle
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - monitoring
