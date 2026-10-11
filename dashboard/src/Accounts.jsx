@@ -35,6 +35,20 @@ function PasswordForm() {
   </details>;
 }
 
+export function AccountRow({ user, currentUserId, busy, onUpdate }) {
+  const own = user.id === currentUserId;
+  const explanation = own ? 'Votre compte : le rôle et la désactivation doivent être gérés par un autre administrateur.' : undefined;
+  return <tr>
+    <td>{user.display_name}{own && <small className="own-account">Votre compte</small>}</td><td>{user.username}</td><td>
+      <select aria-label={'Rôle de ' + user.username} value={user.role} disabled={busy || own} title={explanation}
+        onChange={(event) => onUpdate(user, { role: event.target.value })}>
+        <option value="reader">Lecteur</option><option value="admin">Administrateur</option>
+      </select></td><td>{user.active ? 'Actif' : 'Désactivé'}</td>
+    <td><button className="refresh-button" disabled={busy || own} title={explanation}
+      onClick={() => onUpdate(user, { active: !user.active })}>{user.active ? 'Désactiver' : 'Réactiver'}</button></td>
+  </tr>;
+}
+
 function UserManager() {
   const auth = useAuth();
   const [users, setUsers] = useState([]);
@@ -65,9 +79,7 @@ function UserManager() {
     setBusy(true); setError(null); setNotice(null);
     try {
       await jsonRequest('/api/v1/users/' + user.id, { method: 'PATCH', csrfToken: auth.csrfToken, body });
-      if (user.id === auth.user.id) {
-        await jsonRequest('/api/v1/auth/session');
-      } else { await load(); setNotice('Compte mis à jour. Ses anciennes sessions sont fermées.'); }
+      await load(); setNotice('Compte mis à jour. Ses anciennes sessions sont fermées.');
     } catch (cause) { setError(cause.message); }
     finally { setBusy(false); }
   }
@@ -76,15 +88,10 @@ function UserManager() {
     {(error || notice) && <p className={error ? 'auth-error' : 'account-notice'} role={error ? 'alert' : 'status'}>{error || notice}</p>}
     <div className="account-table-wrap"><table className="account-table"><thead><tr>
       <th>Compte</th><th>Identifiant</th><th>Rôle</th><th>État</th><th>Action</th>
-    </tr></thead><tbody>{users.map((user) => <tr key={user.id}>
-      <td>{user.display_name}</td><td>{user.username}</td><td>
-        <select aria-label={'Rôle de ' + user.username} value={user.role} disabled={busy}
-          onChange={(event) => update(user, { role: event.target.value })}>
-          <option value="reader">Lecteur</option><option value="admin">Administrateur</option>
-        </select></td><td>{user.active ? 'Actif' : 'Désactivé'}</td>
-      <td><button className="refresh-button" disabled={busy}
-        onClick={() => update(user, { active: !user.active })}>{user.active ? 'Désactiver' : 'Réactiver'}</button></td>
-    </tr>)}</tbody></table></div>
+    </tr></thead><tbody>{users.map((user) => <AccountRow key={user.id} user={user} currentUserId={auth.user.id}
+      busy={busy} onUpdate={update} />)}</tbody></table></div>
+    <p className="account-notice">Votre rôle et la désactivation de votre compte doivent être gérés par un autre administrateur.
+      Au moins un administrateur doit rester actif.</p>
     <details className="account-details"><summary>Créer un compte</summary>
       <form className="auth-form account-form" onSubmit={add}>
         <label>Nom affiché<input required maxLength={80} value={form.display_name} disabled={busy}

@@ -86,7 +86,10 @@ async def run(directory, *, once=False):
     from .prometheus import PrometheusClient
 
     os.umask(0o027)
-    store = IncidentStore(directory)
+    journal_setting = os.getenv("DECISION_JOURNAL_ENABLED", "false")
+    if journal_setting not in ("true", "false"):
+        raise ValueError("DECISION_JOURNAL_ENABLED doit valoir true ou false.")
+    store = IncidentStore(directory, decision_journal_enabled=journal_setting == "true")
     with writer_lock(directory):
         store.initialize()
         model_directory = os.getenv("ANOMALIES_DIR", "")

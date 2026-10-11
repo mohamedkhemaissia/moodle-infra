@@ -1,2 +1,3 @@
 ---
 control_plane_decisions_enabled: true
+control_plane_decision_journal_enabled: true

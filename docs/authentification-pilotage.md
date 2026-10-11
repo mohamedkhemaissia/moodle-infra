@@ -11,13 +11,20 @@ Les trois schemas d'historiques et les anciennes bases SQLite sont conserves.
 | Consulter mesures, analyses, incidents, decisions, diagnostics et corrections | Oui | Oui |
 | Changer son propre mot de passe | Oui | Oui |
 | Creer un compte administrateur ou lecteur | Oui | Non |
-| Changer le role, desactiver ou reactiver un compte | Oui | Non |
+| Changer le role, desactiver ou reactiver un autre compte | Oui | Non |
 | Consulter le journal des acces et changements de comptes via l'API | Oui | Non |
 
 Le controle des droits se fait dans l'API et dans les transactions PostgreSQL.
 La derniere personne disposant d'un compte administrateur actif ne peut pas
 etre desactivee ou retrogradee. La creation du premier compte passe par une
 commande locale root ; aucun identifiant ni mot de passe par defaut.
+
+Un administrateur ne peut pas desactiver son propre compte ni modifier son
+propre role, meme si un autre administrateur est actif. L'API refuse ces
+changements avec HTTP 409, avant toute modification ou revocation de session.
+L'interface identifie « Votre compte » et desactive les deux controles.
+Les changements sans effet restent autorises. La recuperation locale root
+et la protection du dernier administrateur actif sont conservees.
 
 Les mots de passe de 15 a 128 caracteres sont haches par Argon2id, avec sel
 aleatoire, 19 Mio de memoire, deux passages et un niveau de parallelisme de un.

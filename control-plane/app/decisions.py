@@ -229,7 +229,7 @@ def evaluate(snapshot, now):
         "semantics":{"recommendation":"Diagnostic propose ; aucune correction executee.",
             "cause":"Un signal ou une correlation ne prouve aucune cause de panne.",
             "validity":"La validite part de la date des donnees ; relire et revalider avant une action future.",
-            "audit":"Les recommandations sont calculees a la lecture ; leur execution et leur journalisation restent a implementer."}}
+            "audit":"Evaluation actuelle en lecture seule. Le journal optionnel conserve les transitions observees ; les executions ont leur propre journal."}}
 
 
 def summarize(store, now, identifier=None):

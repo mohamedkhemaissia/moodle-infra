@@ -1,0 +1,9 @@
+---
+- name: Completer les decisions et proteger les comptes personnels
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - pilotage_backup
+    - control_plane
+    - dashboard

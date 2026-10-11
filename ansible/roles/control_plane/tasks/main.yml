@@ -3,6 +3,7 @@
   ansible.builtin.assert:
     that:
       - not (control_plane_decisions_enabled | bool) or (control_plane_incidents_enabled | bool)
+      - not (control_plane_decision_journal_enabled | bool) or (control_plane_decisions_enabled | bool)
       - not (control_plane_diagnostics_enabled | bool) or (control_plane_decisions_enabled | bool)
       - not (control_plane_remediation_enabled | bool) or (control_plane_decisions_enabled | bool)
       - not (control_plane_pilotage_backup_status_enabled | bool) or (control_plane_backup_status_enabled | bool)
@@ -32,7 +33,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'pilotage/recovery.py', 'pilotage/recovery_cli.py', 'pilotage/recovery_execution.py', 'pilotage/operating_policy.py', 'app/backup_status.py', 'app/pilotage_backup_status.py', 'app/backup_catalog_status.py']) }}"
+  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'pilotage/recovery.py', 'pilotage/recovery_cli.py', 'pilotage/recovery_execution.py', 'pilotage/operating_policy.py', 'pilotage/decision_journal.py', 'app/backup_status.py', 'app/pilotage_backup_status.py', 'app/backup_catalog_status.py']) }}"
 
 - name: Copier le lecteur partage du suivi des sauvegardes
   ansible.builtin.copy:
@@ -131,7 +132,7 @@
     owner: root
     group: root
     mode: '0644'
-  loop: [__init__.py, db.py, schemas.py, migrate.py, auth.py, auth_cli.py, passwords.py, worker_auth.py, recovery.py, recovery_cli.py, recovery_execution.py, operating_policy.py]
+  loop: [__init__.py, db.py, schemas.py, migrate.py, auth.py, auth_cli.py, passwords.py, worker_auth.py, recovery.py, recovery_cli.py, recovery_execution.py, operating_policy.py, decision_journal.py]
 
 - name: Verifier si PostgreSQL a ete active pour le pilotage
   ansible.builtin.stat:
@@ -142,6 +143,11 @@
   ansible.builtin.stat:
     path: "{{ pilotage_database_config_dir }}/auth-active"
   register: pilotage_auth_activation
+
+- name: Exiger PostgreSQL pour le journal des decisions
+  ansible.builtin.assert:
+    that: not (control_plane_decision_journal_enabled | bool) or pilotage_database_activation.stat.exists
+    fail_msg: "Activer PostgreSQL pour le pilotage avant le journal des decisions."
 
 - name: Verifier si les politiques ont ete activees
   ansible.builtin.stat:
@@ -504,6 +510,32 @@
       bloquees={{ control_plane_decisions_response.json.counts.blocked }},
       surveillance={{ control_plane_decisions_response.json.counts.monitoring }}
   when: control_plane_decisions_enabled | bool
+
+- name: Verifier le journal persistant des decisions
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/decisions/history?limit=1"
+    return_content: true
+    status_code: 200
+    timeout: 10
+    use_proxy: false
+    headers: "{{ control_plane_read_headers }}"
+  no_log: "{{ pilotage_auth_activation.stat.exists }}"
+  register: control_plane_decision_history_response
+  until: >-
+    control_plane_decision_history_response.status | default(0) == 200 and
+    control_plane_decision_history_response.json.coverage.status | default('') == 'running' and
+    not (control_plane_decision_history_response.json.execution_allowed | default(true) | bool)
+  retries: 12
+  delay: 5
+  when: control_plane_decision_journal_enabled | bool
+
+- name: Afficher la couverture du journal des decisions
+  ansible.builtin.debug:
+    msg: >-
+      Journal={{ control_plane_decision_history_response.json.coverage.status }},
+      derniere_collecte={{ control_plane_decision_history_response.json.coverage.last_input_at }},
+      historique_anterieur_reconstruit=false
+  when: control_plane_decision_journal_enabled | bool
 
 - name: Verifier la consultation du journal des diagnostics
   ansible.builtin.uri:

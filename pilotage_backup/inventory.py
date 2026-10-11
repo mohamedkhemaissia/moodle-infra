@@ -16,23 +16,25 @@ IDENTITIES = ('pilotage_incidents.incidents', 'pilotage_incidents.events',
 RECOVERY_SCHEMA = {'pilotage_recovery': (0x4D525143, ('schema_info', 'requests', 'events'))}
 
 POLICY_SCHEMA = {'pilotage_policy': (0x4D504F4C, ('schema_info','settings','events','approvals','authorizations','worker_attempts','worker_state'))}
+DECISION_SCHEMA = {'pilotage_decisions': (0x4D444543, ('schema_info', 'entries', 'state'))}
 
 
-def schemas(include_recovery=False, include_execution=False, include_policy=False):
-    if any(type(v) is not bool for v in (include_recovery,include_execution,include_policy)) or (include_execution and not include_recovery):
+def schemas(include_recovery=False, include_execution=False, include_policy=False, include_decisions=False):
+    if any(type(v) is not bool for v in (include_recovery,include_execution,include_policy,include_decisions)) or (include_execution and not include_recovery):
         raise ValueError('Profil de sauvegarde invalide.')
     recovery = RECOVERY_SCHEMA
     if include_execution:
         recovery = {'pilotage_recovery': (0x4D525143, ('schema_info','requests','events','executions','execution_events'))}
-    return {**SCHEMAS, **(recovery if include_recovery else {}), **(POLICY_SCHEMA if include_policy else {})}
+    return {**SCHEMAS, **(recovery if include_recovery else {}), **(POLICY_SCHEMA if include_policy else {}),
+            **(DECISION_SCHEMA if include_decisions else {})}
 
 
-def identities(include_recovery=False, include_execution=False, include_policy=False):
-    schemas(include_recovery,include_execution,include_policy)
-    return IDENTITIES + (('pilotage_recovery.events',) if include_recovery else ()) + (('pilotage_recovery.execution_events',) if include_execution else ()) + (('pilotage_policy.events',) if include_policy else ())
+def identities(include_recovery=False, include_execution=False, include_policy=False, include_decisions=False):
+    schemas(include_recovery,include_execution,include_policy,include_decisions)
+    return IDENTITIES + (('pilotage_recovery.events',) if include_recovery else ()) + (('pilotage_recovery.execution_events',) if include_execution else ()) + (('pilotage_policy.events',) if include_policy else ()) + (('pilotage_decisions.entries',) if include_decisions else ())
 
 
-def inventory_sql(include_recovery=False, include_execution=False, include_policy=False):
+def inventory_sql(include_recovery=False, include_execution=False, include_policy=False, include_decisions=False):
     """Le meme SQL sur l'instantane source et sur la copie PostgreSQL 16.
 
     Les empreintes portent sur les lignes JSON ordonnees en collation C. Les
@@ -40,7 +42,7 @@ def inventory_sql(include_recovery=False, include_execution=False, include_polic
     Les anciennes sauvegardes restent verificables avec leur profil de 16 tables.
     Le nouveau journal ajoute trois tables lorsque present dans l'instantane.
     """
-    selected = schemas(include_recovery,include_execution,include_policy)
+    selected = schemas(include_recovery,include_execution,include_policy,include_decisions)
     table_names = tuple(f'{schema}.{table}' for schema, (_, tables) in selected.items() for table in tables)
     schema_names = ','.join("'" + name + "'" for name in selected)
     versions = ','.join(
@@ -69,7 +71,8 @@ def validate_inventory(value, database='moodle_pilotage'):
         raise ValueError('PostgreSQL 16 et base de pilotage requis.')
     selected = schemas(isinstance(value['schemas'], dict) and 'pilotage_recovery' in value['schemas'],
                        isinstance(value['tables'],dict) and 'pilotage_recovery.executions' in value['tables'],
-                       isinstance(value['schemas'],dict) and 'pilotage_policy' in value['schemas'])
+                       isinstance(value['schemas'],dict) and 'pilotage_policy' in value['schemas'],
+                       isinstance(value['schemas'],dict) and 'pilotage_decisions' in value['schemas'])
     tables = tuple(f'{schema}.{table}' for schema, (_, names) in selected.items() for table in names)
     expected = {name: [1, app] for name, (app, _) in selected.items()}
     if value['schemas'] != expected or sorted(value['table_names'] or []) != sorted(tables):
@@ -90,9 +93,9 @@ def validate_inventory(value, database='moodle_pilotage'):
     return value
 
 
-def identity_check_sql(include_recovery=False, include_execution=False, include_policy=False):
+def identity_check_sql(include_recovery=False, include_execution=False, include_policy=False, include_decisions=False):
     checks = []
-    for name in identities(include_recovery,include_execution,include_policy):
+    for name in identities(include_recovery,include_execution,include_policy,include_decisions):
         schema, table = name.split('.')
         checks.extend(["'"+name+"'", "(SELECT CASE WHEN COALESCE((SELECT max(id) FROM " + name + "),0)=0 "
             "THEN true ELSE last_value>(SELECT max(id) FROM " + name + ") OR "

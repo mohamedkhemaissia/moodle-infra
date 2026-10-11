@@ -25,6 +25,10 @@ dashboard_source_files:
   - src/main.jsx
   - src/Auth.jsx
   - src/Accounts.jsx
+  - src/DecisionHistory.jsx
+  - src/decisionHistory.js
+  - src/decisionHistory.css
+  - tests/decisionHistory.test.js
   - src/Backups.jsx
   - src/BackupCatalog.jsx
   - src/backupCatalog.js

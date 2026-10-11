@@ -65,7 +65,7 @@
     owner: root
     group: root
     mode: '0644'
-  loop: [__init__.py, core.py, inventory.py, run.py, tests/test_backup.py, tests/test_policy_inventory.py]
+  loop: [__init__.py, core.py, inventory.py, run.py, tests/test_backup.py, tests/test_policy_inventory.py, tests/test_decision_inventory.py]
 
 - name: Verifier les protections et les preuves avec des fixtures
   ansible.builtin.command:
