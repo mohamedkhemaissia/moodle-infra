@@ -1,0 +1,7 @@
+.reports-filters form { display: flex; align-items: end; gap: 12px; }
+.reports-filters input { width: 130px; padding: 8px; color: inherit; background: #191c24; border: 1px solid #394254; border-radius: 4px; }
+.history-detail { margin-top: 24px; padding: 20px; border: 1px solid #394254; border-radius: 8px; }
+.history-detail dl { display: grid; grid-template-columns: minmax(120px, 180px) 1fr; gap: 8px 16px; }
+.history-detail dd { margin: 0; overflow-wrap: anywhere; }
+.history-detail pre { padding: 12px; background: #141720; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+@media (max-width: 640px) { .history-detail dl { grid-template-columns: 1fr; } }

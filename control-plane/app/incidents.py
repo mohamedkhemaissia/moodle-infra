@@ -80,9 +80,13 @@ SCHEMA = (
 
 
 class IncidentStore:
-    def __init__(self, directory, *, database_config=None):
+    def __init__(self, directory, *, database_config=None, decision_journal_enabled=False):
         self.path = Path(directory) / DB_NAME
         self.database = load_config(database_config)
+        self.decision_journal = None
+        if decision_journal_enabled:
+            from pilotage.decision_journal import DecisionJournal
+            self.decision_journal = DecisionJournal(self)
 
     @contextmanager
     def connection(self, *, write=False):
@@ -120,6 +124,8 @@ class IncidentStore:
         if self.database is not None:
             with self.connection() as connection:
                 self.check_schema(connection)
+            if self.decision_journal is not None:
+                self.decision_journal.initialize()
             return
         if not self.path.parent.is_dir():
             raise IncidentStorageError("Repertoire persistant des incidents absent.")
@@ -155,7 +161,7 @@ class IncidentStore:
             raise ValueError("Date d'observation invalide.")
         if (not isinstance(observations, list) or any(not isinstance(o, Observation) for o in observations)
                 or {o.key for o in observations} != set(DEFINITIONS) or len(observations) != len(DEFINITIONS)):
-            raise ValueError("Les dix signaux attendus doivent etre observes une fois chacun.")
+            raise ValueError("Tous les signaux attendus doivent etre observes une fois chacun.")
         for observation in observations:
             if (not isinstance(observation, Observation) or observation.state not in STATES
                     or not isinstance(observation.evidence, dict) or not isinstance(observation.context, str)
@@ -176,6 +182,11 @@ class IncidentStore:
                              "processed_signals": processed, "diagnostics": diagnostics or {}, "policy": POLICY}
                 connection.execute("INSERT INTO metadata(key,value) VALUES('collector',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                                    (encoded(collector),))
+                if self.decision_journal is not None and processed == len(DEFINITIONS):
+                    from .decisions import evaluate, policy_document
+                    snapshot = self.snapshot(connection, completed_at, closed_at=point)
+                    self.decision_journal.record(connection, evaluate(snapshot, completed_at), policy_document(),
+                                                 point=point, completed_at=completed_at)
                 connection.execute("COMMIT")
             except Exception:
                 connection.execute("ROLLBACK")
@@ -318,7 +329,7 @@ class IncidentStore:
         return collector
 
     def decision_snapshot(self, now, identifier=None):
-        """Lire episodes et signaux sur le meme instantane SQLite, sans ecriture."""
+        """Lire episodes et signaux sur le meme instantane, sans ecriture."""
         if type(now) not in (int, float) or not math.isfinite(now) or now < 0:
             raise ValueError("Date d'evaluation invalide.")
         if identifier is not None and (type(identifier) is not int or not 1 <= identifier < 2**63):
@@ -326,18 +337,24 @@ class IncidentStore:
         with self.connection() as connection:
             self.check_schema(connection)
             connection.execute("BEGIN")
-            collector = self.read_collector(connection, now)
-            signals = {}
-            for row in connection.execute("SELECT * FROM signal_state ORDER BY key"):
-                item = dict(row)
-                item["last_observed_at"] = iso(item.pop("last_point"))
-                item["evidence"] = json.loads(item.pop("evidence_json"))
-                item.pop("first_bad_at")
-                signals[item["key"]] = item
-            clause, parameters = ("status='open'", ()) if identifier is None else ("id=?", (identifier,))
-            rows = connection.execute("SELECT * FROM incidents WHERE " + clause + " ORDER BY id DESC LIMIT 11", parameters).fetchall()
-            if len(rows) > len(DEFINITIONS):
-                raise IncidentStorageError("Nombre d'incidents actifs incoherent.")
-            active = connection.execute("SELECT id,signal_key FROM incidents WHERE status='open' ORDER BY id").fetchall()
-            return {"collector":collector,"signals":signals,"incidents":[self.incident(row) for row in rows],
-                    "open_incidents":[dict(row) for row in active]}
+            return self.snapshot(connection, now, identifier=identifier)
+
+    def snapshot(self, connection, now, *, identifier=None, closed_at=None):
+        collector = self.read_collector(connection, now)
+        signals = {}
+        for row in connection.execute("SELECT * FROM signal_state ORDER BY key"):
+            item = dict(row)
+            item["last_observed_at"] = iso(item.pop("last_point"))
+            item["evidence"] = json.loads(item.pop("evidence_json"))
+            item.pop("first_bad_at")
+            signals[item["key"]] = item
+        clause, parameters = ("status='open'", ()) if identifier is None else ("id=?", (identifier,))
+        if closed_at is not None:
+            clause, parameters = "(status='open' OR resolved_at=?)", (closed_at,)
+        rows = connection.execute("SELECT * FROM incidents WHERE " + clause + " ORDER BY id DESC LIMIT ?",
+                                  (*parameters, len(DEFINITIONS) + 1)).fetchall()
+        if len(rows) > len(DEFINITIONS):
+            raise IncidentStorageError("Nombre d'incidents actifs incoherent.")
+        active = connection.execute("SELECT id,signal_key FROM incidents WHERE status='open' ORDER BY id").fetchall()
+        return {"collector": collector, "signals": signals, "incidents": [self.incident(row) for row in rows],
+                "open_incidents": [dict(row) for row in active]}
