@@ -88,6 +88,15 @@ input, select, .auth-form input, .ops-toolbar select, .reports-filters select {
 .execution-steps { padding: 0; list-style: none; margin-top: 12px; }
 .execution-steps li { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 10px 0; font-size: 13px; }
 .page-footer { color: #a9b8ce; font-size: 12px; border-top: 1px solid #25354d; padding-top: 18px; margin-top: 28px; }
+.ai-analysis-view { display: grid; gap: 22px; }
+.ai-analysis-card { min-width: 0; padding: 20px; border: 1px solid var(--corona-border); border-radius: 10px; background: #101b2d; }
+.ai-analysis-card h3 { font-size: 17px; margin: 0; }
+.ai-analysis-card .overview-heading { flex-wrap: wrap; gap: 12px; }
+.ai-score-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 18px 0; }
+.ai-score-grid > div { padding: 16px; border: 1px solid #2b3b53; border-radius: 8px; background: #131e30; }
+.ai-score-grid dt { color: var(--corona-muted); font-size: 13px; }
+.ai-score-grid dd { margin: 8px 0 0; color: #f8fafc; font-size: 30px; font-weight: 500; }
+.ai-horizon h4 { margin-top: 22px; font-size: 14px; }
 @media (max-width: 720px) {
   h1 { font-size: 24px; }
   .content-wrapper { padding: 22px 16px; }
@@ -95,6 +104,9 @@ input, select, .auth-form input, .ops-toolbar select, .reports-filters select {
   .readable-facts > div { grid-template-columns: 1fr; gap: 4px; }
   .compact-table thead th { background: transparent; }
   .execution-steps li { flex-wrap: wrap; }
+  .ai-analysis-card { padding: 16px; }
+  .ai-score-grid { gap: 10px; }
+  .ai-score-grid > div { padding: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

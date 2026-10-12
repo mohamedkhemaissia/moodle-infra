@@ -59,6 +59,7 @@ dashboard_source_files:
   - src/reports.js
   - src/reports.css
   - src/Operations.jsx
+  - src/AIAnalysis.jsx
   - src/ReadableDetails.jsx
   - src/operations.js
   - src/useReadings.js

@@ -72,3 +72,48 @@ test('Seules les lectures prévues et les sélections valides construisent une U
   for (const [kind, options] of [['execute', {}], ['incidents', { status: 'all' }], ['decision', { incidentId: -1 }],
     ['remediations', { runId: '../execute' }], ['incidents', { offset: 100001 }]]) assert.throws(() => requestPath(kind, options));
 });
+
+test('L’écran IA présente les anomalies et prévisions indépendamment, sans inventer un état normal', async (t) => {
+  const { createServer } = await import('vite');
+  const React = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' });
+  t.after(() => server.close());
+  const { AnalysisView, Anomalies } = await server.ssrLoadModule('/src/AIAnalysis.jsx');
+  const render = (component, props) => renderToStaticMarkup(React.createElement(component, props));
+  const data = { ...analysis('anomaly'), model_sha256: 'b'.repeat(64), model_created_at: iso(now - 86400000) };
+  data.anomaly.score = 0;
+  const normal = render(Anomalies, { result: { data }, now });
+  assert.match(normal, /Observation habituelle/);
+  assert.match(normal, /0,000/);
+  assert.match(normal, /Isolation Forest/);
+  assert.match(normal, /bbbbbbbbbbbb/);
+  assert.doesNotMatch(normal, /<pre|b{64}|&quot;score&quot;/);
+  const atypical = structuredClone(data);
+  atypical.anomaly.score = 0.8;
+  atypical.anomaly.statistical_anomaly = true;
+  assert.match(render(Anomalies, { result: { data: atypical }, now }), /Observation atypique/);
+  for (const result of [
+    { data, stale: true }, { data: { ...data, input_evaluated_at: iso(now - 61000) } },
+    { data: { ...data, anomaly: { ...data.anomaly, statistical_anomaly: true } } },
+    { error: 'HTTP 503' }, { pending: true },
+    { data: { ...data, status: 'unavailable', reason: 'insufficient_contiguous_history', required_history_seconds: 420 } },
+  ]) {
+    const html = render(Anomalies, { result, now });
+    assert.match(html, /Analyse indisponible/);
+    assert.doesNotMatch(html, /Observation habituelle|0,000|ai-score-grid/);
+  }
+  const forecast = { ...analysis('forecast'), model_sha256: 'c'.repeat(64) };
+  forecast.forecasts['10'].metrics.cpu_usage_percent.method = 'ridge';
+  const view = render(AnalysisView, { anomaly: { error: 'HTTP 503' }, forecast: { data: forecast }, now });
+  assert.match(view, /service d’analyse est indisponible/);
+  assert.match(view, /Prévisions disponibles/);
+  assert.match(view, /0 %/);
+  assert.match(view, /\+5 min|\+10 min|\+15 min/);
+  assert.match(view, /Régression Ridge|Maintien de la dernière valeur/);
+  assert.match(view, /cccccccccccc/);
+  assert.doesNotMatch(view, /<pre|c{64}/);
+  const reverse = render(AnalysisView, { anomaly: { data }, forecast: { error: 'HTTP 503' }, now });
+  assert.match(reverse, /Observation habituelle/);
+  assert.doesNotMatch(reverse, /Prévisions disponibles/);
+});

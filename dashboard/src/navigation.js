@@ -9,7 +9,7 @@ export const NAVIGATION = [
   { id: 'applications', title: 'Services Moodle', description: 'Disponibilité de Moodle, de PHP-FPM et de PostgreSQL.', icon: 'server', color: '#0090e7' },
   { id: 'resources', title: 'Ressources', description: 'Mesures actuelles et état de la collecte de l’hôte Moodle.', icon: 'cpu', color: '#0090e7' },
   { id: 'containers', title: 'Conteneurs', description: 'État et consommation des conteneurs Moodle essentiels.', icon: 'cpu', color: '#8f5fe8' },
-  { id: 'analysis', title: 'Prévisions', description: 'Estimation des ressources à 5, 10 et 15 minutes.', icon: 'chart', color: '#00d25b' },
+  { id: 'analysis', title: 'Analyse IA', description: 'Détection d’anomalies et prévisions des ressources.', icon: 'chart', color: '#00d25b' },
   { id: 'incidents', title: 'Incidents', description: 'Épisodes détectés et recommandations de correction.', icon: 'alert', color: '#0090e7' },
   { id: 'audits', title: 'Historique des exécutions', description: 'Journaux des diagnostics et des remédiations.', icon: 'clock', color: '#0090e7' },
   { id: 'decision-history', title: 'Décisions et recommandations', description: 'Historique des décisions, mesures et justifications.', icon: 'clock', color: '#0090e7' },
