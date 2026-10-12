@@ -78,7 +78,6 @@ export default function Operations({ now, refreshToken, section = 'incidents', i
         <p>Observations atypiques et prévisions des ressources à 5, 10 et 15 minutes.</p></div>
         <span className="subtle-badge">Expérimental</span></div>
       <div className="ops-body"><AnalysisView anomaly={readings.anomaly} forecast={readings.forecast} now={now} /></div>
-      <p className="ops-section-note">Les modèles fournissent des observations et des estimations pour assister le pilotage.</p>
     </section>}
 
     {section === 'incidents' && <section id="incidents" className="panel ops-panel" aria-labelledby="incidents-heading">

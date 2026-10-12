@@ -87,8 +87,7 @@ test('L’écran IA présente les anomalies et prévisions indépendamment, sans
   assert.match(normal, /Observation habituelle/);
   assert.match(normal, /0,000/);
   assert.match(normal, /Isolation Forest/);
-  assert.match(normal, /bbbbbbbbbbbb/);
-  assert.doesNotMatch(normal, /<pre|b{64}|&quot;score&quot;/);
+  assert.doesNotMatch(normal, /Modèle et observations|Version · référence|<pre|b{12,64}|&quot;score&quot;/);
   const atypical = structuredClone(data);
   atypical.anomaly.score = 0.8;
   atypical.anomaly.statistical_anomaly = true;
@@ -110,9 +109,7 @@ test('L’écran IA présente les anomalies et prévisions indépendamment, sans
   assert.match(view, /Prévisions disponibles/);
   assert.match(view, /0 %/);
   assert.match(view, /\+5 min|\+10 min|\+15 min/);
-  assert.match(view, /Régression Ridge|Maintien de la dernière valeur/);
-  assert.match(view, /cccccccccccc/);
-  assert.doesNotMatch(view, /<pre|c{64}/);
+  assert.doesNotMatch(view, /Modèle, méthodes et horizons|Régression Ridge|Maintien de la dernière valeur|<pre|c{12,64}/);
   const reverse = render(AnalysisView, { anomaly: { data }, forecast: { error: 'HTTP 503' }, now });
   assert.match(reverse, /Observation habituelle/);
   assert.doesNotMatch(reverse, /Prévisions disponibles/);
