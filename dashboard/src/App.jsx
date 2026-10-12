@@ -15,6 +15,7 @@ import { displayDate, NAVIGATION, NAVIGATION_GROUPS, sectionFromHash } from './n
 
 // Sidebar structure adapted from BootstrapDash Corona React (MIT).
 const dateFormat = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const menuTitles = { 'decision-history': 'Décisions', audits: 'Interventions', policies: 'Mode de pilotage' };
 
 function Icon({ name, size = 20, ...props }) {
   const paths = {
@@ -144,7 +145,7 @@ export function SidebarNavigation({ items, activeSection, navigate }) {
     return <li key={item.id} className={`nav-item menu-items ${activeSection === item.id ? 'active' : ''}`}>
       <a className="nav-link" href={`#${item.id}`} aria-current={activeSection === item.id ? 'page' : undefined}
         onClick={(event) => { event.preventDefault(); navigate(item.id); }}>
-        <span className="menu-icon"><Icon name={item.icon} size={18} /></span><span className="menu-title">{item.title}</span>
+        <span className="menu-icon"><Icon name={item.icon} size={18} /></span><span className="menu-title">{menuTitles[item.id] || item.title}</span>
       </a></li>;
   }
   function group(group) {
@@ -239,14 +240,14 @@ export default function App() {
             <button className="refresh-button" onClick={auth.logout}>Déconnexion</button></div>}</div>
       </header>
       <main id="content" className="content-wrapper" tabIndex={-1}>
-        <div className="page-heading"><div><h1>{current.title}</h1><p>{current.description}</p></div>
+        <div className="page-heading"><div><h1>{menuTitles[current.id] || current.title}</h1><p>{current.description}</p></div>
           <button className="refresh-button" type="button" aria-label={`Actualiser ${current.title}`} onClick={update} disabled={refreshing}>
             <Icon name="refresh" size={17} className={refreshing ? 'spin' : ''} /><span>{refreshing ? 'Actualisation…' : 'Actualiser'}</span>
           </button></div>
         {(notice || auth.message) && <div className="notice" role="status"><Icon name="alert" size={18} /><span>{auth.message || notice}</span></div>}
         <SectionContent section={activeSection} now={now} refreshToken={operationsRefresh} metrics={metrics} view={view}
           incidentFocus={incidentFocus} onNavigate={navigate} />
-        <footer className="page-footer"><span>BeeCoders · Pilotage Moodle</span><span>Interface Corona · v0.3.0</span></footer>
+        <footer className="page-footer"><span>BeeCoders · Pilotage Moodle</span></footer>
       </main>
     </div>
   </div>;

@@ -63,7 +63,8 @@ test('Le panneau réel montre les preuves historiques sans bouton d’exécution
   const html = renderToStaticMarkup(React.createElement(HistoryView, { value, selectedId: 2, onSelect() {} }));
   assert.match(html, /Collecte obsolète/);
   assert.match(html, /Mesures à la première évaluation/);
-  assert.match(html, /cpu/);
+  assert.match(html, /CPU utilisé/);
+  assert.doesNotMatch(html, /<pre|policy_sha256|&quot;cpu&quot;/);
   assert.match(html, /1\.1\.0/);
   assert.match(html, /ne permet aucune exécution/);
   assert.doesNotMatch(html, />Exécuter|>Approuver|>Corriger/);

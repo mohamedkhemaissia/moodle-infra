@@ -67,6 +67,7 @@ test('services, containers, incidents, decisions, forecasts, policies and report
   const { RequestsArea } = await server.ssrLoadModule('/src/RecoveryRequests.jsx');
   const { ReportView } = await server.ssrLoadModule('/src/Reports.jsx');
   const { PolicyView } = await server.ssrLoadModule('/src/Policies.jsx');
+  const { EvidenceSummary, RunSummary } = await server.ssrLoadModule('/src/ReadableDetails.jsx');
   const report = makeReport('incidents', { ...f.incidents, limit: 50 }, { retrievedAt: now });
   const recoveryReport = makeReport('recovery', { ...f.recovery, limit: 50 }, { retrievedAt: now });
   const forecast = validateDocument('forecast', { status: 'available', experimental: true,
@@ -97,16 +98,36 @@ test('services, containers, incidents, decisions, forecasts, policies and report
     assert.doesNotMatch(html, /<details[^>]* open(?:=|\s|>)/);
     const primary = html.replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, '');
     assert.doesNotMatch(primary, /<pre/);
+    assert.doesNotMatch(html, /<pre|href="\/api\/v1\//);
   }
   const incidents = renderToStaticMarkup(React.createElement(ReportView, { report }));
   assert.match(incidents, /Gravité|Critique/);
   assert.match(incidents, /CPU élevé/);
   const recovery = renderToStaticMarkup(React.createElement(ReportView, { report: recoveryReport }));
   assert.match(recovery, /Création \(UTC\)/);
+  const hiddenRow = [...recoveryReport.rows[0]];
+  hiddenRow[1] = 'Pilotage PostgreSQL';
+  const recoveryFiltered = renderToStaticMarkup(React.createElement(ReportView,
+    { report: { ...recoveryReport, rows: [...recoveryReport.rows, hiddenRow] } }));
+  assert.doesNotMatch(recoveryFiltered, /Pilotage PostgreSQL/);
+  const evidence = renderToStaticMarkup(React.createElement(EvidenceSummary,
+    { evidence: { metric: 'cpu_usage_percent', value: 0, probe_success: false, policy_sha256: 'sensitive-reference' } }));
+  assert.match(evidence, /CPU utilisé/);
+  assert.match(evidence, /0 %/);
+  assert.match(evidence, /Échec/);
+  assert.doesNotMatch(evidence, /sensitive-reference|policy_sha256|<pre/);
+  const diagnostic = renderToStaticMarkup(React.createElement(RunSummary, { run: {
+    action_id: 'diagnose_cpu_usage', started_at: now / 1000 - 10, finished_at: now / 1000,
+    report: { mode: 'read_only', checks: { current_metrics: f.snapshot, service_states: { status: 'warning' } } },
+  } }));
+  assert.match(diagnostic, /Diagnostic CPU/);
+  assert.match(diagnostic, /CPU utilisé/);
+  assert.match(diagnostic, /À vérifier/);
+  assert.doesNotMatch(diagnostic, /<pre|&quot;metrics&quot;/);
   assert.match(reportCsv(report, now), /cpu_high/); // Secondary columns remain in exports.
 });
 
-test('backup technical and restore information remains secondary, with admin-only requests preserved', async (t) => {
+test('dashboard shows Moodle backups only and preserves admin-only recovery requests', async (t) => {
   const { createServer } = await import('vite');
   const React = await import('react');
   const { renderToStaticMarkup } = await import('react-dom/server');
@@ -118,13 +139,12 @@ test('backup technical and restore information remains secondary, with admin-onl
   const markup = (component, props, role = 'admin') => renderToStaticMarkup(React.createElement(AuthContext.Provider,
     { value: { enabled: true, user: { role, active: true } } }, React.createElement(component, props)));
   const backup = markup(Backups, { now });
-  assert.match(backup, /<details[^>]*><summary>Sauvegardes du pilotage<\/summary>/);
+  assert.doesNotMatch(backup, /Sauvegardes du pilotage|PostgreSQL du pilotage/);
   assert.match(backup, /<details[^>]*><summary>Gestion des restaurations<\/summary>/);
-  const { pilotage } = dashboardFixtures(now);
-  const secondary = markup(BackupArea, { now, pilotage: true, reading: { data: pilotage } });
-  assert.match(secondary, /PostgreSQL du pilotage|31 tables/);
-  assert.match(secondary, /<details[^>]*><summary>Preuves de restauration PostgreSQL<\/summary>/);
-  assert.match(secondary, /Dernier test de restauration isolée/);
+  const { backup: savedBackup } = dashboardFixtures(now);
+  const secondary = markup(BackupArea, { now, reading: { data: savedBackup } });
+  assert.match(secondary, /Moodle|Point récent/);
+  assert.doesNotMatch(secondary, /PostgreSQL du pilotage/);
   const props = { now, onSelectPoint() {}, onCloseSelection() {} };
   assert.match(markup(RecoveryRequests, props), /Préparer une demande/);
   assert.doesNotMatch(markup(RecoveryRequests, props, 'reader'), /Préparer une demande|Approuver|Lancer le test/);

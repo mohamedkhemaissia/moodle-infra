@@ -22,7 +22,7 @@ export default function PHPProfiles({ now, refreshToken }) {
         <p className="ops-caption">Une file d’attente confirmée et des ressources suffisantes sont nécessaires avant un changement.
           Un retour au profil précédent est tenté si les contrôles après changement échouent.</p>
         {data.review_required && <p role="alert">Le changement précédent doit être examiné avant toute nouvelle intervention.</p>}
-        {data.run_id && <a className="ops-json-link" href={'/api/v1/remediations/' + data.run_id} target="_blank" rel="noreferrer">Consulter le journal de l’intervention ↗</a>}
+        {data.run_id && <a className="section-link" href="#audits">Consulter l’historique des interventions →</a>}
       </>}</div>
   </section>;
 }

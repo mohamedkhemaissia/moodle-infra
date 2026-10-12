@@ -4,6 +4,7 @@ import App from './App.jsx';
 import AuthGate from './Auth.jsx';
 import './styles.css';
 import './auth.css';
+import './presentation.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

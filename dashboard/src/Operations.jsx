@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { RESOURCES, analysisReady, decisionCurrent, recoveryProven, requestPath, operationRequests } from './operations.js';
+import { RESOURCES, analysisReady, decisionCurrent, recoveryProven, operationRequests } from './operations.js';
 import { useReadings } from './useReadings.js';
 import { CompactTable, DetailsPanel, StatusBadge as Badge } from './ApplicationServices.jsx';
 import { observerCurrent } from './navigation.js';
+import { EvidenceSummary, RunSummary, ForecastMethods } from './ReadableDetails.jsx';
 
 const numbers = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
 const dates = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'medium' });
@@ -37,7 +38,7 @@ export function Forecasts({ result, now }) {
           ...['5', '10', '15'].map((h) => ({ key: h, label: '+' + h + ' min',
             render: ([key]) => <strong>{numbers.format(data.forecasts[h].metrics[key].value)} %</strong> }))]} />
       <DetailsPanel title="Méthodes et données de prévision"><p className="ops-caption">Données du {date(data.input_evaluated_at)}.</p>
-        <pre>{JSON.stringify(data.forecasts, null, 2)}</pre></DetailsPanel>
+        <ForecastMethods forecasts={data.forecasts} /></DetailsPanel>
     </> : <p className="ops-empty">{reasons[data.reason] || 'Analyse indisponible avec les données actuelles.'}
       {data.required_history_seconds ? ` Historique requis : ${data.required_history_seconds / 60} minutes.` : ''}</p>}</Reading>
   </article>;
@@ -130,7 +131,7 @@ export default function Operations({ now, refreshToken, section = 'incidents', i
                   <div><dt>Résolution</dt><dd>{date(selectedIncident.resolved_at)}</dd></div></dl>}
                 <p className="ops-caption">Politique {decision.policy_version} · évaluation {date(data.evaluated_at)}
                   {decision.valid_until ? ` · validité jusqu’à ${date(decision.valid_until)}` : ''}</p>
-                <pre>{JSON.stringify({ reasons: decision.reason_codes, evidence: decision.evidence }, null, 2)}</pre>
+                <EvidenceSummary evidence={decision.evidence} />
               </DetailsPanel>
             </>; }}</Reading>
           <p className="ops-note">Les recommandations sont calculées en simulation. L’historique des exécutions retrace les opérations réellement enregistrées.</p>
@@ -155,14 +156,11 @@ export default function Operations({ now, refreshToken, section = 'incidents', i
           {recoveryProven(data) ? 'Correction confirmée par les contrôles HTTPS et les nouvelles mesures.' :
             data.status === 'blocked' ? 'Action bloquée par les contrôles de remédiation.' : 'Récupération non confirmée dans ce journal.'}</p>
           : <p className="ops-note">Diagnostic terminé : consultez le rapport pour connaître les résultats des contrôles.</p>}
-        <DetailsPanel title="Consulter le rapport et la trace d’exécution">
-          <p className="ops-caption">Exécution {data.id}</p>
-          {data.report?.reason && <p className="ops-caption">Motif enregistré : {data.report.reason}</p>}
-          <pre>{JSON.stringify({
-          report: data.report, events: data.events, action_reservation: data.action_reservation }, null, 2)}</pre>
-        <a className="ops-json-link" href={requestPath(run.kind, { runId: data.id })} target="_blank" rel="noreferrer">Ouvrir le journal JSON ↗</a></DetailsPanel>
+        <DetailsPanel title="Résultat et contrôles de l’intervention">
+          <RunSummary run={data} />
+        </DetailsPanel>
       </>}</Reading></div>}
-      <p className="ops-section-note">Exécutions lancées manuellement par l’opérateur.</p>
+      <p className="ops-section-note">Interventions enregistrées selon le mode de pilotage actif.</p>
     </section>}
   </>;
 }

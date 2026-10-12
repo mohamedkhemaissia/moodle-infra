@@ -4,6 +4,7 @@ import { canManageUsers, jsonRequest } from './authClient.js';
 import { ACTION_NAMES, MODE_NAMES, approvalPayload, loadPolicies, policyPayload, validatePolicy } from './policies.js';
 import './policies.css';
 import { CompactTable, DetailsPanel } from './ApplicationServices.jsx';
+import { SummaryList } from './ReadableDetails.jsx';
 
 const date = (value) => new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(value));
 const key = () => crypto.randomUUID().replaceAll('-', '');
@@ -16,7 +17,7 @@ export function PolicyView({ data, admin, form, change, save, approve, busy, app
     <dl className="policy-summary"><div><dt>Mode actif</dt><dd>{MODE_NAMES[policy.mode]}</dd></div>
       <div><dt>Corrections</dt><dd>{policy.suspended ? 'Suspendues' : policy.mode === 'observation' ? 'Désactivées' : 'Autorisées sous contrôle'}</dd></div>
       <div><dt>Période d’évaluation</dt><dd>{policy.evaluation_context ? 'Active — approbation requise' : 'Inactive'}</dd></div>
-      <div><dt>Worker</dt><dd>{workerNames[data.worker.status]}</dd></div></dl>
+      <div><dt>Traitement des interventions</dt><dd>{workerNames[data.worker.status]}</dd></div></dl>
     <DetailsPanel title="Comprendre les modes et la version active">
       <p>Version {policy.revision} · {policy.updated_by} · {date(policy.updated_at)}</p>
       <p className="policy-description">Observation : consultation et diagnostics. Assisté : correction lancée manuellement depuis le serveur.
@@ -49,7 +50,11 @@ export function PolicyView({ data, admin, form, change, save, approve, busy, app
       { key: 'version', label: 'Version', render: (row) => row.revision },
     ]} details={(row) => <>
         <p>{row.details.after?.reason || row.details.reason || (row.details.incident_id ? `Incident ${row.details.incident_id}` : '—')}</p>
-        <pre>{JSON.stringify(row.details, null, 2)}</pre>
+        <SummaryList rows={[
+          ['Mode', MODE_NAMES[row.details.after?.mode] || null],
+          ['Corrections', typeof row.details.after?.suspended === 'boolean' ? row.details.after.suspended ? 'Suspendues' : 'Sous contrôle de la politique' : null],
+          ['Évaluation en cours', typeof row.details.after?.evaluation_context === 'boolean' ? row.details.after.evaluation_context ? 'Oui' : 'Non' : null],
+        ]} />
       </>} />}
     {data.events.length === 0 && <p>Aucun changement enregistré.</p>}
     </DetailsPanel>

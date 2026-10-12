@@ -94,9 +94,6 @@ export default function Backups({ now, refreshToken }) {
     <div className="ops-body">
       <BackupArea reading={readings.backup} now={now} />
       <BackupCatalog now={now} refreshToken={refreshToken} />
-      <DetailsPanel title="Sauvegardes du pilotage" className="backup-secondary">
-        <BackupArea reading={readings.pilotage} now={now} pilotage />
-      </DetailsPanel>
       <DetailsPanel title="Gestion des restaurations" className="backup-secondary">
         <RecoveryRequests now={now} refreshToken={refreshToken} selection={selection}
           onSelectPoint={setSelection} onCloseSelection={() => setSelection(null)} />

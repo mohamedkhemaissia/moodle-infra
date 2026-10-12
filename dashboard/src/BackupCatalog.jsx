@@ -25,7 +25,7 @@ export function CatalogArea({ reading, now, scope, offset, onScope, onPage }) {
     <div className="backup-area-heading"><h3>Catalogue des points de reprise</h3>
       <StatusBadge state={current ? 'operational' : reading.stale ? 'stale' : 'unknown'} label={current ? 'Catalogue récent' : undefined} /></div>
     <div className="catalog-tabs" role="group" aria-label="Type de sauvegarde">
-      {[['moodle', 'Moodle'], ['pilotage', 'PostgreSQL du pilotage']].map(([key, label]) =>
+      {[['moodle', 'Moodle']].map(([key, label]) =>
         <button key={key} type="button" aria-pressed={scope === key} onClick={() => onScope(key)}>{label}</button>)}
     </div>
     {reading.pending ? <p className="ops-empty" role="status">Lecture du catalogue…</p> : !current ?
