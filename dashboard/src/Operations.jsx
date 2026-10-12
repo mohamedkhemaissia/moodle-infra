@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react';
-import { RESOURCES, analysisReady, decisionCurrent, recoveryProven, requestPath, operationRequests } from './operations.js';
+import { decisionCurrent, recoveryProven, operationRequests } from './operations.js';
 import { useReadings } from './useReadings.js';
 import { CompactTable, DetailsPanel, StatusBadge as Badge } from './ApplicationServices.jsx';
 import { observerCurrent } from './navigation.js';
+import { EvidenceSummary, RunSummary } from './ReadableDetails.jsx';
+import { AnalysisView } from './AIAnalysis.jsx';
+export { Forecasts } from './AIAnalysis.jsx';
 
-const numbers = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
 const dates = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'medium' });
 const date = (value) => {
   const milliseconds = typeof value === 'number' ? value * 1000 : Date.parse(value);
   return Number.isFinite(milliseconds) && Math.abs(milliseconds) <= 8.64e15 ? dates.format(milliseconds) : '—';
 };
-const reasons = { insufficient_contiguous_history: 'Historique continu insuffisant pour calculer les prévisions.',
-  linux_collection_unavailable: 'La collecte Linux ne fournit pas de données récentes.',
-  incomplete_or_unhealthy_collection: 'Des mesures sont absentes, anciennes ou issues d’une collecte en échec.' };
 
 function Reading({ result, children, empty = 'Aucune donnée disponible.' }) {
   if (result.pending) return <p className="ops-empty" role="status">Lecture en cours…</p>;
@@ -27,20 +26,6 @@ function Pager({ document, offset, setOffset, name }) {
     <div><button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 10))}>Précédente</button>
       <button disabled={!document.has_more || offset >= 100000} onClick={() => setOffset(offset + 10)}>Suivante</button></div>
   </div>;
-}
-
-export function Forecasts({ result, now }) {
-  return <article className="forecast-card" aria-label="Prévisions des ressources">
-    <Reading result={result}>{(data) => analysisReady(data, now) ? <>
-      <CompactTable caption="Prévisions des ressources à 5, 10 et 15 minutes" rows={RESOURCES} rowKey={([key]) => key}
-        columns={[{ key: 'resource', label: 'Ressource', render: ([, title]) => title },
-          ...['5', '10', '15'].map((h) => ({ key: h, label: '+' + h + ' min',
-            render: ([key]) => <strong>{numbers.format(data.forecasts[h].metrics[key].value)} %</strong> }))]} />
-      <DetailsPanel title="Méthodes et données de prévision"><p className="ops-caption">Données du {date(data.input_evaluated_at)}.</p>
-        <pre>{JSON.stringify(data.forecasts, null, 2)}</pre></DetailsPanel>
-    </> : <p className="ops-empty">{reasons[data.reason] || 'Analyse indisponible avec les données actuelles.'}
-      {data.required_history_seconds ? ` Historique requis : ${data.required_history_seconds / 60} minutes.` : ''}</p>}</Reading>
-  </article>;
 }
 
 export function IncidentTable({ items, selectedId, onSelect }) {
@@ -89,11 +74,10 @@ export default function Operations({ now, refreshToken, section = 'incidents', i
 
   return <>
     {section === 'analysis' && <section id="analysis" className="panel ops-panel" aria-labelledby="analysis-heading">
-      <div className="panel-heading"><div><h2 id="analysis-heading">Prévisions des ressources</h2>
-        <p>Estimation de la consommation à 5, 10 et 15 minutes.</p></div>
+      <div className="panel-heading"><div><h2 id="analysis-heading">Analyse IA</h2>
+        <p>Observations atypiques et prévisions des ressources à 5, 10 et 15 minutes.</p></div>
         <span className="subtle-badge">Expérimental</span></div>
-      <div className="forecast-body"><Forecasts result={readings.forecast} now={now} /></div>
-      <p className="ops-section-note">Les prévisions sont expérimentales.</p>
+      <div className="ops-body"><AnalysisView anomaly={readings.anomaly} forecast={readings.forecast} now={now} /></div>
     </section>}
 
     {section === 'incidents' && <section id="incidents" className="panel ops-panel" aria-labelledby="incidents-heading">
@@ -130,7 +114,7 @@ export default function Operations({ now, refreshToken, section = 'incidents', i
                   <div><dt>Résolution</dt><dd>{date(selectedIncident.resolved_at)}</dd></div></dl>}
                 <p className="ops-caption">Politique {decision.policy_version} · évaluation {date(data.evaluated_at)}
                   {decision.valid_until ? ` · validité jusqu’à ${date(decision.valid_until)}` : ''}</p>
-                <pre>{JSON.stringify({ reasons: decision.reason_codes, evidence: decision.evidence }, null, 2)}</pre>
+                <EvidenceSummary evidence={decision.evidence} />
               </DetailsPanel>
             </>; }}</Reading>
           <p className="ops-note">Les recommandations sont calculées en simulation. L’historique des exécutions retrace les opérations réellement enregistrées.</p>
@@ -155,14 +139,11 @@ export default function Operations({ now, refreshToken, section = 'incidents', i
           {recoveryProven(data) ? 'Correction confirmée par les contrôles HTTPS et les nouvelles mesures.' :
             data.status === 'blocked' ? 'Action bloquée par les contrôles de remédiation.' : 'Récupération non confirmée dans ce journal.'}</p>
           : <p className="ops-note">Diagnostic terminé : consultez le rapport pour connaître les résultats des contrôles.</p>}
-        <DetailsPanel title="Consulter le rapport et la trace d’exécution">
-          <p className="ops-caption">Exécution {data.id}</p>
-          {data.report?.reason && <p className="ops-caption">Motif enregistré : {data.report.reason}</p>}
-          <pre>{JSON.stringify({
-          report: data.report, events: data.events, action_reservation: data.action_reservation }, null, 2)}</pre>
-        <a className="ops-json-link" href={requestPath(run.kind, { runId: data.id })} target="_blank" rel="noreferrer">Ouvrir le journal JSON ↗</a></DetailsPanel>
+        <DetailsPanel title="Résultat et contrôles de l’intervention">
+          <RunSummary run={data} />
+        </DetailsPanel>
       </>}</Reading></div>}
-      <p className="ops-section-note">Exécutions lancées manuellement par l’opérateur.</p>
+      <p className="ops-section-note">Interventions enregistrées selon le mode de pilotage actif.</p>
     </section>}
   </>;
 }

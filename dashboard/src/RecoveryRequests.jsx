@@ -110,10 +110,12 @@ function Detail({ identifier, now, refreshToken, admin, busy, onDecision, onClos
 
 export function RequestsArea({ reading, onOpen, offset, onPage, now }) {
   const value = reading.data;
+  const visibleItems = value?.items.filter((row) => row.scope === 'moodle') || [];
   return <>
     {!value ? <p className="ops-empty" role="status">{reading.pending ? 'Lecture des demandes…' : reading.error || 'Journal des demandes indisponible.'}</p>
       : value.total === 0 ? <p className="ops-empty">Aucune demande enregistrée.</p> : <>
-        <CompactTable caption="Demandes de restauration" rows={value.items} rowKey={(row) => row.id} columns={[
+        {visibleItems.length === 0 && <p className="ops-empty">Aucune demande Moodle sur cette page.</p>}
+        <CompactTable caption="Demandes de restauration Moodle" rows={visibleItems} rowKey={(row) => row.id} columns={[
           { key: 'point', label: 'Point / demande', render: (row) => <>{scopeName(row.scope)}<small><code title={row.snapshot_id}>{row.snapshot_id.slice(0, 12)}</code></small>
             <small title={row.id}>Demande {row.id.slice(0, 8)}</small></> },
           { key: 'date', label: 'Création', render: (row) => date(row.created_at) },
@@ -124,7 +126,7 @@ export function RequestsArea({ reading, onOpen, offset, onPage, now }) {
             onClick={() => onOpen(row.id)}>Consulter</button> },
         ]} />
         <div className="catalog-pagination"><button disabled={offset === 0} onClick={() => onPage(Math.max(0, offset-10))}>Précédent</button>
-          <span>{value.total} demande{value.total > 1 ? 's' : ''}</span>
+          <span>Page {Math.floor(offset / 10) + 1} · {visibleItems.length} demande{visibleItems.length > 1 ? 's' : ''} Moodle</span>
           <button disabled={!value.has_more || offset >= 10000} onClick={() => onPage(offset+10)}>Suivant</button></div>
       </>}
   </>;
@@ -196,7 +198,7 @@ function RecoveryPointPicker({ now, refreshToken, onSelect, onClose }) {
     <h4>Choisir le point à vérifier</h4>
     <div className="auth-form recovery-form">
       <label>Périmètre<select value={scope} onChange={(event) => { setScope(event.target.value); setOffset(0); setIdentifier(''); }}>
-        <option value="moodle">Moodle</option><option value="pilotage">PostgreSQL du pilotage</option></select></label>
+        <option value="moodle">Moodle</option></select></label>
       <label>Point de reprise<select value={point ? identifier : ''} disabled={!current} onChange={(event) => setIdentifier(event.target.value)}>
         <option value="">Sélectionner un point</option>
         {current && reading.data.items.map((row) => <option key={row.id} value={row.id}>

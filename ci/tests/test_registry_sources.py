@@ -95,14 +95,13 @@ class ContextTests(unittest.TestCase):
         self.assertTrue(services['image'].startswith('public.ecr.aws/docker/library/postgres:'))
         self.assertNotIn('credentials', services)
         self.assertEqual(services['ports'], ['15432:5432'])
-        for job in ('recovery-tests', 'application-metrics', 'images'):
+        for job in ('application-metrics', 'images'):
             self.assertEqual(workflow['jobs'][job]['env']['CI_IMAGE_SOURCE'], 'ecr-public')
         builder = next(step for step in workflow['jobs']['images']['steps']
                        if step.get('uses', '').startswith('docker/setup-buildx-action@'))
         self.assertEqual(builder['with']['driver'], 'docker')
-        checks = [step.get('run', '') for step in workflow['jobs']['recovery-tests']['steps']]
-        self.assertTrue(any('sudo env "CI_IMAGE_SOURCE=$CI_IMAGE_SOURCE"' in value and
-                            'ci/run_recovery_moodle_test.py' in value for value in checks))
+        self.assertNotIn('recovery-tests', workflow['jobs'])
+        self.assertNotIn('run_recovery_moodle_test.py', text)
         self.assertFalse(any(step.get('continue-on-error') is True
                              for job in workflow['jobs'].values() for step in job.get('steps', [])))
 

@@ -7,6 +7,7 @@ dashboard_port: 8088
 dashboard_api_origin: http://127.0.0.1:8000
 dashboard_memory_limit: 128m
 dashboard_cpu_limit: "0.25"
+dashboard_container_metrics_targets: "{{ control_plane_container_metrics_targets | default(container_monitoring_targets | default([{'project': 'moodle-pilote', 'service': 'apache'}, {'project': 'moodle-pilote', 'service': 'php'}, {'project': 'moodle-pilote', 'service': 'postgres'}])) }}"
 pilotage_database_config_dir: /etc/moodle-pilotage
 dashboard_source_files:
   - Dockerfile
@@ -58,11 +59,14 @@ dashboard_source_files:
   - src/reports.js
   - src/reports.css
   - src/Operations.jsx
+  - src/AIAnalysis.jsx
+  - src/ReadableDetails.jsx
   - src/operations.js
   - src/useReadings.js
   - src/snapshot.js
   - src/useMetrics.js
   - src/styles.css
+  - src/presentation.css
   - src/corona.css
   - tests/snapshot.test.js
   - tests/operations.test.js
@@ -72,3 +76,5 @@ dashboard_source_files:
   - tests/recoveryRequests.test.js
   - tests/applications.test.js
   - tests/reports.test.js
+  - tests/fixtures.js
+  - tests/compactInterface.test.js

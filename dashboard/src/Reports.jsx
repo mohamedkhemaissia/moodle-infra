@@ -7,6 +7,7 @@ const date = (value) => new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', t
 
 export function ReportView({ report, pending, error, onDownload, onPage, onRefresh }) {
   const preview = report?.kind === 'incidents' ? [0, 4, 5, 8] : report?.kind === 'recovery' ? [0, 5, 6, 9] : [0, 1, 3, 4];
+  const displayedRows = report?.kind === 'recovery' ? report.rows.filter((row) => row[1] === 'Moodle') : report?.rows || [];
   return <>
     <div className="reports-actions">
       <button className="refresh-button" disabled={pending} onClick={onRefresh}>Actualiser le journal</button>
@@ -15,10 +16,10 @@ export function ReportView({ report, pending, error, onDownload, onPage, onRefre
     </div>
     {pending ? <p className="ops-empty" role="status">Lecture du journal…</p> : error ?
       <p className="catalog-warning" role="alert">{error}</p> : report && <>
-        <p className="ops-caption">Lecture du {date(report.retrieved_at)} UTC · {report.rows.length} entrée{report.rows.length > 1 ? 's' : ''} sur {report.total}.</p>
+        <p className="ops-caption">Lecture du {date(report.retrieved_at)} UTC · {displayedRows.length} entrée{displayedRows.length > 1 ? 's' : ''} affichée{displayedRows.length > 1 ? 's' : ''}.</p>
         <p className="reports-scope">Page {report.offset / PAGE_SIZE + 1} · {report.filter}. Les exports comprennent les données de cette page.
           {(report.offset > 0 || report.has_more) && ' D’autres pages existent et ne sont pas incluses.'}</p>
-        {report.rows.length ? <CompactTable caption={'Rapport ' + report.title} rows={report.rows} rowKey={(row) => row[0]} columns={[
+        {displayedRows.length ? <CompactTable caption={'Rapport ' + report.title} rows={displayedRows} rowKey={(row) => row[0]} columns={[
           ...preview.map((position) => ({ key: String(position), label: report.kind === 'incidents' && position === 0 ? 'Incident' :
             report.kind === 'incidents' && position === 4 ? 'Gravité' : report.kind === 'recovery' && position === 0 ? 'Périmètre / demande' : report.columns[position],
             render: (row) => report.kind === 'incidents' && position === 0 ? <strong>#{row[0]} · {row[1]}</strong> :

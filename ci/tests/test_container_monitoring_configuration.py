@@ -8,6 +8,26 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ContainerConfigurationTests(unittest.TestCase):
+    def test_dashboard_verifies_container_metrics_without_loading_control_plane_role(self):
+        defaults = yaml.safe_load((ROOT / 'ansible/roles/dashboard/defaults/main.yml').read_text())
+        tasks = yaml.safe_load((ROOT / 'ansible/roles/dashboard/tasks/main.yml').read_text())
+        task = next(task for task in tasks if task.get('register') == 'dashboard_containers_response')
+        environment = jinja2.Environment(undefined=jinja2.StrictUndefined)
+        verify = environment.compile_expression(task['until'])
+        expected = [{'project': 'moodle-pilote', 'service': service} for service in ('apache', 'php', 'postgres')]
+        for variables, targets in (({}, expected), ({'container_monitoring_targets': expected[:1]}, expected[:1]),
+                                  ({'container_monitoring_targets': expected, 'control_plane_container_metrics_targets': expected[:2]}, expected[:2])):
+            with self.subTest(variables=variables):
+                configured = yaml.safe_load(environment.from_string(defaults['dashboard_container_metrics_targets']).render(variables))
+                self.assertEqual(configured, targets)
+                rows = [{'state': 'running'} for _ in targets]
+                context = {'dashboard_container_metrics_targets': configured,
+                           'dashboard_containers_response': {'status': 200, 'json': {
+                               'mode': 'read_only', 'collector': {'status': 'up'}, 'containers': rows}}}
+                self.assertTrue(verify(**context))
+                rows.pop()
+                self.assertFalse(verify(**context))
+
     def test_textfile_uses_a_readonly_mount_and_does_not_add_a_docker_socket_to_exporters(self):
         values = yaml.safe_load((ROOT / 'ansible/roles/monitoring/defaults/main.yml').read_text())
         values.update(monitoring_container_metrics_enabled=True,

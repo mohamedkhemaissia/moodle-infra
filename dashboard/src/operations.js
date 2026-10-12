@@ -134,7 +134,10 @@ export function requestPath(kind, { status = '', offset = 0, incidentId = null, 
 
 export function operationRequests(section, { status = '', offset = 0, incidentId = null,
   diagnosticOffset = 0, remediationOffset = 0, run = null } = {}) {
-  if (section === 'analysis') return [{ key: 'forecast', kind: 'forecast', path: requestPath('forecast') }];
+  if (section === 'analysis') return [
+    { key: 'forecast', kind: 'forecast', path: requestPath('forecast') },
+    { key: 'anomaly', kind: 'anomaly', path: requestPath('anomaly') },
+  ];
   if (section === 'incidents') {
     const requests = [
       { key: 'summary', kind: 'summary', path: requestPath('summary') },

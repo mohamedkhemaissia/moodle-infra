@@ -236,7 +236,7 @@
     dashboard_containers_response.json is defined and
     dashboard_containers_response.json.mode | default('') == 'read_only' and
     dashboard_containers_response.json.collector.status | default('') == 'up' and
-    (dashboard_containers_response.json.containers | length) == (control_plane_container_metrics_targets | length) and
+    (dashboard_containers_response.json.containers | length) == (dashboard_container_metrics_targets | length) and
     (dashboard_containers_response.json.containers | selectattr('state', 'equalto', 'unknown') | list | length) == 0
   retries: 12
   delay: 5

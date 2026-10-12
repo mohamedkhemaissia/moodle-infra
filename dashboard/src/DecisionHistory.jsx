@@ -3,6 +3,7 @@ import { decisionLabels, loadHistory, makeHistoryReport, downloadHistory } from 
 import './reports.css';
 import './decisionHistory.css';
 import { CompactTable, DetailsPanel, StatusBadge } from './ApplicationServices.jsx';
+import { EvidenceSummary, SummaryList } from './ReadableDetails.jsx';
 
 const date = (value) => value ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'UTC' }).format(Date.parse(value)) + ' UTC' : 'En attente';
 
@@ -30,16 +31,14 @@ export function HistoryView({ value, selectedId, onSelect, now = Date.now() }) {
       <p>{selected.decision.recommended_action?.title || 'Aucune action proposée pour cet état.'}</p>
       {selected.decision.recommended_action && <ul>{selected.decision.recommended_action.steps.map((step, index) => <li key={index}>{step}</li>)}</ul>}
       <dl><dt>Dernière confirmation</dt><dd>{date(selected.last_observed_at)} · {selected.observations} observation(s)</dd></dl>
-      <DetailsPanel title="Mesures, motifs et références techniques">
-        <dl><dt>Signal</dt><dd>{selected.decision.signal_key}</dd>
-          <dt>Motifs</dt><dd>{selected.decision.reason_codes.join(', ')}</dd>
-          <dt>Date des données</dt><dd>{date(selected.decision.input_evaluated_at)}</dd>
-        <dt>Contexte / modèle</dt><dd>{selected.decision.context}</dd>
-        <dt>Politique</dt><dd>{selected.decision.policy_version} · {selected.decision.policy_sha256}</dd>
-        <dt>Identifiant de décision</dt><dd>{selected.decision.decision_id}</dd></dl>
-      <h4>Mesures à la première évaluation</h4><pre>{JSON.stringify(selected.decision.evidence, null, 2)}</pre>
-      <h4>Politique et état de l’observateur conservés</h4>
-      <pre>{JSON.stringify({ policy: selected.policy, collector: selected.collector }, null, 2)}</pre>
+      <DetailsPanel title="Mesures et suivi de la décision">
+        <SummaryList rows={[
+          ['Date des mesures', date(selected.decision.input_evaluated_at)],
+          ['Version de la politique', selected.decision.policy_version],
+          ['Observations confirmées', selected.observations],
+        ]} />
+        <h4>Mesures à la première évaluation</h4>
+        <EvidenceSummary evidence={selected.decision.evidence} />
       </DetailsPanel>
       <p className="ops-note">Une décision archivée ne permet aucune exécution. Toute action exige une évaluation actuelle.</p>
     </article>}
