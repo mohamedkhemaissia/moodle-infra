@@ -7,6 +7,7 @@ dashboard_port: 8088
 dashboard_api_origin: http://127.0.0.1:8000
 dashboard_memory_limit: 128m
 dashboard_cpu_limit: "0.25"
+dashboard_container_metrics_targets: "{{ control_plane_container_metrics_targets | default(container_monitoring_targets | default([{'project': 'moodle-pilote', 'service': 'apache'}, {'project': 'moodle-pilote', 'service': 'php'}, {'project': 'moodle-pilote', 'service': 'postgres'}])) }}"
 pilotage_database_config_dir: /etc/moodle-pilotage
 dashboard_source_files:
   - Dockerfile
