@@ -1,0 +1,7 @@
+---
+- name: Installer le worker de pilotage Codespaces
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - remediation

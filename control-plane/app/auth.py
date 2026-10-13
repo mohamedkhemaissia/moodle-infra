@@ -53,7 +53,7 @@ class Settings:
                     or parsed.username or parsed.password or parsed.path not in ("", "/")
                     or parsed.query or parsed.fragment):
                 raise ValueError("Origine invalide.")
-            if parsed.scheme != "https" and (secure or parsed.hostname not in ("127.0.0.1", "localhost", "::1")):
+            if parsed.scheme != "https" and (parsed.hostname not in ("127.0.0.1", "localhost", "::1") or (secure and value != "http://localhost:8088")):
                 raise ValueError("HTTPS requis en dehors de l'acces local au laboratoire.")
             values.append(value.rstrip("/"))
         path = worker_hash_file or os.getenv("AUTH_WORKER_HASH_FILE", "")

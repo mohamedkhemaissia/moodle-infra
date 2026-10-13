@@ -64,7 +64,7 @@ services:
       - "--collector.textfile.directory=/container-metrics"
 {% endif %}
     volumes:
-      - "/:/host:ro,rslave"
+      - "/:/host:{{ monitoring_node_exporter_mount_mode | default("ro,rslave") }}"
 {% if monitoring_container_metrics_enabled | bool %}
       - "{{ monitoring_container_textfile_dir }}:/container-metrics:ro"
 {% endif %}

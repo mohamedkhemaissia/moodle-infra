@@ -94,6 +94,7 @@ def publish(path, value, validator=validate_document):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--manual", action="store_true")
     parser.add_argument("--marker", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--project", required=True)
@@ -104,6 +105,9 @@ def main():
     try:
         now = datetime.now(timezone.utc)
         value = collect(args.marker, args.project, args.max_age_hours, now)
+        if args.manual:
+            value["schedule"] = {"state": "inactive", "enabled": False}
+            value["job"] = {"state": "idle", "last_result": "unknown"}
         publish(args.output, value)
         if args.pilotage_root:
             schedule, job = unit_states("moodle-pilotage")

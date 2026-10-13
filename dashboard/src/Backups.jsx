@@ -40,6 +40,7 @@ export function BackupArea({ reading, now, pilotage = false }) {
       <dl className="backup-grid">
         <div><dt>Point de reprise</dt><dd>{date(data.latest_success?.frozen_at_utc)}</dd></div>
         <div><dt>Âge du point</dt><dd>{Number.isFinite(view.ageHours) ? numbers.format(view.ageHours) + ' h' : '—'}</dd></div>
+        {!pilotage && data.schedule.state === "inactive" && data.schedule.enabled === false && <div><dt>Mode de sauvegarde</dt><dd>Sauvegarde manuelle</dd></div>}
         <div><dt>Planification</dt><dd>{{ active: 'Active', inactive: 'Inactive', unknown: 'Inconnue' }[data.schedule.state]}</dd></div>
         {pilotage && <>
           <div><dt>Données sauvegardées</dt><dd>{data.latest_success ? numbers.format(data.latest_success.tables) + ' tables' : '—'}</dd>

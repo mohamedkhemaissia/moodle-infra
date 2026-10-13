@@ -6,7 +6,7 @@ modules:
       method: GET
       valid_status_codes: [200]
       follow_redirects: true
-      fail_if_not_ssl: true
+      fail_if_not_ssl: {{ monitoring_probe_requires_tls | default(true) | bool | lower }}
       preferred_ip_protocol: ip4
       ip_protocol_fallback: false
       tls_config:
