@@ -41,8 +41,8 @@ METRIC_QUERIES = {
         ' / node_memory_MemTotal_bytes{job="linux"})'
     ),
     "disk_available_percent": (
-        '100 * node_filesystem_avail_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"}'
-        ' / node_filesystem_size_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"}'
+        '100 * node_filesystem_avail_bytes{job="linux",mountpoint="/workspaces",fstype!~"tmpfs|overlay"}'
+        ' / node_filesystem_size_bytes{job="linux",mountpoint="/workspaces",fstype!~"tmpfs|overlay"}'
     ),
     "moodle_available": 'probe_success{job="moodle_https"}',
     "moodle_probe_duration_ms": 'probe_duration_seconds{job="moodle_https"} * 1000',

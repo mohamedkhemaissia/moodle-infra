@@ -1,0 +1,9 @@
+---
+- name: Activer les politiques de pilotage Codespaces sans planification de sauvegarde
+  hosts: moodle
+  become: true
+  gather_facts: false
+  roles:
+    - operating_policies
+    - control_plane
+    - dashboard
