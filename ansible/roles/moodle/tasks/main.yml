@@ -24,6 +24,8 @@
   ansible.builtin.import_tasks: data.yml
 - name: Preparer la configuration Moodle
   ansible.builtin.import_tasks: configuration.yml
+- name: Preparer les sauvegardes de cours Moodle
+  ansible.builtin.import_tasks: course_operations.yml
 - name: Deployer la base de donnees Moodle
   ansible.builtin.import_tasks: database.yml
 - name: Installer Moodle

@@ -5,6 +5,7 @@ import BackupCatalog from './BackupCatalog.jsx';
 import { useState } from 'react';
 import RecoveryRequests from './RecoveryRequests.jsx';
 import { DetailsPanel, StatusBadge } from './ApplicationServices.jsx';
+import CourseOperations from './CourseOperations.jsx';
 
 const requests = [
   { key: 'backup', kind: 'backup', path: '/api/v1/backups/summary' },
@@ -89,16 +90,22 @@ export function BackupArea({ reading, now, pilotage = false }) {
 export default function Backups({ now, refreshToken }) {
   const [selection, setSelection] = useState(null);
   const readings = useReadings(requests, refreshToken, now);
+  const completeBackupAvailable = readings.backup.pending || readings.backup.data?.status === 'available';
   return <section id="backups" className="panel ops-panel" aria-labelledby="backups-heading">
     <div className="panel-heading"><div><h2 id="backups-heading">Sauvegardes</h2>
       <p>Protection de Moodle et consultation des points de reprise.</p></div></div>
     <div className="ops-body">
-      <BackupArea reading={readings.backup} now={now} />
-      <BackupCatalog now={now} refreshToken={refreshToken} />
-      <DetailsPanel title="Gestion des restaurations" className="backup-secondary">
-        <RecoveryRequests now={now} refreshToken={refreshToken} selection={selection}
-          onSelectPoint={setSelection} onCloseSelection={() => setSelection(null)} />
-      </DetailsPanel>
+      <CourseOperations refreshToken={refreshToken} />
+      {completeBackupAvailable ? <>
+        <BackupArea reading={readings.backup} now={now} />
+        <BackupCatalog now={now} refreshToken={refreshToken} />
+        <DetailsPanel title="Gestion des restaurations" className="backup-secondary">
+          <RecoveryRequests now={now} refreshToken={refreshToken} selection={selection}
+            onSelectPoint={setSelection} onCloseSelection={() => setSelection(null)} />
+        </DetailsPanel>
+      </> : <DetailsPanel title="Sauvegarde complète et PRA" className="backup-secondary">
+        <p className="ops-empty">La sauvegarde complète Restic, la copie hors site et le PRA seront déployés sur la VM BeeCoders. Le pilote Codespaces valide ici le parcours fonctionnel d’un cours.</p>
+      </DetailsPanel>}
     </div>
   </section>;
 }

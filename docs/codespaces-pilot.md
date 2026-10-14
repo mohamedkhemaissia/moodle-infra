@@ -7,6 +7,7 @@ Le Codespace héberge, dans un seul environnement de démonstration :
 - Moodle et PostgreSQL applicatif sous Docker Compose ;
 - Prometheus, Node Exporter, Blackbox Exporter, métriques PHP-FPM/PostgreSQL et métriques des conteneurs ;
 - l’API FastAPI, le PostgreSQL séparé du pilotage et le tableau de bord React ;
+- la sauvegarde d'un cours en `.mbz` et sa restauration comme nouveau cours ;
 - les incidents observés, les recommandations, l’historique et les exports CSV/HTML ;
 - la file PostgreSQL des diagnostics guidés et son worker Ansible Runner en lecture seule ;
 - les politiques persistantes initialisées en mode `observation` ;
@@ -15,7 +16,7 @@ Le Codespace héberge, dans un seul environnement de démonstration :
 - Alertmanager et, après saisie du relais par l'opérateur, les notifications
   externes par e-mail.
 
-Le déploiement ne lance ni sauvegarde Restic, ni PRA/restauration, ni charge ou
+Le déploiement ne lance ni sauvegarde Restic, ni PRA complet, ni charge ou
 panne volontaire. Le worker de remédiation est installé mais reste inactif avec
 la politique initiale `observation`.
 

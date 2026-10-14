@@ -43,6 +43,8 @@ control_plane_diagnostics_enabled: false
 control_plane_diagnostics_data_dir: /var/lib/moodle-diagnostics
 control_plane_diagnostics_store_source: "{{ playbook_dir }}/../../diagnostics/store.py"
 control_plane_diagnostic_requests_enabled: false
+control_plane_course_operations_enabled: false
+control_plane_course_operations_dir: /var/lib/moodle-course-operations
 control_plane_remediation_enabled: false
 control_plane_remediation_data_dir: /var/lib/moodle-remediation
 control_plane_remediation_store_source: "{{ playbook_dir }}/../../remediation/store.py"
@@ -83,6 +85,8 @@ control_plane_source_files:
   - app/decisions.py
   - app/diagnostics_store.py
   - app/diagnostic_requests.py
+  - app/course_operations.py
+  - tests/test_course_operations_api.py
   - app/remediation_store.py
   - app/models.py
   - app/prometheus.py

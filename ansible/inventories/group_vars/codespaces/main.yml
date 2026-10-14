@@ -15,6 +15,7 @@ moodle_apache_forced_host: "{{ codespaces_moodle_hostname }}"
 moodle_wwwroot: "https://{{ codespaces_moodle_hostname }}"
 moodle_reverseproxy_enabled: false
 moodle_sslproxy_enabled: true
+moodle_course_operations_enabled: true
 
 monitoring_moodle_hostname: "{{ codespaces_moodle_hostname }}"
 monitoring_moodle_https_port: "{{ codespaces_moodle_port }}"
@@ -40,6 +41,8 @@ dashboard_api_origin: http://127.0.0.1:8000
 container_monitoring_scheduler: supervisor
 diagnostic_requests_scheduler: supervisor
 control_plane_diagnostic_requests_enabled: true
+control_plane_course_operations_enabled: true
+control_plane_course_operations_dir: /var/lib/moodle-course-operations
 
 # Le worker est installe mais le pilote reste en observation par defaut.
 # Seul l'administrateur peut confirmer le passage en mode automatique.

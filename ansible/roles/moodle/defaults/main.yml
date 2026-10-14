@@ -30,3 +30,5 @@ moodle_fpm_max_children: 5
 moodle_fpm_status_enabled: false
 moodle_fpm_status_port: 9001
 moodle_fpm_status_path: /fpm-status
+moodle_course_operations_enabled: false
+moodle_course_operations_dir: /var/lib/moodle-course-operations

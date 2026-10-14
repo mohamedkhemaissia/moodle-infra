@@ -78,6 +78,46 @@ services:
       retries: 12
       start_period: 20s
 
+{% if moodle_course_operations_enabled | bool %}
+  course-operations:
+    image: "{{ moodle_php_image }}"
+    profiles: ["course-operations"]
+    restart: unless-stopped
+    init: true
+    user: "33:10001"
+    group_add:
+      - "33"
+    working_dir: /var/www/moodle
+    command: ["php", "/opt/moodle-course-operations/worker.php", "--loop"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    secrets:
+      - moodle_db_password
+    volumes:
+      - "{{ moodle_code_dir }}:/var/www/moodle:ro"
+      - moodledata:/var/moodledata
+      - "{{ moodle_course_operations_dir }}:/var/lib/moodle-course-operations"
+      - "{{ moodle_base_dir }}/config/course-operations-worker.php:/opt/moodle-course-operations/worker.php:ro"
+    networks:
+      - private
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "php", "/opt/moodle-course-operations/worker.php", "--healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+{% endif %}
+
 secrets:
   postgres_admin_password:
     file: "{{ moodle_base_dir }}/secrets/postgres_admin_password"

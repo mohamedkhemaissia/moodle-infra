@@ -13,6 +13,7 @@ from .application_metrics import summary as application_metrics_summary, queries
 from .container_metrics import summary as container_metrics_summary, parse_targets, DEFAULT_TARGETS
 from .auth import Settings as AuthSettings, install as install_auth
 from .diagnostic_requests import install as install_diagnostic_requests
+from .course_operations import CourseOperationError, CourseOperationStore, install as install_course_operations
 from .recovery_requests import install as install_recovery_requests
 from .operating_policy import install as install_operating_policy
 from .php_profiles import read_status as read_php_profiles
@@ -64,6 +65,8 @@ def create_app(
     policy_store=None,
     container_metrics_enabled: bool | None = None,
     decision_journal_enabled: bool | None = None,
+    course_operations_enabled: bool | None = None,
+    course_operations_dir: str | None = None,
 ) -> FastAPI:
     authentication = AuthSettings.load(auth_enabled, auth_origins, auth_secure_cookie, auth_worker_hash_file)
     backup_file = backup_status_file if backup_status_file is not None else os.getenv("BACKUP_STATUS_FILE", "")
@@ -141,6 +144,16 @@ def create_app(
         policies_enabled=setting == "true"
     if type(policies_enabled) is not bool or (policies_enabled and (not authentication.enabled or not decisions_enabled or not incident_directory)):
         raise ValueError("Les politiques exigent les comptes, les incidents et les decisions.")
+    if course_operations_enabled is None:
+        setting = os.getenv("COURSE_OPERATIONS_ENABLED", "false")
+        if setting not in ("true", "false"):
+            raise ValueError("COURSE_OPERATIONS_ENABLED doit valoir true ou false.")
+        course_operations_enabled = setting == "true"
+    course_operations_directory = (course_operations_dir if course_operations_dir is not None
+                                   else os.getenv("COURSE_OPERATIONS_DIR", ""))
+    if type(course_operations_enabled) is not bool or (course_operations_enabled and (
+            not authentication.enabled or not course_operations_directory)):
+        raise ValueError("Les sauvegardes de cours exigent les comptes et un stockage dedie.")
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -155,6 +168,10 @@ def create_app(
         application.state.operating_policy=(policy_store or PolicyStore()) if policies_enabled else None
         if application.state.operating_policy is not None:
             await asyncio.to_thread(application.state.operating_policy.check)
+        application.state.course_operations = None
+        if course_operations_enabled:
+            application.state.course_operations = CourseOperationStore(course_operations_directory)
+            await asyncio.to_thread(application.state.course_operations.check)
         application.state.recovery_execution_enabled = recovery_execution_enabled
         application.state.recovery_requests = None
         if recovery_requests_enabled:
@@ -192,17 +209,18 @@ def create_app(
     application = FastAPI(
         title="Pilotage Moodle",
         description="Supervision, analyses experimentales et historique des incidents observes du pilote Moodle.",
-        version="0.16.0",
+        version="0.17.0",
         lifespan=lifespan,
     )
     install_auth(application, authentication)
     install_diagnostic_requests(application)
     install_recovery_requests(application)
     install_operating_policy(application)
+    install_course_operations(application)
 
     @application.get("/api/v1/health", tags=["Sante"])
     async def health():
-        return {"status": "ok", "service": "moodle-control-plane", "version": "0.16.0"}
+        return {"status": "ok", "service": "moodle-control-plane", "version": "0.17.0"}
 
     @application.get("/api/v1/metrics/containers", tags=["Supervision"])
     async def container_metrics(request: Request, response: Response):
@@ -286,11 +304,15 @@ def create_app(
                 request.app.state.diagnostic_requests.check()
                 result["diagnostic_requests"] = {"status": "available", "schema_version": 1,
                                                   "backend": "postgresql", "mode": "read_only"}
+            if request.app.state.course_operations is not None:
+                request.app.state.course_operations.check()
+                result["course_operations"] = {"status": "available", "schema_version": 1,
+                                                "backend": "filesystem", "mode": "course_only"}
             return result
         try:
             stores = await asyncio.to_thread(inspect_storage)
         except (IncidentStorageError, DiagnosticStorageError, DiagnosticRequestStorageError,
-                AuthStorageError, RecoveryStorageError, PolicyStorageError) as exc:
+                AuthStorageError, RecoveryStorageError, PolicyStorageError, CourseOperationError) as exc:
             raise HTTPException(503, detail="Le stockage du pilotage est indisponible.") from exc
         if not stores:
             raise HTTPException(503, detail="Aucun historique du pilotage n'est configure.")

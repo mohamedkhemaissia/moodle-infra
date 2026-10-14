@@ -24,6 +24,12 @@ printf 'Moodle HTTPS: %s\n' "$moodle_status"
 printf 'File diagnostics: %s\n' "$worker_status"
 printf 'Remediation automatique: %s\n' "$remediation_status"
 printf 'Profils PHP-FPM: %s\n' "$php_profiles_status"
+if sudo docker compose -p moodle-pilote -f /opt/moodle/compose.yml --profile course-operations exec -T course-operations \
+  php /opt/moodle-course-operations/worker.php --healthcheck >/dev/null 2>&1; then
+  printf '%s\n' 'Sauvegardes de cours: disponibles (fichier .mbz et restauration en nouveau cours)'
+else
+  printf '%s\n' 'Sauvegardes de cours: indisponibles'
+fi
 printf 'Alertmanager: HTTP %s\n' "$alertmanager_status"
 if [[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/moodle-pilotage/email.json" ]]; then
   printf 'Notifications email: configurees (utiliser scripts/codespaces/test-email.sh pour la recette)\n'
