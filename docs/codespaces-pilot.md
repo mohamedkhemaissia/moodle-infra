@@ -49,6 +49,14 @@ Depuis la racine du dépôt :
 bash scripts/codespaces/deploy.sh
 ```
 
+Après un `git pull`, si le script signale que les dépendances Codespaces ont
+changé, les remettre à niveau puis relancer le déploiement :
+
+```bash
+bash scripts/codespaces/setup.sh
+bash scripts/codespaces/deploy.sh
+```
+
 Ce script attend Docker, détecte les artefacts IA et exécute uniquement `ansible/playbooks/pilot-codespaces.yml`. Le playbook procède en trois étapes :
 
 1. Moodle, supervision, journaux locaux, API et dashboard ;

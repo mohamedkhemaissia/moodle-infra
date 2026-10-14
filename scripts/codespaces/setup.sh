@@ -7,14 +7,15 @@ cd "$repo_dir"
 if [[ ! -x .venv/bin/python ]]; then
   python3.12 -m venv .venv
 fi
-requirements_fingerprint="$(sha256sum control-plane/requirements-lock.txt diagnostics/requirements-lock.txt ml/requirements.txt | sha256sum | cut -d' ' -f1)"
+requirements_fingerprint="$(sha256sum control-plane/requirements-lock.txt diagnostics/requirements-lock.txt ml/requirements.txt scripts/codespaces/requirements.txt | sha256sum | cut -d' ' -f1)"
 python_stamp=.venv/.codespaces-requirements.sha256
 if [[ ! -f "$python_stamp" ]] || [[ "$(<"$python_stamp")" != "$requirements_fingerprint" ]]; then
   .venv/bin/python -m pip install --disable-pip-version-check --only-binary=:all: \
     --timeout 120 --retries 5 \
     -r control-plane/requirements-lock.txt \
     -r diagnostics/requirements-lock.txt \
-    -r ml/requirements.txt
+    -r ml/requirements.txt \
+    -r scripts/codespaces/requirements.txt
   printf '%s\n' "$requirements_fingerprint" > "$python_stamp"
 fi
 

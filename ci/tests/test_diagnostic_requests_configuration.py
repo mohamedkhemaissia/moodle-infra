@@ -84,6 +84,16 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertIn("ansible/inventories/codespaces.ini", script)
         self.assertIn("ansible/playbooks/pilot-codespaces.yml", script)
 
+    def test_codespaces_uses_venv_for_docker_modules(self):
+        inventory = (ROOT / "ansible/inventories/codespaces.ini").read_text()
+        self.assertNotIn("ansible_python_interpreter=/usr/bin/python3", inventory)
+        values = yaml.safe_load((ROOT / "ansible/inventories/group_vars/codespaces/main.yml").read_text())
+        self.assertEqual(values["ansible_python_interpreter"], "{{ moodle_repository_dir }}/.venv/bin/python")
+        requirements = (ROOT / "scripts/codespaces/requirements.txt").read_text()
+        self.assertIn("requests==", requirements)
+        setup = (ROOT / "scripts/codespaces/setup.sh").read_text()
+        self.assertIn("scripts/codespaces/requirements.txt", setup)
+
 
 if __name__ == "__main__":
     unittest.main()

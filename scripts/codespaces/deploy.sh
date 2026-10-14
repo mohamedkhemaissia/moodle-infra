@@ -16,6 +16,11 @@ export MOODLE_REPOSITORY_DIR="$repo_dir"
 export ANSIBLE_CONFIG="$repo_dir/ansible.cfg"
 export ANSIBLE_ROLES_PATH="$repo_dir/ansible/roles"
 
+if ! .venv/bin/python -c "import requests" >/dev/null 2>&1; then
+  echo "Les dependances Codespaces ont change ; executer d'abord : bash scripts/codespaces/setup.sh" >&2
+  exit 2
+fi
+
 bash scripts/codespaces/post-start.sh
 for attempt in {1..30}; do
   if docker info >/dev/null 2>&1; then

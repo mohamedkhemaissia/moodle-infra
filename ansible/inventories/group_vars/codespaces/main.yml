@@ -5,6 +5,7 @@ codespaces_moodle_hostname: "{{ codespaces_name }}-443.{{ codespaces_forwarding_
 codespaces_dashboard_origin: "https://{{ codespaces_name }}-8088.{{ codespaces_forwarding_domain }}"
 
 moodle_repository_dir: "{{ lookup('env', 'CODESPACE_VSCODE_FOLDER') }}"
+ansible_python_interpreter: "{{ moodle_repository_dir }}/.venv/bin/python"
 moodle_hostname: "{{ codespaces_moodle_hostname }}"
 moodle_https_port: 443
 moodle_wwwroot: "https://{{ codespaces_moodle_hostname }}"
