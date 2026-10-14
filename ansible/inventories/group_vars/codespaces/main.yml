@@ -9,6 +9,8 @@ ansible_python_interpreter: "{{ moodle_repository_dir }}/.venv/bin/python"
 moodle_hostname: "{{ codespaces_moodle_hostname }}"
 moodle_https_port: 443
 moodle_wwwroot: "https://{{ codespaces_moodle_hostname }}"
+moodle_reverseproxy_enabled: true
+moodle_sslproxy_enabled: true
 
 monitoring_moodle_hostname: "{{ codespaces_moodle_hostname }}"
 monitoring_moodle_https_port: 443

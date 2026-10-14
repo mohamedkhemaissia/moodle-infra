@@ -68,6 +68,11 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         encoded = json.dumps(values)
         self.assertIn("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", encoded)
         self.assertNotIn("app.github.dev", encoded)
+        self.assertTrue(values["moodle_reverseproxy_enabled"])
+        self.assertTrue(values["moodle_sslproxy_enabled"])
+        moodle_config = (ROOT / "ansible/roles/moodle/templates/config.php.j2").read_text()
+        self.assertIn("$CFG->reverseproxy", moodle_config)
+        self.assertIn("$CFG->sslproxy", moodle_config)
 
     def test_devcontainer_uses_supported_private_by_default_port_attributes(self):
         document = json.loads((ROOT / ".devcontainer/devcontainer.json").read_text())
@@ -78,6 +83,9 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertTrue(all("visibility" not in value for value in document["portsAttributes"].values()))
         self.assertEqual(document["postCreateCommand"], "bash scripts/codespaces/setup.sh")
         self.assertEqual(document["postStartCommand"], "bash scripts/codespaces/post-start.sh")
+        status = (ROOT / "scripts/codespaces/status.sh").read_text()
+        self.assertIn("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", status)
+        self.assertIn("Origine dashboard: acceptee", status)
 
     def test_codespaces_deploy_uses_explicit_ansible_paths(self):
         script = (ROOT / "scripts/codespaces/deploy.sh").read_text()

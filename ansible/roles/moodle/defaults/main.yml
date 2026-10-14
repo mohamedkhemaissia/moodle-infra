@@ -20,6 +20,8 @@ moodle_compose_project: moodle-pilote
 moodle_hostname: moodle-pfe.test
 moodle_https_port: 8443
 moodle_wwwroot: "https://{{ moodle_hostname }}:{{ moodle_https_port }}"
+moodle_reverseproxy_enabled: false
+moodle_sslproxy_enabled: false
 moodle_php_memory_limit: 256M
 moodle_fpm_max_children: 5
 moodle_fpm_status_enabled: false
