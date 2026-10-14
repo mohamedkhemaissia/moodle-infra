@@ -42,7 +42,10 @@ def prepare(root: Path, destination: Path) -> dict:
     api = root / 'control-plane'
     sources = {name: api / name for name in BASE_FILES}
     for folder, pattern in (('app', '*.py'), ('tests', 'test_*.py')):
-        sources.update({str(path.relative_to(api)): path for path in (api / folder).glob(pattern)})
+        # Keep archive-style paths on every controller.  ``str(Path)`` uses
+        # backslashes on Windows, which made the required-file check fail
+        # before the otherwise platform-independent fixture suite could run.
+        sources.update({path.relative_to(api).as_posix(): path for path in (api / folder).glob(pattern)})
     # Les sources canoniques remplacent seulement les copies dans le nouveau contexte.
     sources.update({target: root / source for source, target in SHARED.items()})
     for required in ('app/__init__.py', 'app/main.py', 'tests/test_api.py'):
