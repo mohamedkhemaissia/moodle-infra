@@ -44,14 +44,27 @@ def validate_runtime_bundles(
     repository: Path, features_dir: Path, anomaly_dir: Path, forecast_dir: Path,
 ) -> None:
     """Charger les artefacts avec les validateurs reels de l'API."""
-    control_plane = repository / "control-plane"
-    sys.path.insert(0, str(control_plane))
-    try:
-        from app.anomalies import AnomalyBundle
-        from app.forecasts import ForecastBundle
+    # Le service ne charge pas directement ``control-plane/app`` : son image est
+    # assemblee avec les sources partagees, dont le moteur numerique IA canonique
+    # ``ml/isolation_model.py``. Valider le meme contexte evite un faux echec ici
+    # alors que l'image de production contient bien ce module.
+    from ci.prepare_api import prepare as prepare_api
 
-        with tempfile.TemporaryDirectory(prefix="moodle-ai-validation-") as temporary:
-            root = Path(temporary)
+    with tempfile.TemporaryDirectory(prefix="moodle-ai-validation-") as temporary:
+        root = Path(temporary)
+        api_context = root / "api-context"
+        prepare_api(repository, api_context)
+        previous_app_modules = {
+            name: module for name, module in sys.modules.items()
+            if name == "app" or name.startswith("app.")
+        }
+        for name in previous_app_modules:
+            sys.modules.pop(name, None)
+        sys.path.insert(0, str(api_context))
+        try:
+            from app.anomalies import AnomalyBundle
+            from app.forecasts import ForecastBundle
+
             anomaly_bundle = root / "anomalies"
             forecast_bundle = root / "forecasts"
             anomaly_bundle.mkdir()
@@ -64,8 +77,12 @@ def validate_runtime_bundles(
             shutil.copy2(features_dir / "metadata.json", forecast_bundle / "features_metadata.json")
             AnomalyBundle(anomaly_bundle)
             ForecastBundle(forecast_bundle)
-    finally:
-        sys.path.remove(str(control_plane))
+        finally:
+            sys.path.remove(str(api_context))
+            for name in list(sys.modules):
+                if name == "app" or name.startswith("app."):
+                    sys.modules.pop(name, None)
+            sys.modules.update(previous_app_modules)
 
 
 def evidence_document(

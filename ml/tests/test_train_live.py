@@ -47,6 +47,31 @@ class LiveTrainingTests(unittest.TestCase):
             self.assertTrue((result / "evidence.json").is_file())
             self.assertEqual((result / "jury-summary.md").read_text(encoding="utf-8"), "# Resume\n")
 
+    def test_runtime_validation_loads_the_same_assembled_api_as_deployment(self):
+        repository = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            features = root / "features"
+            anomalies = root / "anomalies"
+            forecasts = root / "forecasts"
+            for target in (features, anomalies, forecasts):
+                target.mkdir()
+            for target in (
+                features / "metadata.json",
+                anomalies / "model.json",
+                anomalies / "report.json",
+                forecasts / "models.json",
+                forecasts / "report.json",
+            ):
+                target.write_text("{}\n", encoding="utf-8")
+
+            # Les faux artefacts doivent etre refuses par le validateur, mais le
+            # chargement de app.isolation_model doit d'abord reussir.
+            with self.assertRaisesRegex(ValueError, "Dossier d'anomalies incomplet"):
+                train_live.validate_runtime_bundles(
+                    repository, features, anomalies, forecasts,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
