@@ -4,7 +4,6 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
-import tempfile
 import time
 import unittest
 from unittest.mock import patch
@@ -13,10 +12,6 @@ SPEC = importlib.util.spec_from_file_location(
     "automatic_validator", Path(__file__).resolve().parents[1] / "validate_automatic_php_recovery.py")
 v = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(v)
-GUARD_SPEC = importlib.util.spec_from_file_location(
-    "php_fallback_guard", Path(__file__).resolve().parents[1] / "php_fallback_guard.py")
-guard = importlib.util.module_from_spec(GUARD_SPEC)
-GUARD_SPEC.loader.exec_module(guard)
 PHP_ID = "a" * 64
 
 
@@ -198,61 +193,6 @@ class ScenarioTests(unittest.TestCase):
 
 
 class ProofTests(unittest.TestCase):
-    def test_report_handoff_only_uses_valid_sudo_identity(self):
-        with patch.dict(v.os.environ, {"SUDO_UID": "1000", "SUDO_GID": "1001"}, clear=True):
-            self.assertEqual(v.sudo_identity(), (1000, 1001))
-        for values in ({}, {"SUDO_UID": "0", "SUDO_GID": "0"},
-                       {"SUDO_UID": "root", "SUDO_GID": "1001"}):
-            with self.subTest(values=values), patch.dict(v.os.environ, values, clear=True):
-                self.assertIsNone(v.sudo_identity())
-
-    def test_fallback_marker_is_confined_to_private_runtime_directory(self):
-        with tempfile.TemporaryDirectory() as directory, patch.object(
-            guard, "RUNTIME_DIR", Path(directory)
-        ):
-            expected = Path(directory) / ("pfe-auto-php-secours-" + "a" * 12 + ".json")
-            self.assertEqual(guard.confined_marker(str(expected)), expected)
-            with self.assertRaises(ValueError):
-                guard.confined_marker(str(Path(directory).parent / expected.name))
-
-    def test_scheduler_matches_codespaces_and_reference_vm(self):
-        lab = v.Lab.__new__(v.Lab)
-        lab.codespaces = True
-        lab.command = lambda *args, **kwargs: subprocess.CompletedProcess(
-            args, 0, "moodle-remediation-worker RUNNING pid 42, uptime 0:01:00\n", "")
-        self.assertEqual(lab.scheduler_ready(), "supervisor")
-        lab.codespaces = False
-        lab.command = lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "active\n", "")
-        self.assertEqual(lab.scheduler_ready(), "systemd")
-
-    def test_codespaces_fallback_guard_is_armed_observed_and_stopped(self):
-        class Process:
-            def __init__(self): self.returncode = None
-            def poll(self): return self.returncode
-            def terminate(self): self.returncode = -15
-            def kill(self): self.returncode = -9
-            def wait(self, timeout=None): return self.returncode
-
-        lab = v.Lab.__new__(v.Lab)
-        lab.codespaces = True
-        lab.fallbacks = {}
-        unit = "pfe-auto-php-secours-" + "b" * 12
-        process = Process()
-        with tempfile.TemporaryDirectory() as directory, \
-                patch.object(v, "FALLBACK_DIR", Path(directory)), \
-                patch.object(v.subprocess, "Popen", return_value=process) as popen:
-            lab.arm(unit, PHP_ID)
-            self.assertFalse(lab.fallback_used(unit))
-            fallback = lab.fallbacks[unit]
-            fallback["marker"].write_text(json.dumps(
-                {"container_id": PHP_ID, "started": True}), encoding="utf-8")
-            process.returncode = 0
-            self.assertTrue(lab.fallback_used(unit))
-            result = lab.cleanup(unit, PHP_ID, False)
-            self.assertTrue(result["fallback_timer_stopped"])
-            self.assertEqual(result["scheduler"], "supervisor")
-            self.assertIn("php_fallback_guard.py", " ".join(popen.call_args.args[0]))
-
     def test_resource_report_identifies_each_limit_and_boundary(self):
         for key, value in (("cpu_usage_percent", 80), ("memory_usage_percent", 90),
                            ("disk_available_percent", 10)):
@@ -279,7 +219,6 @@ class ProofTests(unittest.TestCase):
 
     def test_preflight_accepts_current_api_and_preserves_assisted_suspended_policy(self):
         lab = v.Lab.__new__(v.Lab)
-        lab.codespaces = False
         lab.operations_clear = lab.claim_ready = lambda: None
         lab.command = lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "active\n", "")
         lab.metric_gate = lambda *args, **kwargs: None

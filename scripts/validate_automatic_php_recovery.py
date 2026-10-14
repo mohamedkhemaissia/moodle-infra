@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 import re
 import signal
-import subprocess
 import sys
 import time
 import uuid
@@ -22,8 +21,6 @@ _spec.loader.exec_module(base)
 Refused = base.Refused
 TIMER = "moodle-remediation-worker.timer"
 SERVICE = "moodle-remediation-worker.service"
-SUPERVISOR_PROGRAM = "moodle-remediation-worker"
-FALLBACK_DIR = Path("/run/moodle-remediation-validation")
 
 
 class ResourcePressure(Refused):
@@ -61,20 +58,6 @@ def policy_snapshot(document):
 
 def automatic_ready(policy):
     return policy["mode"] == "automatic" and not policy["suspended"] and not policy["evaluation_context"]
-
-
-def sudo_identity():
-    uid, gid = os.getenv("SUDO_UID", ""), os.getenv("SUDO_GID", "")
-    if uid.isdigit() and gid.isdigit() and int(uid) > 0 and int(gid) > 0:
-        return int(uid), int(gid)
-    return None
-
-
-def handoff_report(directory, output, identity):
-    if identity is None:
-        return
-    os.chown(output, *identity)
-    os.chown(directory, *identity)
 
 
 def require_automatic(policy):
@@ -122,94 +105,6 @@ class Lab(base.Lab):
         self.json = lambda path: get_json(base.API + path, timeout=10)
         if self.config.get("policy_required") is not True:
             raise Refused("operating_policy_not_required_by_remediation")
-        self.codespaces = self.config.get("operations_check_mode") == "marker_only"
-        self.fallbacks = {}
-
-    def scheduler_ready(self):
-        if self.codespaces:
-            process = self.command(
-                ["/usr/bin/supervisorctl", "status", SUPERVISOR_PROGRAM], timeout=10
-            )
-            fields = process.stdout.split()
-            if process.returncode or len(fields) < 2 or fields[0] != SUPERVISOR_PROGRAM or fields[1] != "RUNNING":
-                raise Refused("automatic_supervisor_worker_not_active")
-            return "supervisor"
-        timer = self.command(["/usr/bin/systemctl", "is-active", TIMER], timeout=10)
-        if timer.returncode != 0 or timer.stdout.strip() != "active":
-            raise Refused("automatic_timer_not_active")
-        return "systemd"
-
-    def arm(self, unit, identifier):
-        if not self.codespaces:
-            return super().arm(unit, identifier)
-        if not re.fullmatch(r"pfe-auto-php-secours-[0-9a-f]{12}", unit) or not re.fullmatch(
-            r"[0-9a-f]{64}", identifier
-        ):
-            raise Refused("fallback_parameters_invalid")
-        FALLBACK_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
-        marker = FALLBACK_DIR / (unit + ".json")
-        log = FALLBACK_DIR / (unit + ".log")
-        if marker.exists() or unit in self.fallbacks:
-            raise Refused("fallback_state_already_exists")
-        helper = Path(__file__).with_name("php_fallback_guard.py").resolve()
-        with log.open("x", encoding="utf-8") as output:
-            process = subprocess.Popen(
-                [sys.executable, "-B", str(helper), "--container-id", identifier,
-                 "--delay", "300", "--marker", str(marker)],
-                stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
-                close_fds=True, start_new_session=True,
-                env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
-            )
-        os.chmod(log, 0o600)
-        if process.poll() is not None:
-            raise Refused("fallback_process_not_armed")
-        self.fallbacks[unit] = {"process": process, "marker": marker, "log": log,
-                                "container_id": identifier}
-
-    def fallback_used(self, unit):
-        if not self.codespaces:
-            return super().fallback_used(unit)
-        fallback = self.fallbacks.get(unit)
-        if fallback is None:
-            raise Refused("fallback_state_unavailable")
-        if fallback["marker"].is_file():
-            try:
-                document = json.loads(fallback["marker"].read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                raise Refused("fallback_state_unavailable") from None
-            if (document.get("container_id") != fallback["container_id"]
-                    or type(document.get("started")) is not bool):
-                raise Refused("fallback_state_unavailable")
-            return True
-        if fallback["process"].poll() is not None:
-            raise Refused("fallback_process_failed")
-        return False
-
-    def cleanup(self, unit, identifier, injected):
-        if not self.codespaces:
-            return super().cleanup(unit, identifier, injected)
-        if injected:
-            state = self.inspect("php")
-            if state["id"] != identifier:
-                raise Refused("php_replaced_during_test_leave_fallback_for_original_id")
-            if not base.same_running(state, identifier):
-                if self.command(["/usr/bin/docker", "start", identifier], timeout=15).returncode:
-                    raise Refused("manual_fallback_start_failed_guard_retained")
-            if not base.same_running(self.inspect("php"), identifier):
-                raise Refused("php_running_not_confirmed_guard_retained")
-        fallback = self.fallbacks.get(unit)
-        if fallback is None:
-            return {"php_running": bool(injected), "fallback_timer_stopped": False}
-        process = fallback["process"]
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-        return {"php_running": bool(injected), "fallback_timer_stopped": process.poll() is not None,
-                "scheduler": "supervisor"}
 
     def preflight(self, *, require_mode=False):
         self.operations_clear()
@@ -224,7 +119,9 @@ class Lab(base.Lab):
             raise Refused("automatic_worker_not_recent_and_idle")
         if require_mode:
             require_automatic(policy)
-        scheduler = self.scheduler_ready()
+        timer = self.command(["/usr/bin/systemctl", "is-active", TIMER], timeout=10)
+        if timer.returncode != 0 or timer.stdout.strip() != "active":
+            raise Refused("automatic_timer_not_active")
         metrics = self.json("/api/v1/metrics/summary")
         self.metric_gate(metrics, time.time(), available=True)
         values = metrics["metrics"]
@@ -243,8 +140,7 @@ class Lab(base.Lab):
             raise Refused("containers_not_ready")
         if self.probe().get("success") is not True:
             raise Refused("initial_https_failed")
-        return {"policy": policy, "worker": worker, "scheduler": scheduler,
-                "api_version": health.get("version"),
+        return {"policy": policy, "worker": worker, "api_version": health.get("version"),
                 "automatic_ready": automatic_ready(policy), "metrics": metrics,
                 "containers": containers, "previous_ids": [item["id"] for item in incidents["items"]]}
 
@@ -369,12 +265,7 @@ def main():
     if not (repo / ".git").exists():
         parser.error("Se placer dans ~/moodle-infra.")
     os.umask(0o027)
-    validation_root = repo / "ml/data/validation"
-    validation_root.mkdir(mode=0o755, parents=True, exist_ok=True)
-    identity = sudo_identity()
-    if identity is not None and validation_root.stat().st_uid == 0:
-        os.chown(validation_root, *identity)
-    directory = validation_root / (
+    directory = repo / "ml/data/validation" / (
         "automatic_php_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ_") + uuid.uuid4().hex[:8])
     directory.mkdir(parents=True)
     output = directory / "report.json"
@@ -401,7 +292,6 @@ def main():
     except Exception as exc:
         report.update(status="blocked", reason=str(exc)[:240], error_type=type(exc).__name__)
         save()
-    handoff_report(directory, output, identity)
     keys = ("status", "report_file", "automatic_ready", "operating_policy", "incident_id", "run_id",
             "elapsed_to_confirmation_seconds", "fallback_used", "cleanup", "reason", "resource_check")
     print(json.dumps({k: report[k] for k in keys if k in report}, indent=2, ensure_ascii=False))
