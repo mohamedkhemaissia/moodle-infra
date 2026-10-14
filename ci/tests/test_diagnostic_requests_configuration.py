@@ -100,6 +100,25 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         setup = (ROOT / "scripts/codespaces/setup.sh").read_text()
         self.assertIn("scripts/codespaces/requirements.txt", setup)
 
+    def test_control_plane_database_migration_is_self_contained(self):
+        defaults = yaml.safe_load((ROOT / "ansible/roles/control_plane_database/defaults/main.yml").read_text())
+        for name in (
+            "pilotage_database_migration_python",
+            "pilotage_database_migration_code_dir",
+            "pilotage_database_incident_source_dir",
+            "pilotage_database_diagnostics_source_dir",
+            "pilotage_database_remediation_source_dir",
+        ):
+            self.assertIn(name, defaults)
+        tasks = (ROOT / "ansible/roles/control_plane_database/tasks/main.yml").read_text()
+        for foreign_default in (
+            "diagnostics_base_dir",
+            "diagnostics_data_dir",
+            "control_plane_incident_data_dir",
+            "remediation_data_dir",
+        ):
+            self.assertNotIn(foreign_default, tasks)
+
 
 if __name__ == "__main__":
     unittest.main()
