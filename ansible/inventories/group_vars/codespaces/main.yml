@@ -15,6 +15,10 @@ moodle_sslproxy_enabled: true
 monitoring_moodle_hostname: "{{ codespaces_moodle_hostname }}"
 monitoring_moodle_https_port: 443
 monitoring_moodle_probe_url: "https://{{ codespaces_moodle_hostname }}/login/index.php"
+monitoring_moodle_probe_headers:
+  X-Forwarded-Proto: https
+  X-Forwarded-Host: "{{ codespaces_moodle_hostname }}"
+  X-Forwarded-Port: '443'
 # Docker-in-Docker n'autorise pas la propagation rslave du montage racine.
 # Un bind en lecture seule suffit pour node-exporter dans le pilote Codespaces.
 monitoring_node_exporter_mount_mode: ro

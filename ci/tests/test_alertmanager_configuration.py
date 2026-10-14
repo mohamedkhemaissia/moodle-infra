@@ -49,6 +49,15 @@ class AlertmanagerConfigurationTests(unittest.TestCase):
         self.assertNotIn('MoodleContainerUnavailable', names)
         self.assertIn('MoodleHTTPSUnavailable', names)
 
+    def test_blackbox_can_reproduce_https_proxy_headers(self):
+        headers = {
+            'X-Forwarded-Proto': 'https',
+            'X-Forwarded-Host': 'codespace.example',
+            'X-Forwarded-Port': '443',
+        }
+        blackbox = render('blackbox', values(monitoring_moodle_probe_headers=headers))
+        self.assertEqual(blackbox['modules']['moodle_https']['http']['headers'], headers)
+
 
 if __name__ == '__main__':
     unittest.main()

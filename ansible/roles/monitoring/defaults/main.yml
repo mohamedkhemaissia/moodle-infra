@@ -36,3 +36,4 @@ monitoring_moodle_https_port: 8443
 monitoring_moodle_target_ip: 127.0.0.1
 monitoring_moodle_probe_url: "https://{{ monitoring_moodle_hostname }}:{{ monitoring_moodle_https_port }}/login/index.php"
 monitoring_moodle_ca_source: /opt/moodle/tls/lab-ca.crt
+monitoring_moodle_probe_headers: {}
