@@ -58,7 +58,7 @@
     owner: root
     group: root
     mode: '0644'
-  loop: [__init__.py, db.py, schemas.py, migrate.py, worker_auth.py]
+  loop: [__init__.py, db.py, schemas.py, migrate.py, worker_auth.py, auth.py, passwords.py, recovery.py, diagnostic_requests.py, diagnostic_requests_cli.py]
 
 - name: Verifier si PostgreSQL a ete active pour le pilotage
   ansible.builtin.stat:

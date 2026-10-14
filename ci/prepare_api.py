@@ -30,6 +30,7 @@ SHARED = {
     'pilotage/recovery_execution.py': 'pilotage/recovery_execution.py',
     'pilotage/operating_policy.py': 'pilotage/operating_policy.py',
     'pilotage/decision_journal.py': 'pilotage/decision_journal.py',
+    'pilotage/diagnostic_requests.py': 'pilotage/diagnostic_requests.py',
 }
 BASE_FILES = ('Dockerfile', '.dockerignore', 'requirements-lock.txt')
 

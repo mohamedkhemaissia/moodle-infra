@@ -46,6 +46,7 @@ services:
 {% endif %}
       DECISIONS_ENABLED: {{ (control_plane_decisions_enabled | bool | ternary('true', 'false')) | to_json }}
       DECISION_JOURNAL_ENABLED: {{ (control_plane_decision_journal_enabled | bool | ternary('true', 'false')) | to_json }}
+      DIAGNOSTIC_REQUESTS_ENABLED: {{ (control_plane_diagnostic_requests_enabled | bool | ternary('true', 'false')) | to_json }}
 {% if control_plane_forecasts_enabled | bool %}
       FORECASTS_DIR: /opt/forecasts
 {% endif %}

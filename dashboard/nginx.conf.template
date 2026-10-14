@@ -88,6 +88,20 @@ http {
             add_header X-Content-Type-Options nosniff always;
         }
 
+        location = /api/v1/diagnostic-requests {
+            limit_except GET POST { deny all; }
+            proxy_pass ${API_ORIGIN};
+            add_header Cache-Control no-store always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
+        location ~ "^/api/v1/diagnostic-requests/[0-9a-f]{32}$" {
+            limit_except GET { deny all; }
+            proxy_pass ${API_ORIGIN};
+            add_header Cache-Control no-store always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
         location = /api/v1/recovery/requests {
             limit_except GET POST { deny all; }
             proxy_pass ${API_ORIGIN};

@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+umask 027
+cd {{ (diagnostic_requests_base_dir ~ '/code') | quote }}
+exec /usr/bin/env -i \
+  PILOTAGE_DATABASE_CONFIG={{ (pilotage_database_config_dir ~ '/database.json') | quote }} \
+  PILOTAGE_SERVICE_TOKEN_FILE={{ (pilotage_database_config_dir ~ '/worker-token') | quote }} \
+  PATH=/usr/bin:/bin LANG=C.UTF-8 PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+  {{ diagnostic_requests_python | quote }} -B -m diagnostics.worker --poll-seconds {{ diagnostic_requests_poll_seconds | string | quote }} "$@"

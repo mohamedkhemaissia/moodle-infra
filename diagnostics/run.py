@@ -18,8 +18,8 @@ CODE_DIR = Path(__file__).resolve().parent.parent
 CONFIG = CODE_DIR.parent / "config.json"
 
 
-def execute(config, config_path, incident_id, *, project_dir=None, runner_function=None):
-    identifier = uuid.uuid4().hex
+def execute(config, config_path, incident_id, *, project_dir=None, runner_function=None, run_identifier=None):
+    identifier = uuid.uuid4().hex if run_identifier is None else run_identifier
     directory = Path(config["data_dir"])
     store = DiagnosticStore(directory)
     # Un seul diagnostic a la fois. Le verrou n'est pas dans le stockage des incidents.

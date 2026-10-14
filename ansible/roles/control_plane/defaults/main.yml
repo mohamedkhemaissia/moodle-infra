@@ -42,6 +42,7 @@ control_plane_decision_journal_enabled: false
 control_plane_diagnostics_enabled: false
 control_plane_diagnostics_data_dir: /var/lib/moodle-diagnostics
 control_plane_diagnostics_store_source: "{{ playbook_dir }}/../../diagnostics/store.py"
+control_plane_diagnostic_requests_enabled: false
 control_plane_remediation_enabled: false
 control_plane_remediation_data_dir: /var/lib/moodle-remediation
 control_plane_remediation_store_source: "{{ playbook_dir }}/../../remediation/store.py"
@@ -62,6 +63,7 @@ control_plane_source_files:
   - pilotage/recovery_execution.py
   - pilotage/operating_policy.py
   - pilotage/decision_journal.py
+  - pilotage/diagnostic_requests.py
   - app/__init__.py
   - app/main.py
   - app/auth.py
@@ -80,6 +82,7 @@ control_plane_source_files:
   - app/incident_observer.py
   - app/decisions.py
   - app/diagnostics_store.py
+  - app/diagnostic_requests.py
   - app/remediation_store.py
   - app/models.py
   - app/prometheus.py
@@ -102,6 +105,7 @@ control_plane_source_files:
   - tests/test_incident_observer.py
   - tests/test_decisions.py
   - tests/test_diagnostics_api.py
+  - tests/test_diagnostic_requests_api.py
   - tests/test_remediation_api.py
   - tests/test_storage_api.py
 

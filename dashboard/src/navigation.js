@@ -39,7 +39,7 @@ export const STATUS = {
   unavailable: ['Indisponible', 'bad'], stale: ['Données anciennes', 'warning'], unknown: ['Inconnu', 'neutral'],
   open: ['Ouvert', 'warning'], resolved: ['Résolu', 'good'], info: ['Information', 'neutral'],
   completed: ['Terminé', 'neutral'], blocked: ['Bloqué', 'warning'], failed: ['Échec', 'bad'],
-  running: ['En cours', 'neutral'], timeout: ['Délai dépassé', 'bad'], canceled: ['Annulé', 'neutral'],
+  queued: ['En attente', 'neutral'], running: ['En cours', 'neutral'], timeout: ['Délai dépassé', 'bad'], canceled: ['Annulé', 'neutral'],
   interrupted: ['Interrompu', 'warning'], recommendation: ['Recommandation', 'warning'],
   monitoring: ['Sous observation', 'neutral'], closed: ['Incident résolu', 'good'],
 };

@@ -1,0 +1,12 @@
+---
+- name: Activer les diagnostics guides apres PostgreSQL et les comptes
+  hosts: moodle
+  become: true
+  gather_facts: false
+  vars:
+    control_plane_diagnostic_requests_enabled: true
+  roles:
+    - diagnostics
+    - diagnostic_requests
+    - control_plane
+    - dashboard

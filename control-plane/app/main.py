@@ -12,6 +12,7 @@ from .models import MetricsSummary
 from .application_metrics import summary as application_metrics_summary, queries as application_queries
 from .container_metrics import summary as container_metrics_summary, parse_targets, DEFAULT_TARGETS
 from .auth import Settings as AuthSettings, install as install_auth
+from .diagnostic_requests import install as install_diagnostic_requests
 from .recovery_requests import install as install_recovery_requests
 from .operating_policy import install as install_operating_policy
 from .php_profiles import read_status as read_php_profiles
@@ -22,6 +23,7 @@ from pilotage.recovery import RecoveryStore, RecoveryStorageError
 from pilotage.recovery_execution import RecoveryExecutionStore
 from pilotage.operating_policy import PolicyStore, PolicyStorageError
 from pilotage.decision_journal import DecisionJournal
+from pilotage.diagnostic_requests import DiagnosticRequestStore, DiagnosticRequestStorageError
 from .diagnostics_store import DiagnosticStore, DiagnosticStorageError
 from .remediation_store import RemediationStore
 from .incidents import IncidentStore, IncidentStorageError
@@ -43,6 +45,8 @@ def create_app(
     incidents_dir: str | None = None,
     decisions_enabled: bool | None = None,
     diagnostics_dir: str | None = None,
+    diagnostic_requests_enabled: bool | None = None,
+    diagnostic_request_store=None,
     remediation_dir: str | None = None,
     auth_enabled: bool | None = None,
     auth_store=None,
@@ -115,6 +119,14 @@ def create_app(
         decisions_enabled = setting == "true"
     if type(decisions_enabled) is not bool:
         raise ValueError("Le mode des decisions doit etre booleen.")
+    if diagnostic_requests_enabled is None:
+        setting = os.getenv("DIAGNOSTIC_REQUESTS_ENABLED", "false")
+        if setting not in ("true", "false"):
+            raise ValueError("DIAGNOSTIC_REQUESTS_ENABLED doit valoir true ou false.")
+        diagnostic_requests_enabled = setting == "true"
+    if type(diagnostic_requests_enabled) is not bool or (diagnostic_requests_enabled and (
+            not authentication.enabled or not decisions_enabled or not incident_directory or not diagnostic_directory)):
+        raise ValueError("Les demandes de diagnostic exigent les comptes, les incidents, les decisions et le journal de diagnostics.")
     if decision_journal_enabled is None:
         setting = os.getenv("DECISION_JOURNAL_ENABLED", "false")
         if setting not in ("true", "false"):
@@ -136,6 +148,10 @@ def create_app(
         application.state.auth_password_slots = asyncio.Semaphore(2)
         if authentication.enabled:
             await asyncio.to_thread(application.state.auth_store.check)
+        application.state.diagnostic_requests = None
+        if diagnostic_requests_enabled:
+            application.state.diagnostic_requests = diagnostic_request_store or DiagnosticRequestStore()
+            await asyncio.to_thread(application.state.diagnostic_requests.check)
         application.state.operating_policy=(policy_store or PolicyStore()) if policies_enabled else None
         if application.state.operating_policy is not None:
             await asyncio.to_thread(application.state.operating_policy.check)
@@ -180,6 +196,7 @@ def create_app(
         lifespan=lifespan,
     )
     install_auth(application, authentication)
+    install_diagnostic_requests(application)
     install_recovery_requests(application)
     install_operating_policy(application)
 
@@ -265,10 +282,15 @@ def create_app(
                 with request.app.state.incidents.connection() as connection:
                     request.app.state.decision_journal.check(connection)
                 result["decision_journal"]={"status":"available","schema_version":1,"backend":"postgresql"}
+            if request.app.state.diagnostic_requests is not None:
+                request.app.state.diagnostic_requests.check()
+                result["diagnostic_requests"] = {"status": "available", "schema_version": 1,
+                                                  "backend": "postgresql", "mode": "read_only"}
             return result
         try:
             stores = await asyncio.to_thread(inspect_storage)
-        except (IncidentStorageError, DiagnosticStorageError, AuthStorageError, RecoveryStorageError, PolicyStorageError) as exc:
+        except (IncidentStorageError, DiagnosticStorageError, DiagnosticRequestStorageError,
+                AuthStorageError, RecoveryStorageError, PolicyStorageError) as exc:
             raise HTTPException(503, detail="Le stockage du pilotage est indisponible.") from exc
         if not stores:
             raise HTTPException(503, detail="Aucun historique du pilotage n'est configure.")

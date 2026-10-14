@@ -5,6 +5,8 @@
       - not (control_plane_decisions_enabled | bool) or (control_plane_incidents_enabled | bool)
       - not (control_plane_decision_journal_enabled | bool) or (control_plane_decisions_enabled | bool)
       - not (control_plane_diagnostics_enabled | bool) or (control_plane_decisions_enabled | bool)
+      - not (control_plane_diagnostic_requests_enabled | bool) or (control_plane_diagnostics_enabled | bool)
+      - not (control_plane_diagnostic_requests_enabled | bool) or (control_plane_incidents_enabled | bool)
       - not (control_plane_remediation_enabled | bool) or (control_plane_decisions_enabled | bool)
       - not (control_plane_pilotage_backup_status_enabled | bool) or (control_plane_backup_status_enabled | bool)
       - not (control_plane_backup_catalog_enabled | bool) or (control_plane_backup_status_enabled | bool)
@@ -33,7 +35,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'pilotage/recovery.py', 'pilotage/recovery_cli.py', 'pilotage/recovery_execution.py', 'pilotage/operating_policy.py', 'pilotage/decision_journal.py', 'app/backup_status.py', 'app/pilotage_backup_status.py', 'app/backup_catalog_status.py']) }}"
+  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'pilotage/recovery.py', 'pilotage/recovery_cli.py', 'pilotage/recovery_execution.py', 'pilotage/operating_policy.py', 'pilotage/decision_journal.py', 'pilotage/diagnostic_requests.py', 'app/backup_status.py', 'app/pilotage_backup_status.py', 'app/backup_catalog_status.py']) }}"
 
 - name: Copier le lecteur partage du suivi des sauvegardes
   ansible.builtin.copy:
@@ -132,7 +134,7 @@
     owner: root
     group: root
     mode: '0644'
-  loop: [__init__.py, db.py, schemas.py, migrate.py, auth.py, auth_cli.py, passwords.py, worker_auth.py, recovery.py, recovery_cli.py, recovery_execution.py, operating_policy.py, decision_journal.py]
+  loop: [__init__.py, db.py, schemas.py, migrate.py, auth.py, auth_cli.py, passwords.py, worker_auth.py, recovery.py, recovery_cli.py, recovery_execution.py, operating_policy.py, decision_journal.py, diagnostic_requests.py]
 
 - name: Verifier si PostgreSQL a ete active pour le pilotage
   ansible.builtin.stat:
@@ -161,6 +163,23 @@
       - not pilotage_policy_activation.stat.exists or pilotage_auth_activation.stat.exists
       - not pilotage_policy_activation.stat.exists or (control_plane_decisions_enabled | bool)
       - not pilotage_policy_activation.stat.exists or (control_plane_incidents_enabled | bool)
+
+- name: Verifier l activation de la file des diagnostics guides
+  ansible.builtin.stat:
+    path: "{{ pilotage_database_config_dir }}/diagnostic-requests-active"
+    follow: false
+  register: control_plane_diagnostic_requests_activation
+  when: control_plane_diagnostic_requests_enabled | bool
+
+- name: Exiger la file et ses dependances avant de publier ses routes
+  ansible.builtin.assert:
+    that:
+      - pilotage_database_activation.stat.exists
+      - pilotage_auth_activation.stat.exists
+      - control_plane_diagnostic_requests_activation.stat.isreg | default(false)
+      - not (control_plane_diagnostic_requests_activation.stat.islnk | default(false))
+    fail_msg: "Deployer diagnostic_requests avant d activer ce parcours dans l API."
+  when: control_plane_diagnostic_requests_enabled | bool
 
 - name: Exiger PostgreSQL quand les comptes sont actifs
   ansible.builtin.assert:

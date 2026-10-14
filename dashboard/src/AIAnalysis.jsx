@@ -60,10 +60,14 @@ export function Forecasts({ result = {}, now }) {
         columns={[{ key: 'resource', label: 'Ressource', render: ([, title]) => title },
           ...['5', '10', '15'].map((h) => ({ key: h, label: '+' + h + ' min',
             render: ([key]) => <strong>{numbers.format(data.forecasts[h].metrics[key].value)} %</strong> }))]} />
+      <p className="ops-note">Ces estimations expérimentales aident à anticiper une tendance ; elles ne garantissent pas une panne et ne déclenchent aucune intervention.</p>
     </> : <Unavailable result={result} data={data} />}
   </article>;
 }
 
-export function AnalysisView({ anomaly, forecast, now }) {
-  return <div className="ai-analysis-view"><Anomalies result={anomaly} now={now} /><Forecasts result={forecast} now={now} /></div>;
+export function AnalysisView({ anomaly, forecast, now, onNavigate }) {
+  return <><div className="ai-analysis-view"><Anomalies result={anomaly} now={now} /><Forecasts result={forecast} now={now} /></div>
+    <div className="analysis-guidance"><p>Une observation atypique ou une prévision défavorable doit être confirmée par les mesures et les incidents récents avant toute action.</p>
+      {onNavigate && <button className="ops-button" type="button" onClick={() => onNavigate('incidents')}>
+        Consulter les incidents et recommandations</button>}</div></>;
 }

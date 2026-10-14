@@ -59,6 +59,8 @@ dashboard_source_files:
   - src/reports.js
   - src/reports.css
   - src/Operations.jsx
+  - src/DiagnosticRequestPanel.jsx
+  - src/diagnosticRequests.js
   - src/AIAnalysis.jsx
   - src/ReadableDetails.jsx
   - src/operations.js
@@ -70,6 +72,7 @@ dashboard_source_files:
   - src/corona.css
   - tests/snapshot.test.js
   - tests/operations.test.js
+  - tests/diagnosticRequests.test.js
   - tests/auth.test.js
   - tests/backups.test.js
   - tests/backupCatalog.test.js

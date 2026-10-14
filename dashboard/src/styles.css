@@ -81,6 +81,8 @@ tbody small { display: block; font-size: 10px; color: #a0a6bd; margin-top: 4px; 
 .forecast-card td small { display: inline-block; padding: 2px 6px; margin-top: 6px; border-radius: 3px; background: #2a2d3a; color: #b5bfd6; font-size: 9px; }
 .forecast-card tbody th { min-width: 145px; }
 .forecast-card th:not(:first-child), .forecast-card td { text-align: center; }
+.analysis-guidance { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 18px; padding: 14px 16px; border-left: 2px solid #0090e7; background: #11151d; }
+.analysis-guidance p { color: #bac0d3; font-size: 12px; }
 .ops-section-note { padding: 12px 25px 16px; border-top: 1px solid #2c2e33; color: #a0a6bd; font-size: 10px; }
 .ops-empty { color: #bac0d3; padding: 20px 0; font-size: 12px; overflow-wrap: anywhere; }
 .ops-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0; }
@@ -108,6 +110,19 @@ tr.selected { background: #0090e710; }
 .decision-explanation { font-size: 12px; margin-top: 15px; color: #bac0d3; }
 .decision-card ol { padding-left: 20px; color: #bac0d3; font-size: 12px; }
 .decision-card li { margin: 7px 0; }
+.incident-evidence { margin-top: 18px; padding: 16px; border: 1px solid #2c2e33; border-radius: 4px; background: #10131a; }
+.incident-evidence h4 { margin-top: 0; }
+.diagnostic-request-panel { margin-top: 22px; padding-top: 20px; border-top: 1px solid #2c2e33; }
+.diagnostic-request-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.diagnostic-request-heading h4 { margin: 0 0 6px; }
+.diagnostic-request-heading p { color: #a7acc3; font-size: 11px; }
+.diagnostic-request-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 15px 0; }
+.diagnostic-request-facts > div { padding: 8px 0; border-bottom: 1px solid #ffffff08; }
+.diagnostic-request-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.diagnostic-request-actions .refresh-button { margin: 0; }
+.diagnostic-notice { margin-top: 14px; padding: 10px 12px; color: #93e9b6; background: #0d2417; border-left: 2px solid #00d25b; font-size: 12px; }
+.diagnostic-result { margin-top: 18px; padding: 18px; border: 1px solid #2c2e33; border-left: 2px solid #00d25b; background: #0f1218; }
+.diagnostic-result .overview-heading { margin-bottom: 10px; }
 .ops-note { color: #a7acc3; font-size: 11px; margin-top: 14px; }
 details { margin-top: 15px; color: #a7acc3; font-size: 11px; }
 summary { cursor: pointer; }
@@ -163,8 +178,11 @@ pre { max-height: 380px; overflow: auto; font-size: 10px; line-height: 1.65; bac
   .incident-summary { flex-wrap: wrap; gap: 15px; }
   .collector-label { margin-left: 0; width: 100%; }
   .ops-pagination { flex-wrap: wrap; }
+  .analysis-guidance { align-items: flex-start; flex-direction: column; }
   .decision-card { padding: 16px; }
   .decision-card .ops-toolbar { flex-direction: column; }
+  .diagnostic-request-heading { flex-direction: column; }
+  .diagnostic-request-facts { grid-template-columns: 1fr; }
   .ops-toolbar { flex-wrap: wrap; }
   .run-verdict { font-size: 11px; }
   .page-footer { flex-wrap: wrap; font-size: 9px; }
