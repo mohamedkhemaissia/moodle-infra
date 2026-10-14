@@ -85,6 +85,10 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertIn('export ANSIBLE_ROLES_PATH="$repo_dir/ansible/roles"', script)
         self.assertIn("ansible/inventories/codespaces.ini", script)
         self.assertIn("ansible/playbooks/pilot-codespaces.yml", script)
+        self.assertIn("validate_bundle anomalies", script)
+        self.assertIn("validate_bundle forecasts", script)
+        self.assertIn('MOODLE_ANOMALY_BUNDLE_DIR=""', script)
+        self.assertIn('MOODLE_FORECAST_BUNDLE_DIR=""', script)
 
     def test_codespaces_uses_venv_for_docker_modules(self):
         inventory = (ROOT / "ansible/inventories/codespaces.ini").read_text()

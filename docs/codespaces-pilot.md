@@ -40,6 +40,10 @@ export MOODLE_FORECAST_BUNDLE_DIR=/workspaces/moodle-infra/ml/data/models/moodle
 ```
 
 En l’absence d’artefacts réels, le déploiement continue mais l’API affiche honnêtement l’IA comme indisponible. Aucun modèle fictif n’est créé. Lorsque les artefacts sont présents, les écrans exposent le score Isolation Forest et les horizons de prévision 5, 10 et 15 minutes.
+Avant Ansible, le script applique aux bundles locaux les mêmes contrôles de
+structure, d'empreinte et de provenance que l'API. Un bundle incomplet, ancien
+ou associé à un autre jeu de features est ignoré et la capacité concernée
+reste explicitement indisponible ; cela ne bloque pas le socle du pilote.
 
 ## 3. Déployer le pilote
 

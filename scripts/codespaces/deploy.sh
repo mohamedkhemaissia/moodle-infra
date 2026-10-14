@@ -56,6 +56,44 @@ if [[ -z "${MOODLE_FORECAST_BUNDLE_DIR:-}" ]]; then
   export MOODLE_FORECAST_BUNDLE_DIR
 fi
 
+artifact_validation_dir="$(mktemp -d "${TMPDIR:-/tmp}/moodle-pilotage-artifacts.XXXXXX")"
+cleanup_artifact_validation() {
+  case "$artifact_validation_dir" in
+    "${TMPDIR:-/tmp}"/moodle-pilotage-artifacts.*)
+      rm -rf -- "$artifact_validation_dir"
+      ;;
+  esac
+}
+trap cleanup_artifact_validation EXIT
+
+validate_bundle() {
+  local module="$1" bundle_dir="$2" features_dir="$3"
+  local directory="$artifact_validation_dir/$module"
+  mkdir -p "$directory"
+  if [[ "$module" == "anomalies" ]]; then
+    ln -sf "$bundle_dir/model.json" "$directory/model.json"
+  else
+    ln -sf "$bundle_dir/models.json" "$directory/models.json"
+  fi
+  ln -sf "$bundle_dir/report.json" "$directory/report.json"
+  ln -sf "$features_dir/metadata.json" "$directory/features_metadata.json"
+  PYTHONPATH="$repo_dir/control-plane" .venv/bin/python -B -m "app.$module" \
+    --check-bundle "$directory" >/dev/null 2>&1
+}
+
+if [[ -n "$MOODLE_FEATURES_DIR" ]] && [[ -n "$MOODLE_ANOMALY_BUNDLE_DIR" ]] && \
+   ! validate_bundle anomalies "$MOODLE_ANOMALY_BUNDLE_DIR" "$MOODLE_FEATURES_DIR"; then
+  echo "Information : bundle d'anomalies local invalide ou incompatible ; detection IA desactivee."
+  MOODLE_ANOMALY_BUNDLE_DIR=""
+  export MOODLE_ANOMALY_BUNDLE_DIR
+fi
+if [[ -n "$MOODLE_FEATURES_DIR" ]] && [[ -n "$MOODLE_FORECAST_BUNDLE_DIR" ]] && \
+   ! validate_bundle forecasts "$MOODLE_FORECAST_BUNDLE_DIR" "$MOODLE_FEATURES_DIR"; then
+  echo "Information : bundle de previsions local invalide ou incompatible ; previsions IA desactivees."
+  MOODLE_FORECAST_BUNDLE_DIR=""
+  export MOODLE_FORECAST_BUNDLE_DIR
+fi
+
 if [[ -z "$MOODLE_FEATURES_DIR" ]] || [[ -z "$MOODLE_ANOMALY_BUNDLE_DIR" ]] || [[ -z "$MOODLE_FORECAST_BUNDLE_DIR" ]]; then
   echo "Information : aucun jeu complet d'artefacts IA locaux détecté ; le socle sera déployé et l'IA restera explicitement indisponible."
 fi
