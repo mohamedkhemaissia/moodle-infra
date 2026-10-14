@@ -13,6 +13,9 @@ moodle_wwwroot: "https://{{ codespaces_moodle_hostname }}"
 monitoring_moodle_hostname: "{{ codespaces_moodle_hostname }}"
 monitoring_moodle_https_port: 443
 monitoring_moodle_probe_url: "https://{{ codespaces_moodle_hostname }}/login/index.php"
+# Docker-in-Docker n'autorise pas la propagation rslave du montage racine.
+# Un bind en lecture seule suffit pour node-exporter dans le pilote Codespaces.
+monitoring_node_exporter_mount_mode: ro
 
 control_plane_auth_origins:
   - "{{ codespaces_dashboard_origin }}"

@@ -62,6 +62,7 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertFalse(values["control_plane_recovery_requests_enabled"])
         self.assertEqual(values["container_monitoring_scheduler"], "supervisor")
         self.assertEqual(values["diagnostic_requests_scheduler"], "supervisor")
+        self.assertEqual(values["monitoring_node_exporter_mount_mode"], "ro")
         self.assertTrue(values["control_plane_diagnostic_requests_enabled"])
         encoded = json.dumps(values)
         self.assertIn("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", encoded)

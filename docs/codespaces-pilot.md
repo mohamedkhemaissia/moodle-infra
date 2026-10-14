@@ -64,6 +64,8 @@ Ce script attend Docker, détecte les artefacts IA et exécute uniquement `ansib
 3. authentification, politiques en observation, diagnostics guidés, puis republication de l’API et du dashboard.
 
 Il réutilise le Docker fourni par Codespaces et n’appelle jamais les rôles `linux`, `runtime`, `operations`, `recovery` ou les rôles de sauvegarde.
+Le montage racine de `node-exporter` reste en lecture seule, sans propagation
+`rslave`, car celle-ci n'est pas disponible avec Docker-in-Docker.
 
 ## 4. Créer l’unique administrateur
 
