@@ -5,6 +5,7 @@ import { CompactTable, DetailsPanel, StatusBadge as Badge } from './ApplicationS
 import { observerCurrent } from './navigation.js';
 import { EvidenceSummary, RunSummary } from './ReadableDetails.jsx';
 import { AnalysisView } from './AIAnalysis.jsx';
+import DiagnosticRequestPanel from "./DiagnosticRequestPanel.jsx";
 export { Forecasts } from './AIAnalysis.jsx';
 
 const dates = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'medium' });
@@ -101,7 +102,7 @@ export default function Operations({ now, refreshToken, section = 'incidents', i
         {incidentId !== null && <article className="decision-card" aria-label={`Décision incident ${incidentId}`}>
           <div className="ops-toolbar"><h3>Incident #{incidentId}{selectedIncident ? ` · ${selectedIncident.title}` : ''}</h3>
             <button className="ops-button" onClick={() => selectIncident(null)}>Fermer le détail</button>
-            {onNavigate && <button className="ops-button" onClick={() => onNavigate('audits')}>Voir les journaux</button>}</div>
+            {onNavigate && <button className="ops-button" onClick={() => onNavigate('audits', incidentId)}>Voir les journaux</button>}</div>
           <Reading result={readings.decision}>{(data) => { const decision = data.decision;
             const current = decisionCurrent(data, now);
             return <><Badge state={decision.status === 'recommendation' && !current ? 'blocked' : decision.status} />
@@ -117,6 +118,7 @@ export default function Operations({ now, refreshToken, section = 'incidents', i
                 <EvidenceSummary evidence={decision.evidence} />
               </DetailsPanel>
             </>; }}</Reading>
+          <DiagnosticRequestPanel incidentId={incidentId} />
           <p className="ops-note">Les recommandations sont calculées en simulation. L’historique des exécutions retrace les opérations réellement enregistrées.</p>
         </article>}
       </div>

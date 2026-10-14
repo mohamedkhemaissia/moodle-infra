@@ -17,6 +17,7 @@ services:
       AUTH_ENABLED: {{ (pilotage_auth_activation.stat.exists | ternary('true', 'false')) | to_json }}
       POLICIES_ENABLED: {{ (pilotage_policy_activation.stat.exists | ternary('true', 'false')) | to_json }}
       RECOVERY_REQUESTS_ENABLED: {{ (control_plane_recovery_requests_enabled | bool | ternary('true', 'false')) | to_json }}
+      DIAGNOSTIC_REQUESTS_ENABLED: {{ (control_plane_diagnostic_requests_enabled | bool | ternary("true", "false")) | to_json }}
       RECOVERY_EXECUTION_ENABLED: {{ (control_plane_recovery_execution_enabled | bool) | ternary("true", "false") | to_json }}
 {% if pilotage_auth_activation.stat.exists %}
       AUTH_ALLOWED_ORIGINS: {{ (control_plane_auth_origins | to_json) | to_json }}

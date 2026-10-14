@@ -13,12 +13,14 @@ from .application_metrics import summary as application_metrics_summary, queries
 from .container_metrics import summary as container_metrics_summary, parse_targets, DEFAULT_TARGETS
 from .auth import Settings as AuthSettings, install as install_auth
 from .recovery_requests import install as install_recovery_requests
+from .diagnostic_requests import install as install_diagnostic_requests
 from .operating_policy import install as install_operating_policy
 from .php_profiles import read_status as read_php_profiles
 from .backup_catalog_status import select_point
 from .backups import read_summary as read_backup_summary, read_pilotage_summary, read_catalog
 from pilotage.auth import AuthStore, AuthStorageError
 from pilotage.recovery import RecoveryStore, RecoveryStorageError
+from pilotage.diagnostic_requests import DiagnosticRequests
 from pilotage.recovery_execution import RecoveryExecutionStore
 from pilotage.operating_policy import PolicyStore, PolicyStorageError
 from pilotage.decision_journal import DecisionJournal
@@ -130,6 +132,11 @@ def create_app(
     if type(policies_enabled) is not bool or (policies_enabled and (not authentication.enabled or not decisions_enabled or not incident_directory)):
         raise ValueError("Les politiques exigent les comptes, les incidents et les decisions.")
 
+    diagnostic_requests_enabled = os.getenv("DIAGNOSTIC_REQUESTS_ENABLED", "false")
+    if diagnostic_requests_enabled not in ("true", "false") or (diagnostic_requests_enabled == "true" and (not authentication.enabled or not diagnostic_directory)):
+        raise ValueError("Les demandes de diagnostic exigent les comptes et les diagnostics.")
+    diagnostic_requests_enabled = diagnostic_requests_enabled == "true"
+
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         application.state.auth_store = (auth_store or AuthStore()) if authentication.enabled else None
@@ -171,6 +178,7 @@ def create_app(
             application.state.decision_journal = DecisionJournal(application.state.incidents) if decision_journal_enabled else None
             application.state.remediations = RemediationStore(remediation_directory) if remediation_directory else None
             application.state.diagnostics = DiagnosticStore(diagnostic_directory) if diagnostic_directory else None
+            application.state.diagnostic_requests = DiagnosticRequests() if diagnostic_requests_enabled else None
             yield
 
     application = FastAPI(
@@ -181,6 +189,7 @@ def create_app(
     )
     install_auth(application, authentication)
     install_recovery_requests(application)
+    install_diagnostic_requests(application)
     install_operating_policy(application)
 
     @application.get("/api/v1/health", tags=["Sante"])

@@ -33,7 +33,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'pilotage/recovery.py', 'pilotage/recovery_cli.py', 'pilotage/recovery_execution.py', 'pilotage/operating_policy.py', 'pilotage/decision_journal.py', 'app/backup_status.py', 'app/pilotage_backup_status.py', 'app/backup_catalog_status.py']) }}"
+  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'pilotage/recovery.py', 'pilotage/recovery_cli.py', 'pilotage/recovery_execution.py', 'pilotage/operating_policy.py', 'pilotage/decision_journal.py', 'pilotage/diagnostic_requests.py', 'app/backup_status.py', 'app/pilotage_backup_status.py', 'app/backup_catalog_status.py']) }}"
 
 - name: Copier le lecteur partage du suivi des sauvegardes
   ansible.builtin.copy:
@@ -132,7 +132,7 @@
     owner: root
     group: root
     mode: '0644'
-  loop: [__init__.py, db.py, schemas.py, migrate.py, auth.py, auth_cli.py, passwords.py, worker_auth.py, recovery.py, recovery_cli.py, recovery_execution.py, operating_policy.py, decision_journal.py]
+  loop: [__init__.py, db.py, schemas.py, migrate.py, auth.py, auth_cli.py, passwords.py, worker_auth.py, recovery.py, recovery_cli.py, recovery_execution.py, operating_policy.py, decision_journal.py, diagnostic_requests.py]
 
 - name: Verifier si PostgreSQL a ete active pour le pilotage
   ansible.builtin.stat:
