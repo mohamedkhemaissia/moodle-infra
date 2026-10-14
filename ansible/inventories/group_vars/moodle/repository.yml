@@ -1,0 +1,7 @@
+---
+# Racine portable du depot. Une installation hors inventaire standard peut la
+# surcharger explicitement sans conserver le chemin personnel d'un developpeur.
+moodle_repository_dir: >-
+  {{ lookup('env', 'MOODLE_REPOSITORY_DIR') |
+     default(lookup('env', 'CODESPACE_VSCODE_FOLDER') |
+             default(inventory_dir ~ '/../..', true), true) }}

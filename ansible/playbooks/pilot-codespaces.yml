@@ -1,0 +1,46 @@
+---
+- name: Deployer le socle Moodle et son observation dans Codespaces
+  hosts: codespaces
+  become: true
+  gather_facts: false
+  pre_tasks:
+    - name: Verifier l environnement Codespaces cible
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'CODESPACE_NAME') is match('^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}$')
+          - lookup('env', 'CODESPACE_VSCODE_FOLDER') is match('^/workspaces/[^/]+$')
+          - lookup('env', 'GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN') is match('^[a-zA-Z0-9.-]{3,253}$')
+          - not (remediation_worker_enabled | bool)
+          - not (control_plane_backup_status_enabled | bool)
+          - not (control_plane_recovery_requests_enabled | bool)
+        fail_msg: "Utiliser le Codespace du depot ; sauvegarde, PRA et remediation automatique restent exclus."
+  roles:
+    - moodle
+    - application_monitoring
+    - container_monitoring
+    - monitoring
+    - diagnostics
+    - remediation
+    - role: control_plane
+      vars:
+        control_plane_decision_journal_enabled: false
+        control_plane_diagnostic_requests_enabled: false
+    - dashboard
+
+- name: Migrer uniquement les journaux du pilotage vers PostgreSQL
+  hosts: codespaces
+  become: true
+  gather_facts: false
+  roles:
+    - control_plane_database
+
+- name: Activer le compte unique les politiques d observation et les diagnostics guides
+  hosts: codespaces
+  become: true
+  gather_facts: false
+  roles:
+    - authentication
+    - operating_policies
+    - diagnostic_requests
+    - control_plane
+    - dashboard

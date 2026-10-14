@@ -1,0 +1,50 @@
+---
+codespaces_name: "{{ lookup('env', 'CODESPACE_NAME') }}"
+codespaces_forwarding_domain: "{{ lookup('env', 'GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN') }}"
+codespaces_moodle_hostname: "{{ codespaces_name }}-443.{{ codespaces_forwarding_domain }}"
+codespaces_dashboard_origin: "https://{{ codespaces_name }}-8088.{{ codespaces_forwarding_domain }}"
+
+moodle_repository_dir: "{{ lookup('env', 'CODESPACE_VSCODE_FOLDER') }}"
+moodle_hostname: "{{ codespaces_moodle_hostname }}"
+moodle_https_port: 443
+moodle_wwwroot: "https://{{ codespaces_moodle_hostname }}"
+
+monitoring_moodle_hostname: "{{ codespaces_moodle_hostname }}"
+monitoring_moodle_https_port: 443
+monitoring_moodle_probe_url: "https://{{ codespaces_moodle_hostname }}/login/index.php"
+
+control_plane_auth_origins:
+  - "{{ codespaces_dashboard_origin }}"
+control_plane_auth_secure_cookie: true
+dashboard_api_origin: http://127.0.0.1:8000
+
+container_monitoring_scheduler: supervisor
+diagnostic_requests_scheduler: supervisor
+control_plane_diagnostic_requests_enabled: true
+
+# Le pilote démarre en observation. Aucune boucle de correction automatique
+# n'est installée dans Codespaces, même après l'activation des politiques.
+remediation_worker_enabled: false
+
+# Hors périmètre demandé : aucun statut Restic, aucune demande de reprise et
+# aucune exécution de restauration n'est publiée dans ce déploiement.
+control_plane_backup_status_enabled: false
+control_plane_backup_catalog_enabled: false
+control_plane_pilotage_backup_status_enabled: false
+control_plane_recovery_requests_enabled: false
+control_plane_recovery_execution_enabled: false
+backup_status_pilotage_enabled: false
+backup_catalog_pilotage_enabled: false
+
+# Les artefacts sont des données générées et ignorées par Git. Le code active
+# chaque capacité uniquement quand le chemin correspondant est fourni.
+control_plane_anomalies_enabled: >-
+  {{ (lookup('env', 'MOODLE_ANOMALY_BUNDLE_DIR') | length > 0) and
+     (lookup('env', 'MOODLE_FEATURES_DIR') | length > 0) }}
+control_plane_anomaly_bundle_dir: "{{ lookup('env', 'MOODLE_ANOMALY_BUNDLE_DIR') }}"
+control_plane_anomaly_features_dir: "{{ lookup('env', 'MOODLE_FEATURES_DIR') }}"
+control_plane_forecasts_enabled: >-
+  {{ (lookup('env', 'MOODLE_FORECAST_BUNDLE_DIR') | length > 0) and
+     (lookup('env', 'MOODLE_FEATURES_DIR') | length > 0) }}
+control_plane_forecast_bundle_dir: "{{ lookup('env', 'MOODLE_FORECAST_BUNDLE_DIR') }}"
+control_plane_forecast_features_dir: "{{ lookup('env', 'MOODLE_FEATURES_DIR') }}"

@@ -1,0 +1,17 @@
+[program:{{ container_monitoring_supervisor_program }}]
+command=/bin/bash -c 'while true; do /usr/bin/python3 -B {{ container_monitoring_base_dir }}/collector.py --config {{ container_monitoring_config_dir }}/config.json --output {{ container_monitoring_textfile_dir }}/containers.prom || true; sleep 30; done'
+directory={{ container_monitoring_base_dir }}
+user=root
+autostart=true
+autorestart=true
+startsecs=2
+startretries=3
+stopsignal=TERM
+stopwaitsecs=10
+stopasgroup=true
+killasgroup=true
+redirect_stderr=true
+stdout_logfile=/var/log/supervisor/{{ container_monitoring_supervisor_program }}.log
+stdout_logfile_maxbytes=2MB
+stdout_logfile_backups=2
+environment=PATH="/usr/bin:/bin",LANG="C.UTF-8",PYTHONNOUSERSITE="1"

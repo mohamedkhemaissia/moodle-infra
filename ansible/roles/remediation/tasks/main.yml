@@ -7,6 +7,7 @@
       - remediation_data_dir == control_plane_remediation_data_dir
       - remediation_data_dir != control_plane_diagnostics_data_dir
       - not (remediation_php_profiles_enabled | bool) or (control_plane_application_metrics_enabled | bool)
+      - remediation_worker_enabled is boolean
       - control_plane_remediation_enabled | bool
       - control_plane_decisions_enabled | bool
     fail_msg: "Indiquer un journal separe et activer le moteur de decision."
@@ -175,13 +176,17 @@
     mode: '0644'
   loop: [service, timer]
   register: remediation_worker_units
-  when: remediation_policy_activation.stat.exists
+  when:
+    - remediation_policy_activation.stat.exists
+    - remediation_worker_enabled | bool
 
 - name: Valider les unites du worker
   ansible.builtin.command:
     argv: [/usr/bin/systemd-analyze, verify, /etc/systemd/system/moodle-remediation-worker.service, /etc/systemd/system/moodle-remediation-worker.timer]
   changed_when: false
-  when: remediation_policy_activation.stat.exists
+  when:
+    - remediation_policy_activation.stat.exists
+    - remediation_worker_enabled | bool
 
 - name: Activer le worker soumis a la politique persistante
   ansible.builtin.systemd_service:
@@ -189,4 +194,6 @@
     enabled: true
     state: started
     daemon_reload: "{{ remediation_worker_units.changed | default(false) }}"
-  when: remediation_policy_activation.stat.exists
+  when:
+    - remediation_policy_activation.stat.exists
+    - remediation_worker_enabled | bool
