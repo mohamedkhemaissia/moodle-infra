@@ -58,6 +58,13 @@ class AlertmanagerConfigurationTests(unittest.TestCase):
         blackbox = render('blackbox', values(monitoring_moodle_probe_headers=headers))
         self.assertEqual(blackbox['modules']['moodle_https']['http']['headers'], headers)
 
+    def test_codespaces_disk_alerts_use_the_storage_mount_that_really_exists(self):
+        document = render('alerts', values(monitoring_linux_filesystem_mountpoint='/workspaces'))
+        expressions = {rule['alert']: rule['expr'] for group in document['groups'] for rule in group['rules']}
+        self.assertIn('mountpoint="/workspaces"', expressions['MoodleHostMetricsUnavailable'])
+        self.assertIn('mountpoint="/workspaces"', expressions['MoodleDiskLow'])
+        self.assertNotIn('mountpoint="/"', expressions['MoodleHostMetricsUnavailable'])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -75,7 +75,12 @@ def history(config, end):
     queries = {
         "cpu": '100 * (1 - avg(rate(node_cpu_seconds_total{job="linux",mode="idle"}[2m])))',
         "memory": '100 * (1 - node_memory_MemAvailable_bytes{job="linux"} / node_memory_MemTotal_bytes{job="linux"})',
-        "disk": '100 * node_filesystem_avail_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"}',
+        "disk": (
+            '100 * (max(node_filesystem_avail_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"})'
+            ' / max(node_filesystem_size_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"})'
+            ' or max(node_filesystem_avail_bytes{job="linux",mountpoint="/workspaces",fstype!~"tmpfs|overlay"})'
+            ' / max(node_filesystem_size_bytes{job="linux",mountpoint="/workspaces",fstype!~"tmpfs|overlay"}))'
+        ),
         "up": 'up{job="linux"}', "age": 'time() - timestamp(up{job="linux"})',
     }
     series = {}
