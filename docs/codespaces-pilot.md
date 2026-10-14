@@ -19,7 +19,37 @@ Créer le Codespace depuis la branche `demo-codespaces`, puis attendre la fin de
 
 Le script d’installation est idempotent : il recalcule les empreintes des fichiers de dépendances et ne réinstalle que ce qui a changé. Il ne déploie aucun service.
 
-## 2. Rendre les artefacts IA disponibles
+## 2. Entrainer les artefacts IA sur les mesures reelles
+
+Laisser le pilote collecter au moins quatre heures de mesures continues, puis
+lancer depuis la racine du depot :
+
+```bash
+bash scripts/codespaces/train-ai.sh --deploy
+```
+
+Cette commande examine les six dernieres heures de Prometheus, conserve la plus
+longue periode continue de CPU, memoire et disque, puis execute toute la chaine :
+export verifie, partitions chronologiques 70/15/15, variables, Isolation Forest,
+previsions 5/10/15 minutes et validation par les chargeurs reels de l'API. Elle
+ne remplace aucune valeur absente et ne fabrique aucun incident.
+
+Une preuve JSON et un resume lisible pour le jury sont ecrits sous
+`ml/data/reports/moodle_ai_evidence_*/`. Le tableau des previsions compare Ridge
+a la reference simple de persistance. Si Ridge n'est pas meilleur sur validation,
+la reference est honnetement retenue pour la ressource et l'horizon concernes.
+
+Les artefacts et les donnees restent ignores par Git : ils proviennent de ce
+pilote et peuvent contenir des informations operationnelles. Apres l'activation,
+la section IA du tableau de bord affiche le score Isolation Forest et les
+horizons 5, 10 et 15 minutes.
+
+Si moins de quatre heures continues sont disponibles, la commande s'arrete avec
+la duree mesuree et demande simplement de laisser le Codespace actif. Ce minimum
+permet d'obtenir les effectifs requis dans train, validation et test ; il ne
+constitue pas a lui seul une validation scientifique du modele.
+
+### Import facultatif d'artefacts deja valides
 
 Les données et modèles sont volontairement exclus de Git. Si les artefacts validés du pilote sont disponibles, les placer sous :
 

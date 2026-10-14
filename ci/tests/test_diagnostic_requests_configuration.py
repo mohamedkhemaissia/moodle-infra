@@ -140,6 +140,9 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertIn("scripts/codespaces/requirements.txt", setup)
         self.assertIn('--collections-path "$collection_root"', setup)
         self.assertIn("community/docker/MANIFEST.json", setup)
+        ai = (ROOT / "scripts/codespaces/train-ai.sh").read_text()
+        self.assertIn("ml.train_live --hours 6", ai)
+        self.assertIn("scripts/codespaces/deploy.sh", ai)
 
     def test_control_plane_database_migration_is_self_contained(self):
         defaults = yaml.safe_load((ROOT / "ansible/roles/control_plane_database/defaults/main.yml").read_text())
