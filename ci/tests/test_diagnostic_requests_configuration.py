@@ -68,7 +68,7 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         encoded = json.dumps(values)
         self.assertIn("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", encoded)
         self.assertNotIn("app.github.dev", encoded)
-        self.assertTrue(values["moodle_reverseproxy_enabled"])
+        self.assertFalse(values["moodle_reverseproxy_enabled"])
         self.assertTrue(values["moodle_sslproxy_enabled"])
         moodle_config = (ROOT / "ansible/roles/moodle/templates/config.php.j2").read_text()
         self.assertIn("$CFG->reverseproxy", moodle_config)
