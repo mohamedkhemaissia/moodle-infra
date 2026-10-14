@@ -63,6 +63,20 @@ def automatic_ready(policy):
     return policy["mode"] == "automatic" and not policy["suspended"] and not policy["evaluation_context"]
 
 
+def sudo_identity():
+    uid, gid = os.getenv("SUDO_UID", ""), os.getenv("SUDO_GID", "")
+    if uid.isdigit() and gid.isdigit() and int(uid) > 0 and int(gid) > 0:
+        return int(uid), int(gid)
+    return None
+
+
+def handoff_report(directory, output, identity):
+    if identity is None:
+        return
+    os.chown(output, *identity)
+    os.chown(directory, *identity)
+
+
 def require_automatic(policy):
     if not automatic_ready(policy):
         raise Refused("automatic_requires_active_mode_outside_evaluation")
@@ -355,7 +369,12 @@ def main():
     if not (repo / ".git").exists():
         parser.error("Se placer dans ~/moodle-infra.")
     os.umask(0o027)
-    directory = repo / "ml/data/validation" / (
+    validation_root = repo / "ml/data/validation"
+    validation_root.mkdir(mode=0o755, parents=True, exist_ok=True)
+    identity = sudo_identity()
+    if identity is not None and validation_root.stat().st_uid == 0:
+        os.chown(validation_root, *identity)
+    directory = validation_root / (
         "automatic_php_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ_") + uuid.uuid4().hex[:8])
     directory.mkdir(parents=True)
     output = directory / "report.json"
@@ -382,6 +401,7 @@ def main():
     except Exception as exc:
         report.update(status="blocked", reason=str(exc)[:240], error_type=type(exc).__name__)
         save()
+    handoff_report(directory, output, identity)
     keys = ("status", "report_file", "automatic_ready", "operating_policy", "incident_id", "run_id",
             "elapsed_to_confirmation_seconds", "fallback_used", "cleanup", "reason", "resource_check")
     print(json.dumps({k: report[k] for k in keys if k in report}, indent=2, ensure_ascii=False))

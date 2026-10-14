@@ -198,6 +198,14 @@ class ScenarioTests(unittest.TestCase):
 
 
 class ProofTests(unittest.TestCase):
+    def test_report_handoff_only_uses_valid_sudo_identity(self):
+        with patch.dict(v.os.environ, {"SUDO_UID": "1000", "SUDO_GID": "1001"}, clear=True):
+            self.assertEqual(v.sudo_identity(), (1000, 1001))
+        for values in ({}, {"SUDO_UID": "0", "SUDO_GID": "0"},
+                       {"SUDO_UID": "root", "SUDO_GID": "1001"}):
+            with self.subTest(values=values), patch.dict(v.os.environ, values, clear=True):
+                self.assertIsNone(v.sudo_identity())
+
     def test_fallback_marker_is_confined_to_private_runtime_directory(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(
             guard, "RUNTIME_DIR", Path(directory)
