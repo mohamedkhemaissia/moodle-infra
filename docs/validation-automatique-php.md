@@ -1,6 +1,7 @@
 # Validation de la correction automatique PHP
 
-Ce scénario réutilise les services du pilote et le worker systemd déployé.
+Ce scénario réutilise les services du pilote et le worker déployé : Supervisor
+dans Codespaces, ou le timer systemd sur la VM de référence.
 Il ne lance jamais `moodle-remediate` et ne change aucune politique.
 L'ancien scénario manuel reste disponible séparément.
 
@@ -14,7 +15,8 @@ sudo /opt/moodle-diagnostics/venv/bin/python -B scripts/validate_automatic_php_r
 
 Ce contrôle consulte les politiques, le timer, les mesures, les incidents,
 les états Docker et HTTPS. Il produit un rapport et n'arrête aucun service.
-`ready` confirme les conditions techniques du contrôle ; `automatic_ready`
+`ready` confirme les conditions techniques du contrôle ; le champ `scheduler`
+indique `supervisor` dans Codespaces et `automatic_ready`
 indique si le mode est déjà adapté au scénario.
 
 En cas de `resources_not_ready_for_test`, `resource_check` conserve la date
@@ -38,6 +40,11 @@ Le scénario arme un retour de secours dans cinq minutes, revalide les identité
 et la politique, puis arrête uniquement le conteneur PHP du pilote. Il observe
 l'incident et l'audit produits par le worker périodique. Le script n'appelle ni
 le Runner ni le service de correction pour déclencher l'action.
+
+Dans Codespaces, ce secours est un petit processus root détaché qui ne sait faire
+qu'un `docker start` du conteneur PHP préalablement identifié. Le rapport n'est
+concluant que si le worker Supervisor agit avant lui. Sur interruption normale,
+le script confirme que PHP fonctionne avant d'arrêter le secours.
 
 `automatic_recovery_validated` exige une autorisation automatique avec la
 même révision de politique, la réservation du même conteneur et incident,
