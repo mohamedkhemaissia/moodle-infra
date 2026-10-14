@@ -71,6 +71,12 @@ cleanup_artifact_validation() {
 }
 trap cleanup_artifact_validation EXIT
 
+# Reproduire le contexte reel de l'image API. Il contient notamment la source
+# partagee ml/isolation_model.py, absente volontairement de control-plane/app.
+api_validation_context="$artifact_validation_dir/api-context"
+.venv/bin/python -B ci/prepare_api.py \
+  --output-dir "$api_validation_context" >/dev/null
+
 validate_bundle() {
   local module="$1" bundle_dir="$2" features_dir="$3"
   local directory="$artifact_validation_dir/$module"
@@ -82,7 +88,7 @@ validate_bundle() {
   fi
   ln -sf "$bundle_dir/report.json" "$directory/report.json"
   ln -sf "$features_dir/metadata.json" "$directory/features_metadata.json"
-  PYTHONPATH="$repo_dir/control-plane" .venv/bin/python -B -m "app.$module" \
+  PYTHONPATH="$api_validation_context" .venv/bin/python -B -m "app.$module" \
     --check-bundle "$directory" >/dev/null 2>&1
 }
 

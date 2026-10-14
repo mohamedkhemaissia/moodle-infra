@@ -53,6 +53,14 @@ services:
 {% endif %}
     networks:
       - public
+    healthcheck:
+      # Le processus principal garantit que le serveur tourne ; ce controle
+      # confirme en plus que sa configuration montee reste chargeable.
+      test: ["CMD", "httpd", "-t"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   postgres:
     image: "{{ moodle_postgres_image }}"

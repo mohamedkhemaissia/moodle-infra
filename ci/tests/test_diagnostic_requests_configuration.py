@@ -146,6 +146,7 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
             (ROOT / "ansible/roles/moodle/templates/compose.yml.j2").read_text()
         ).render(values))
         self.assertEqual(compose["services"]["apache"]["ports"], ["8443:80"])
+        self.assertEqual(compose["services"]["apache"]["healthcheck"]["test"], ["CMD", "httpd", "-t"])
         self.assertFalse(any("/conf/tls/" in mount for mount in compose["services"]["apache"]["volumes"]))
 
     def test_codespaces_deploy_uses_explicit_ansible_paths(self):
@@ -156,6 +157,8 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertIn("community/docker/MANIFEST.json", script)
         self.assertIn("ansible/inventories/codespaces.ini", script)
         self.assertIn("ansible/playbooks/pilot-codespaces.yml", script)
+        self.assertIn("ci/prepare_api.py", script)
+        self.assertIn('PYTHONPATH="$api_validation_context"', script)
         self.assertIn("validate_bundle anomalies", script)
         self.assertIn("validate_bundle forecasts", script)
         self.assertIn('MOODLE_ANOMALY_BUNDLE_DIR=""', script)
