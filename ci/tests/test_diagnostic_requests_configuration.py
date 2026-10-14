@@ -57,6 +57,7 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertIn("diagnostic_requests", roles)
         values = yaml.safe_load((ROOT / "ansible/inventories/group_vars/codespaces/main.yml").read_text())
         self.assertFalse(values["remediation_worker_enabled"])
+        self.assertFalse(values["remediation_php_profiles_enabled"])
         self.assertFalse(values["control_plane_backup_status_enabled"])
         self.assertFalse(values["control_plane_pilotage_backup_status_enabled"])
         self.assertFalse(values["control_plane_recovery_requests_enabled"])

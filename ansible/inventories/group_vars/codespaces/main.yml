@@ -29,6 +29,7 @@ control_plane_diagnostic_requests_enabled: true
 # Le pilote démarre en observation. Aucune boucle de correction automatique
 # n'est installée dans Codespaces, même après l'activation des politiques.
 remediation_worker_enabled: false
+remediation_php_profiles_enabled: false
 
 # Hors périmètre demandé : aucun statut Restic, aucune demande de reprise et
 # aucune exécution de restauration n'est publiée dans ce déploiement.

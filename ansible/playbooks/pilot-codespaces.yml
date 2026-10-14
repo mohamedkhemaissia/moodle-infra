@@ -11,6 +11,7 @@
           - lookup('env', 'CODESPACE_VSCODE_FOLDER') is match('^/workspaces/[^/]+$')
           - lookup('env', 'GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN') is match('^[a-zA-Z0-9.-]{3,253}$')
           - not (remediation_worker_enabled | bool)
+          - not (remediation_php_profiles_enabled | bool)
           - not (control_plane_backup_status_enabled | bool)
           - not (control_plane_recovery_requests_enabled | bool)
         fail_msg: "Utiliser le Codespace du depot ; sauvegarde, PRA et remediation automatique restent exclus."
