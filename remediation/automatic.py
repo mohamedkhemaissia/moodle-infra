@@ -51,8 +51,11 @@ def healthcheck(config, *, store=None):
         policy=view["policy"]
         if policy["mode"] not in ("observation","assisted","automatic") or type(policy["suspended"]) is not bool:
             raise ValueError("invalid_policy")
+        scope=["start_php_stopped"]
+        if config.get("php_profiles_enabled",False):
+            scope.append("apply_php_fpm_profile")
         return {"status":"available","mode":policy["mode"],"suspended":policy["suspended"],
-                "action_scope":["start_php_stopped"]},0
+                "action_scope":scope},0
     except (PolicyBlocked,PolicyStorageError,OSError,ValueError,KeyError,TypeError):
         return {"status":"unavailable","reason":"configuration_or_policy_unavailable"},1
 

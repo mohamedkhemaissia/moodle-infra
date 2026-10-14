@@ -196,6 +196,22 @@ class ProfileTests(unittest.TestCase):
         metrics = self.rt.read("/api/v1/metrics/summary"); metrics["metrics"]["cpu_usage_percent"] = 70
         with self.assertRaises(Blocked): f.resource_gate(metrics, BASE)
 
+    def test_codespaces_loopback_http_is_accepted_only_as_declared_tls_termination(self):
+        self.config.update(probe_scheme="http", proxy_tls_terminated=True, ca_file="")
+        self.rt.probe = Mock(return_value={"success":True,"http_status":200,"tls_validated":False,
+                                           "loopback_validated":True,"scheme":"http"})
+        result=self.run_profile()
+        self.assertEqual(result["status"],"completed",result)
+
+        self.target.write_text(CONTENT)
+        (self.p.root/"status.json").unlink(missing_ok=True)
+        (self.p.root/"catalog.json").unlink(missing_ok=True)
+        self.rt.reloads=0; self.rt.starts=[int(BASE-100)]
+        f.prepare(self.config,runtime=self.rt,profiles=self.p,policy_store=self.ps)
+        self.config["proxy_tls_terminated"]=False
+        result=self.run_profile()
+        self.assertEqual(result["reason"],"moodle_access_not_confirmed")
+
 
 class RuntimeGuardTests(unittest.TestCase):
     def test_effective_pool_limit_is_checked_after_all_includes(self):

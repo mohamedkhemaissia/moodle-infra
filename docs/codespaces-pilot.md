@@ -9,7 +9,11 @@ Le Codespace héberge, dans un seul environnement de démonstration :
 - l’API FastAPI, le PostgreSQL séparé du pilotage et le tableau de bord React ;
 - les incidents observés, les recommandations, l’historique et les exports CSV/HTML ;
 - la file PostgreSQL des diagnostics guidés et son worker Ansible Runner en lecture seule ;
-- les politiques persistantes initialisées en mode `observation`.
+- les politiques persistantes initialisées en mode `observation` ;
+- deux profils PHP-FPM fixes, Normal (5) et Renforcé (8), préparés sans
+  modifier le pool actif ;
+- Alertmanager et, après saisie du relais par l'opérateur, les notifications
+  externes par e-mail.
 
 Le déploiement ne lance ni sauvegarde Restic, ni PRA/restauration, ni charge ou
 panne volontaire. Le worker de remédiation est installé mais reste inactif avec
@@ -125,10 +129,14 @@ bash scripts/codespaces/status.sh
 Le contrôle lit seulement la santé de l’API, du dashboard, de Moodle, de la file PostgreSQL et des trois processus Supervisor. Il ne réserve pas de diagnostic et ne redémarre aucun service.
 
 Il vérifie aussi le worker de remédiation sans réserver ni exécuter d'action.
-Sous Codespaces, son périmètre est volontairement limité à `start_php_stopped` :
-remettre en service le conteneur PHP seulement après confirmation d'un incident
-HTTPS, validation des ressources, de PostgreSQL, d'Apache, de l'identité des
-conteneurs et de la politique persistante.
+Sous Codespaces, son périmètre contient `start_php_stopped` et
+`apply_php_fpm_profile`. Le premier remet en service le conteneur PHP après
+confirmation d'un incident HTTPS. Le second ne passe de Normal (5 processus) à
+Renforcé (8) que si une file PHP-FPM est confirmée, que les ressources et
+PostgreSQL ont une marge suffisante et qu'une politique plus récente que la
+préparation l'autorise. Les deux actions sont journalisées. Le profil est validé
+avant rechargement gracieux et un retour à Normal est tenté si le bénéfice n'est
+pas confirmé.
 
 Pour autoriser ce scénario, ouvrir **Politiques de pilotage**, choisir
 **Automatique**, laisser la suspension et le contexte d'évaluation désactivés,
@@ -147,7 +155,33 @@ Le domaine n’est jamais codé en dur : GitHub documente
 [`GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN`](https://docs.github.com/en/codespaces/developing-in-a-codespace/default-environment-variables-for-your-codespace)
 précisément pour construire ces URLs de façon portable.
 
-## 6. Démonstration sûre
+## 6. Configurer une notification e-mail externe
+
+Les alertes restent visibles dans Alertmanager sans envoyer de message tant
+qu'aucun relais n'est configuré. Saisir les paramètres et le secret hors de Git :
+
+```bash
+bash scripts/codespaces/configure-email.sh
+bash scripts/codespaces/deploy.sh
+```
+
+Le script accepte un relais SMTP avec TLS sur `hote:port`, une adresse
+d'expédition, un utilisateur, un destinataire et un mot de passe ou mot de passe
+d'application. Le JSON local ne contient que les adresses. Le secret est monté
+en lecture seule dans Alertmanager depuis `/etc/moodle-alertmanager` et n'est ni
+copié dans le dépôt ni rendu dans `alertmanager.yml`.
+
+Pour la recette, envoyer une unique alerte explicitement nommée comme test :
+
+```bash
+bash scripts/codespaces/test-email.sh
+```
+
+Alertmanager doit accepter l'alerte et le destinataire doit recevoir le message
+après le délai de groupement d'environ 30 secondes. Ce test ne simule aucune
+panne Moodle. Conserver les ports Codespaces en visibilité **Private**.
+
+## 7. Démonstration sûre
 
 1. Se connecter au tableau de bord avec le compte administrateur.
 2. Montrer les ressources, services applicatifs, conteneurs et état de collecte.
@@ -155,7 +189,10 @@ précisément pour construire ces URLs de façon portable.
 4. Ouvrir un incident réellement observé et expliquer les causes possibles, les mesures liées et l’avertissement de non-causalité.
 5. Si une recommandation courante existe, cliquer sur **Demander un diagnostic**. La demande passe par React → FastAPI → PostgreSQL → worker → Ansible Runner et reste en lecture seule.
 6. Montrer le résultat et son lien vers l’historique des diagnostics.
-7. Montrer les politiques en mode `observation` et les exports CSV/HTML.
+7. Montrer les profils PHP-FPM préparés et expliquer leurs garde-fous sans créer
+   de saturation artificielle.
+8. Montrer une alerte réelle dans Alertmanager et l'e-mail de recette, puis les
+   politiques en mode `observation` et les exports CSV/HTML.
 
 Ne pas créer artificiellement d’incident, ne pas arrêter de conteneur et ne pas passer la politique en mode `automatic` pendant cette phase.
 

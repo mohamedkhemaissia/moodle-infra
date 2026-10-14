@@ -111,3 +111,8 @@ echo "Déploiement terminé. Crée maintenant l'unique compte administrateur :"
 echo "  sudo moodle-pilotage-user add --username admin --name 'Administrateur PFE' --role admin"
 echo "Tableau de bord : https://${CODESPACE_NAME}-8088.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}"
 echo "Moodle : https://${CODESPACE_NAME}-8443.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}"
+if [[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/moodle-pilotage/email.json" ]]; then
+  echo "Notifications email : configurees ; recette avec bash scripts/codespaces/test-email.sh"
+else
+  echo "Notifications email : a configurer avec bash scripts/codespaces/configure-email.sh"
+fi

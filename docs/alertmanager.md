@@ -92,6 +92,19 @@ tunnel ; elle ne doit pas etre publiee directement sur Internet.
 
 ## Email optionnel
 
+Dans GitHub Codespaces, utiliser la procédure courte du
+[guide du pilote](codespaces-pilot.md#6-configurer-une-notification-e-mail-externe) :
+
+```bash
+bash scripts/codespaces/configure-email.sh
+bash scripts/codespaces/deploy.sh
+bash scripts/codespaces/test-email.sh
+```
+
+Le dernier script envoie seulement une alerte de recette explicitement nommée ;
+la réception du message constitue la preuve externe à conserver pour le jury.
+La procédure VM ci-dessous reste disponible pour un déploiement hors Codespaces.
+
 Le destinataire et le relais ne sont pas imposes par le projet. Par defaut, le
 receiver `local` n'a aucune integration externe : les alertes restent visibles
 dans la console Alertmanager et aucun email n'est envoye. Ce mode ne constitue

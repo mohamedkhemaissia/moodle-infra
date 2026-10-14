@@ -49,7 +49,19 @@ remediation_probe_port: "{{ codespaces_moodle_port }}"
 remediation_probe_ca_file: ''
 remediation_proxy_tls_terminated: true
 remediation_operations_check_mode: marker_only
-remediation_php_profiles_enabled: false
+remediation_php_profiles_enabled: true
+
+# L'email reste inactif tant que l'operateur n'a pas fourni son relais et son
+# destinataire avec scripts/codespaces/configure-email.sh. Le JSON ne contient
+# que les adresses ; le mot de passe reste dans un fichier root hors du depot.
+codespaces_email_settings_path: "{{ lookup('env', 'HOME') }}/.config/moodle-pilotage/email.json"
+codespaces_email_settings_raw: "{{ lookup('file', codespaces_email_settings_path, errors='ignore') }}"
+codespaces_email_settings: "{{ (codespaces_email_settings_raw | default('{}', true)) | from_json }}"
+monitoring_alert_email_enabled: "{{ codespaces_email_settings.enabled | default(false) | bool }}"
+monitoring_alert_smtp_smarthost: "{{ codespaces_email_settings.smtp_smarthost | default('') }}"
+monitoring_alert_smtp_from: "{{ codespaces_email_settings.smtp_from | default('') }}"
+monitoring_alert_smtp_username: "{{ codespaces_email_settings.smtp_username | default('') }}"
+monitoring_alert_email_to: "{{ codespaces_email_settings.email_to | default('') }}"
 
 # Hors périmètre demandé : aucun statut Restic, aucune demande de reprise et
 # aucune exécution de restauration n'est publiée dans ce déploiement.

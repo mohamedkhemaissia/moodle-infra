@@ -56,4 +56,8 @@ class WorkerTests(unittest.TestCase):
         result,code=healthcheck(self.config,store=self.store)
         self.assertEqual((result["status"],code),("available",0))
         self.assertEqual(result["action_scope"],["start_php_stopped"])
+        self.config["php_profiles_enabled"]=True
+        result,code=healthcheck(self.config,store=self.store)
+        self.assertEqual((result["status"],code),("available",0))
+        self.assertEqual(result["action_scope"],["start_php_stopped","apply_php_fpm_profile"])
         self.reader.assert_not_called();self.store.reserve_worker.assert_not_called();self.executor.assert_not_called()

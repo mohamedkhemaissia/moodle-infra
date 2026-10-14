@@ -179,7 +179,9 @@
     PILOTAGE_SERVICE_TOKEN_FILE: "{{ pilotage_database_config_dir }}/worker-token"
   register: remediation_profile_preparation
   changed_when: (remediation_profile_preparation.stdout | from_json).changed | default(false)
-  when: remediation_php_profiles_enabled | bool
+  when:
+    - remediation_php_profiles_enabled | bool
+    - remediation_policy_activation.stat.exists
 
 - name: Installer la planification du worker de politiques
   ansible.builtin.template:
@@ -235,7 +237,9 @@
   failed_when: >-
     remediation_worker_health.rc != 0 or
     (remediation_worker_health.stdout | from_json).status != 'available' or
-    (remediation_worker_health.stdout | from_json).action_scope != ['start_php_stopped']
+    (remediation_worker_health.stdout | from_json).action_scope !=
+    (['start_php_stopped', 'apply_php_fpm_profile'] if remediation_php_profiles_enabled | bool
+    else ['start_php_stopped'])
   when:
     - remediation_policy_activation.stat.exists
     - remediation_worker_enabled | bool

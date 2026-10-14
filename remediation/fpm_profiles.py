@@ -15,7 +15,7 @@ from diagnostics.collector import get_json, ProbeError
 from diagnostics.policy import Blocked, timestamp
 from diagnostics.store import strict_json
 from pilotage.operating_policy import PolicyStore, PolicyBlocked, PolicyStorageError
-from .action import config_read, command, inspect, operations_clear, NAMES
+from .action import config_read, command, inspect, operations_clear, trusted_probe, NAMES
 from .policy import decision_for_correction, metric_gate, PROFILE_ACTION
 from .probes import login_probe
 from .store import RemediationStore
@@ -223,7 +223,9 @@ class Runtime:
             raise Blocked("php_fpm_reload_failed")
 
     def inspect(self): return {name: inspect(name) for name in NAMES}
-    def probe(self): return login_probe(self.config["hostname"], self.config["https_port"], self.config["ca_file"])
+    def probe(self):
+        return login_probe(self.config["hostname"], self.config["https_port"], self.config["ca_file"],
+                           self.config.get("probe_scheme", "https"))
     def clear(self): operations_clear(self.config)
     def read(self, path): return get_json(self.config["api_url"] + path, timeout=8)
 
@@ -350,7 +352,8 @@ def apply(config, incident_id, identifier, expected, *, runtime=None, profiles=N
         report["checks"]["pool_before"] = before
         report["checks"]["memory_budget"] = rt.budget(container)
         probe = rt.probe(); report["checks"]["https_before"] = probe
-        if probe.get("success") is not True or probe.get("tls_validated") is not True: raise Blocked("moodle_access_not_confirmed")
+        if probe.get("success") is not True or not trusted_probe(config, probe):
+            raise Blocked("moodle_access_not_confirmed")
         rt.validate(container,catalog["profiles"]["burst"]["content"])
         doc,decision,_,_ = fresh(); rt.clear(); running(rt.inspect(),services)
         policy = expected.get("operating_policy")
@@ -387,7 +390,7 @@ def apply(config, incident_id, identifier, expected, *, runtime=None, profiles=N
                     and direct["listen_queue"] == 0 and direct["idle_processes"] >= 1
                     and direct["total_processes"] <= BURST and php["listen_queue"] == 0
                     and php["idle_processes"] >= 1 and php["total_processes"] <= BURST
-                    and probe.get("success") is True and probe.get("tls_validated") is True)
+                    and probe.get("success") is True and trusted_probe(config, probe))
             if not good: consecutive = 0
             elif previous_scrape is None or scrape > previous_scrape:
                 consecutive += 1; previous_scrape = scrape
@@ -434,7 +437,7 @@ def apply(config, incident_id, identifier, expected, *, runtime=None, profiles=N
                     if time.monotonic() >= deadline: break
                     running(rt.inspect(),services); probe = rt.probe(); pool = rt.pool(container)
                     good = (pool["start_time"] > rollback_start and pool["total_processes"] <= NORMAL
-                            and probe.get("success") is True and probe.get("tls_validated") is True)
+                            and probe.get("success") is True and trusted_probe(config, probe))
                     count = count+1 if good else 0
                     if count >= 3: break
                     pause(2)

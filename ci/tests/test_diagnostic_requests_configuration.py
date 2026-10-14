@@ -59,7 +59,7 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertEqual(roles.count("remediation"), 2)
         values = yaml.safe_load((ROOT / "ansible/inventories/group_vars/codespaces/main.yml").read_text())
         self.assertTrue(values["remediation_worker_enabled"])
-        self.assertFalse(values["remediation_php_profiles_enabled"])
+        self.assertTrue(values["remediation_php_profiles_enabled"])
         self.assertFalse(values["control_plane_backup_status_enabled"])
         self.assertFalse(values["control_plane_pilotage_backup_status_enabled"])
         self.assertFalse(values["control_plane_recovery_requests_enabled"])
@@ -108,6 +108,21 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertIn("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", status)
         self.assertIn("Origine dashboard: acceptee", status)
         self.assertIn("moodle-remediation-worker --healthcheck", status)
+        self.assertIn("moodle-fpm-profiles --status", status)
+
+    def test_codespaces_email_configuration_stays_outside_git_and_has_an_explicit_recipe(self):
+        values = yaml.safe_load((ROOT / "ansible/inventories/group_vars/codespaces/main.yml").read_text())
+        self.assertIn(".config/moodle-pilotage/email.json", values["codespaces_email_settings_path"])
+        monitoring = yaml.safe_load((ROOT / "ansible/roles/monitoring/defaults/main.yml").read_text())
+        self.assertEqual(monitoring["monitoring_alert_smtp_password_source"],
+                         "/etc/moodle-alertmanager/smtp-password")
+        configure = (ROOT / "scripts/codespaces/configure-email.sh").read_text()
+        self.assertIn("read -r -s", configure)
+        self.assertIn("root -g 65534 -m 0440", configure)
+        self.assertNotIn("smtp_password\" > \"$settings_file", configure)
+        recipe = (ROOT / "scripts/codespaces/test-email.sh").read_text()
+        self.assertIn("MoodlePilotEmailTest", recipe)
+        self.assertIn("127.0.0.1:9093/api/v2/alerts", recipe)
 
     def test_codespaces_moodle_terminates_https_at_the_forwarding_proxy(self):
         values = yaml.safe_load((ROOT / "ansible/roles/moodle/defaults/main.yml").read_text())
