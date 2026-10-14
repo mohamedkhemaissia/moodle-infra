@@ -43,12 +43,14 @@ services:
         condition: service_healthy
         restart: true
     ports:
-      - "{{ moodle_https_port }}:443"
+      - "{{ moodle_https_port }}:{{ moodle_apache_container_port }}"
     volumes:
       - "{{ moodle_code_dir }}:/var/www/moodle:ro"
       - "{{ moodle_base_dir }}/config/apache/httpd.conf:/usr/local/apache2/conf/httpd.conf:ro"
+{% if moodle_apache_tls_enabled | bool %}
       - "{{ moodle_base_dir }}/tls/{{ moodle_hostname }}.crt:/usr/local/apache2/conf/tls/server.crt:ro"
       - "{{ moodle_base_dir }}/tls/{{ moodle_hostname }}.key:/usr/local/apache2/conf/tls/server.key:ro"
+{% endif %}
     networks:
       - public
 

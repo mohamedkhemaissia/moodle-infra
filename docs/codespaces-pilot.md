@@ -94,7 +94,7 @@ Le contrôle lit seulement la santé de l’API, du dashboard, de Moodle, de la 
 
 URLs privées du Codespace :
 
-- Moodle : `https://${CODESPACE_NAME}-443.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
+- Moodle : `https://${CODESPACE_NAME}-8443.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
 - tableau de bord : `https://${CODESPACE_NAME}-8088.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
 - Prometheus : `https://${CODESPACE_NAME}-9090.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
 

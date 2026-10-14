@@ -19,6 +19,9 @@ moodle_compose_project: moodle-pilote
 
 moodle_hostname: moodle-pfe.test
 moodle_https_port: 8443
+moodle_apache_container_port: 443
+moodle_apache_tls_enabled: true
+moodle_apache_forced_host: ''
 moodle_wwwroot: "https://{{ moodle_hostname }}:{{ moodle_https_port }}"
 moodle_reverseproxy_enabled: false
 moodle_sslproxy_enabled: false

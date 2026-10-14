@@ -105,4 +105,4 @@ fi
 echo "Déploiement terminé. Crée maintenant l'unique compte administrateur :"
 echo "  sudo moodle-pilotage-user add --username admin --name 'Administrateur PFE' --role admin"
 echo "Tableau de bord : https://${CODESPACE_NAME}-8088.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}"
-echo "Moodle : https://${CODESPACE_NAME}-443.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}"
+echo "Moodle : https://${CODESPACE_NAME}-8443.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}"

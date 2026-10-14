@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import unittest
 
+import jinja2
 import yaml
 
 
@@ -70,6 +71,10 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertNotIn("app.github.dev", encoded)
         self.assertFalse(values["moodle_reverseproxy_enabled"])
         self.assertTrue(values["moodle_sslproxy_enabled"])
+        self.assertFalse(values["moodle_apache_tls_enabled"])
+        self.assertEqual(values["moodle_apache_container_port"], 80)
+        self.assertEqual(values["codespaces_moodle_port"], 8443)
+        self.assertIn("http://localhost:8088", values["control_plane_auth_origins"])
         moodle_config = (ROOT / "ansible/roles/moodle/templates/config.php.j2").read_text()
         self.assertIn("$CFG->reverseproxy", moodle_config)
         self.assertIn("$CFG->sslproxy", moodle_config)
@@ -78,7 +83,7 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         document = json.loads((ROOT / ".devcontainer/devcontainer.json").read_text())
         self.assertTrue(document["privileged"])
         self.assertIn("ghcr.io/devcontainers/features/docker-in-docker:2", document["features"])
-        self.assertEqual(document["portsAttributes"]["443"]["protocol"], "https")
+        self.assertEqual(document["portsAttributes"]["8443"]["protocol"], "http")
         self.assertEqual(document["portsAttributes"]["8088"]["protocol"], "http")
         self.assertTrue(all("visibility" not in value for value in document["portsAttributes"].values()))
         self.assertEqual(document["postCreateCommand"], "bash scripts/codespaces/setup.sh")
@@ -86,6 +91,30 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         status = (ROOT / "scripts/codespaces/status.sh").read_text()
         self.assertIn("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", status)
         self.assertIn("Origine dashboard: acceptee", status)
+
+    def test_codespaces_moodle_terminates_https_at_the_forwarding_proxy(self):
+        values = yaml.safe_load((ROOT / "ansible/roles/moodle/defaults/main.yml").read_text())
+        values.update(
+            moodle_php_image="moodle-pfe/php:test",
+            moodle_hostname="codespace-8443.example.test",
+            moodle_https_port=8443,
+            moodle_apache_container_port=80,
+            moodle_apache_tls_enabled=False,
+            moodle_apache_forced_host="codespace-8443.example.test",
+        )
+        environment = jinja2.Environment(undefined=jinja2.StrictUndefined)
+        environment.filters["bool"] = bool
+        apache = environment.from_string(
+            (ROOT / "ansible/roles/moodle/templates/httpd.conf.j2").read_text()
+        ).render(values)
+        self.assertIn("Listen 80", apache)
+        self.assertIn('RequestHeader set Host "codespace-8443.example.test"', apache)
+        self.assertNotIn("SSLEngine on", apache)
+        compose = yaml.safe_load(environment.from_string(
+            (ROOT / "ansible/roles/moodle/templates/compose.yml.j2").read_text()
+        ).render(values))
+        self.assertEqual(compose["services"]["apache"]["ports"], ["8443:80"])
+        self.assertFalse(any("/conf/tls/" in mount for mount in compose["services"]["apache"]["volumes"]))
 
     def test_codespaces_deploy_uses_explicit_ansible_paths(self):
         script = (ROOT / "scripts/codespaces/deploy.sh").read_text()

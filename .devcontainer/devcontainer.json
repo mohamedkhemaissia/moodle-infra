@@ -23,11 +23,11 @@
     "PIP_DISABLE_PIP_VERSION_CHECK": "1",
     "PYTHONDONTWRITEBYTECODE": "1"
   },
-  "forwardPorts": [443, 8088, 9090],
+  "forwardPorts": [8443, 8088, 9090],
   "portsAttributes": {
-    "443": {
+    "8443": {
       "label": "Moodle HTTPS",
-      "protocol": "https",
+      "protocol": "http",
       "onAutoForward": "notify"
     },
     "8088": {

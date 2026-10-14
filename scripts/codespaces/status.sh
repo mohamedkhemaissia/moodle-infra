@@ -3,7 +3,7 @@ set -euo pipefail
 
 api_status="$(curl --silent --show-error --fail http://127.0.0.1:8000/api/v1/health)"
 dashboard_status="$(curl --silent --show-error --fail --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8088/)"
-moodle_status="$(curl --insecure --silent --show-error --fail --output /dev/null --write-out '%{http_code}' https://127.0.0.1:443/login/index.php)"
+moodle_status="$(curl --silent --show-error --fail --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8443/login/index.php)"
 worker_status="$(sudo /usr/local/sbin/moodle-diagnostic-requests-worker --healthcheck)"
 dashboard_origin="https://${CODESPACE_NAME}-8088.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}"
 origin_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \

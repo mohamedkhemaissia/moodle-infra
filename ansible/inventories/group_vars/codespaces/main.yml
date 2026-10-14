@@ -1,20 +1,25 @@
 ---
 codespaces_name: "{{ lookup('env', 'CODESPACE_NAME') }}"
 codespaces_forwarding_domain: "{{ lookup('env', 'GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN') }}"
-codespaces_moodle_hostname: "{{ codespaces_name }}-443.{{ codespaces_forwarding_domain }}"
+codespaces_moodle_port: 8443
+codespaces_moodle_hostname: "{{ codespaces_name }}-{{ codespaces_moodle_port }}.{{ codespaces_forwarding_domain }}"
 codespaces_dashboard_origin: "https://{{ codespaces_name }}-8088.{{ codespaces_forwarding_domain }}"
 
 moodle_repository_dir: "{{ lookup('env', 'CODESPACE_VSCODE_FOLDER') }}"
 ansible_python_interpreter: "{{ moodle_repository_dir }}/.venv/bin/python"
 moodle_hostname: "{{ codespaces_moodle_hostname }}"
-moodle_https_port: 443
+moodle_https_port: "{{ codespaces_moodle_port }}"
+moodle_apache_container_port: 80
+moodle_apache_tls_enabled: false
+moodle_apache_forced_host: "{{ codespaces_moodle_hostname }}"
 moodle_wwwroot: "https://{{ codespaces_moodle_hostname }}"
 moodle_reverseproxy_enabled: false
 moodle_sslproxy_enabled: true
 
 monitoring_moodle_hostname: "{{ codespaces_moodle_hostname }}"
-monitoring_moodle_https_port: 443
-monitoring_moodle_probe_url: "https://{{ codespaces_moodle_hostname }}/login/index.php"
+monitoring_moodle_https_port: "{{ codespaces_moodle_port }}"
+monitoring_moodle_probe_url: "http://{{ codespaces_moodle_hostname }}:{{ codespaces_moodle_port }}/login/index.php"
+monitoring_probe_requires_tls: false
 monitoring_moodle_probe_headers:
   X-Forwarded-Proto: https
   X-Forwarded-Host: "{{ codespaces_moodle_hostname }}"
@@ -25,6 +30,7 @@ monitoring_node_exporter_mount_mode: ro
 
 control_plane_auth_origins:
   - "{{ codespaces_dashboard_origin }}"
+  - http://localhost:8088
 control_plane_auth_secure_cookie: true
 dashboard_api_origin: http://127.0.0.1:8000
 
