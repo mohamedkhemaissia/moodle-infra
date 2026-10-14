@@ -47,7 +47,7 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertIn("PILOTAGE_SERVICE_TOKEN_FILE", worker)
         self.assertIn("-m diagnostics.worker", worker)
 
-    def test_codespaces_playbook_excludes_backup_recovery_and_automatic_remediation(self):
+    def test_codespaces_playbook_excludes_backup_recovery_and_bounds_automatic_remediation(self):
         plays = yaml.safe_load((ROOT / "ansible/playbooks/pilot-codespaces.yml").read_text())
         roles = [role_name(role) for play in plays for role in play.get("roles", [])]
         for forbidden in (
@@ -56,14 +56,30 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, roles)
         self.assertIn("diagnostic_requests", roles)
+        self.assertEqual(roles.count("remediation"), 2)
         values = yaml.safe_load((ROOT / "ansible/inventories/group_vars/codespaces/main.yml").read_text())
-        self.assertFalse(values["remediation_worker_enabled"])
+        self.assertTrue(values["remediation_worker_enabled"])
         self.assertFalse(values["remediation_php_profiles_enabled"])
         self.assertFalse(values["control_plane_backup_status_enabled"])
         self.assertFalse(values["control_plane_pilotage_backup_status_enabled"])
         self.assertFalse(values["control_plane_recovery_requests_enabled"])
         self.assertEqual(values["container_monitoring_scheduler"], "supervisor")
         self.assertEqual(values["diagnostic_requests_scheduler"], "supervisor")
+        self.assertEqual(values["remediation_worker_scheduler"], "supervisor")
+        self.assertEqual(values["remediation_probe_scheme"], "http")
+        self.assertTrue(values["remediation_proxy_tls_terminated"])
+        self.assertEqual(values["remediation_operations_check_mode"], "marker_only")
+        self.assertEqual(values["remediation_probe_hostname"], "{{ codespaces_moodle_hostname }}")
+        remediation_tasks = json.dumps(yaml.safe_load(
+            (ROOT / "ansible/roles/remediation/tasks/main.yml").read_text()
+        ))
+        self.assertIn("/usr/bin/supervisorctl", remediation_tasks)
+        self.assertIn("--healthcheck", remediation_tasks)
+        supervisor = (ROOT / "ansible/roles/remediation/templates/moodle-remediation-worker.supervisor.j2").read_text()
+        self.assertIn("moodle-remediation-worker --loop", supervisor)
+        worker = (ROOT / "ansible/roles/remediation/templates/moodle-remediation-worker.j2").read_text()
+        self.assertIn("PILOTAGE_DATABASE_CONFIG", worker)
+        self.assertIn('remediation.automatic "$@"', worker)
         self.assertEqual(values["monitoring_node_exporter_mount_mode"], "ro")
         self.assertTrue(values["control_plane_diagnostic_requests_enabled"])
         encoded = json.dumps(values)
@@ -91,6 +107,7 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         status = (ROOT / "scripts/codespaces/status.sh").read_text()
         self.assertIn("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", status)
         self.assertIn("Origine dashboard: acceptee", status)
+        self.assertIn("moodle-remediation-worker --healthcheck", status)
 
     def test_codespaces_moodle_terminates_https_at_the_forwarding_proxy(self):
         values = yaml.safe_load((ROOT / "ansible/roles/moodle/defaults/main.yml").read_text())

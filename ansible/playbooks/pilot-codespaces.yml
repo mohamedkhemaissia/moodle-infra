@@ -10,11 +10,12 @@
           - lookup('env', 'CODESPACE_NAME') is match('^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}$')
           - lookup('env', 'CODESPACE_VSCODE_FOLDER') is match('^/workspaces/[^/]+$')
           - lookup('env', 'GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN') is match('^[a-zA-Z0-9.-]{3,253}$')
-          - not (remediation_worker_enabled | bool)
+          - remediation_worker_enabled | bool
+          - remediation_worker_scheduler == 'supervisor'
           - not (remediation_php_profiles_enabled | bool)
           - not (control_plane_backup_status_enabled | bool)
           - not (control_plane_recovery_requests_enabled | bool)
-        fail_msg: "Utiliser le Codespace du depot ; sauvegarde, PRA et remediation automatique restent exclus."
+        fail_msg: "Utiliser le Codespace du depot ; sauvegarde et PRA restent exclus, la remediation est bornee a PHP."
   roles:
     - moodle
     - application_monitoring
@@ -35,13 +36,14 @@
   roles:
     - control_plane_database
 
-- name: Activer le compte unique les politiques d observation et les diagnostics guides
+- name: Activer le compte unique les politiques les diagnostics et la remediation bornee
   hosts: codespaces
   become: true
   gather_facts: false
   roles:
     - authentication
     - operating_policies
+    - remediation
     - diagnostic_requests
     - control_plane
     - dashboard

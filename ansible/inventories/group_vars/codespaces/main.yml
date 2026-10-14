@@ -38,9 +38,17 @@ container_monitoring_scheduler: supervisor
 diagnostic_requests_scheduler: supervisor
 control_plane_diagnostic_requests_enabled: true
 
-# Le pilote démarre en observation. Aucune boucle de correction automatique
-# n'est installée dans Codespaces, même après l'activation des politiques.
-remediation_worker_enabled: false
+# Le worker est installe mais le pilote reste en observation par defaut.
+# Seul l'administrateur peut confirmer le passage en mode automatique.
+remediation_worker_enabled: true
+remediation_worker_scheduler: supervisor
+remediation_worker_interval_seconds: 30
+remediation_probe_scheme: http
+remediation_probe_hostname: "{{ codespaces_moodle_hostname }}"
+remediation_probe_port: "{{ codespaces_moodle_port }}"
+remediation_probe_ca_file: ''
+remediation_proxy_tls_terminated: true
+remediation_operations_check_mode: marker_only
 remediation_php_profiles_enabled: false
 
 # Hors périmètre demandé : aucun statut Restic, aucune demande de reprise et

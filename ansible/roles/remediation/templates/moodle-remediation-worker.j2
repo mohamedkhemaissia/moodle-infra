@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd {{ remediation_base_dir }}/code
+export PILOTAGE_DATABASE_CONFIG={{ pilotage_database_config_dir }}/database.json
+export PILOTAGE_SERVICE_TOKEN_FILE={{ pilotage_database_config_dir }}/worker-token
+export PYTHONNOUSERSITE=1
+exec {{ remediation_python }} -B -u -m remediation.automatic "$@"

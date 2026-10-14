@@ -1,0 +1,17 @@
+[program:{{ remediation_worker_supervisor_program }}]
+command=/usr/local/sbin/moodle-remediation-worker --loop --interval-seconds {{ remediation_worker_interval_seconds }}
+directory={{ remediation_base_dir }}/code
+user=root
+autostart=true
+autorestart=unexpected
+startsecs=2
+startretries=5
+stopsignal=TERM
+stopwaitsecs=210
+stopasgroup=true
+killasgroup=true
+redirect_stderr=true
+stdout_logfile=/var/log/supervisor/{{ remediation_worker_supervisor_program }}.log
+stdout_logfile_maxbytes=2MB
+stdout_logfile_backups=2
+environment=PATH="/usr/bin:/bin",LANG="C.UTF-8",PYTHONNOUSERSITE="1"

@@ -11,7 +11,9 @@ Le Codespace héberge, dans un seul environnement de démonstration :
 - la file PostgreSQL des diagnostics guidés et son worker Ansible Runner en lecture seule ;
 - les politiques persistantes initialisées en mode `observation`.
 
-Le déploiement ne lance ni sauvegarde Restic, ni PRA/restauration, ni charge, ni panne volontaire, ni remédiation automatique.
+Le déploiement ne lance ni sauvegarde Restic, ni PRA/restauration, ni charge ou
+panne volontaire. Le worker de remédiation est installé mais reste inactif avec
+la politique initiale `observation`.
 
 ## 1. Créer le Codespace
 
@@ -120,7 +122,19 @@ Le mot de passe doit contenir au moins 15 caractères. Aucun second rôle n’es
 bash scripts/codespaces/status.sh
 ```
 
-Le contrôle lit seulement la santé de l’API, du dashboard, de Moodle, de la file PostgreSQL et des deux processus Supervisor. Il ne réserve pas de diagnostic et ne redémarre aucun service.
+Le contrôle lit seulement la santé de l’API, du dashboard, de Moodle, de la file PostgreSQL et des trois processus Supervisor. Il ne réserve pas de diagnostic et ne redémarre aucun service.
+
+Il vérifie aussi le worker de remédiation sans réserver ni exécuter d'action.
+Sous Codespaces, son périmètre est volontairement limité à `start_php_stopped` :
+remettre en service le conteneur PHP seulement après confirmation d'un incident
+HTTPS, validation des ressources, de PostgreSQL, d'Apache, de l'identité des
+conteneurs et de la politique persistante.
+
+Pour autoriser ce scénario, ouvrir **Politiques de pilotage**, choisir
+**Automatique**, laisser la suspension et le contexte d'évaluation désactivés,
+saisir un motif puis cocher la confirmation explicite. Aucun score IA ni simple
+dépassement de seuil ne suffit à déclencher l'action. Revenir à **Observation**
+après la démonstration si aucune correction automatique n'est souhaitée.
 
 URLs privées du Codespace :
 
@@ -150,7 +164,7 @@ Ne pas créer artificiellement d’incident, ne pas arrêter de conteneur et ne 
 État des processus :
 
 ```bash
-sudo supervisorctl status moodle-container-metrics moodle-diagnostic-requests
+sudo supervisorctl status moodle-container-metrics moodle-diagnostic-requests moodle-remediation-worker
 ```
 
 Journaux du worker de diagnostic :

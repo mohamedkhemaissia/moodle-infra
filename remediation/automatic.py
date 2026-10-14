@@ -1,7 +1,9 @@
-"""Un passage du worker : au plus une tentative par incident et revision."""
+"""Worker automatique : au plus une tentative par incident et revision."""
+import argparse
 import json
 import os
 import sys
+import time
 
 from diagnostics.collector import get_json, ProbeError
 from diagnostics.store import DiagnosticStorageError
@@ -40,9 +42,47 @@ def once(config, config_path, *, store=None, reader=get_json, executor=execute):
         return {"status":"unavailable","reason":"policy_or_observation_unavailable"},1
 
 
-def main():
+def healthcheck(config, *, store=None):
+    """Verifier la configuration et PostgreSQL sans reserver ni executer d'action."""
+    try:
+        if config.get("policy_required") is not True:
+            raise PolicyBlocked("automatic_requires_operating_policy")
+        view=(store or PolicyStore()).view()
+        policy=view["policy"]
+        if policy["mode"] not in ("observation","assisted","automatic") or type(policy["suspended"]) is not bool:
+            raise ValueError("invalid_policy")
+        return {"status":"available","mode":policy["mode"],"suspended":policy["suspended"],
+                "action_scope":["start_php_stopped"]},0
+    except (PolicyBlocked,PolicyStorageError,OSError,ValueError,KeyError,TypeError):
+        return {"status":"unavailable","reason":"configuration_or_policy_unavailable"},1
+
+
+def run_loop(config, config_path, interval, *, passage=once, pause=time.sleep):
+    while True:
+        result,_=passage(config,config_path)
+        print(json.dumps(result,ensure_ascii=False),flush=True)
+        pause(interval)
+
+
+def main(argv=None):
+    parser=argparse.ArgumentParser(description=__doc__)
+    mode=parser.add_mutually_exclusive_group()
+    mode.add_argument("--loop",action="store_true",help="Executer un passage periodique.")
+    mode.add_argument("--healthcheck",action="store_true",help="Verifier sans reserver d'action.")
+    parser.add_argument("--interval-seconds",type=float,default=30.0)
+    args=parser.parse_args(argv)
+    if not 5 <= args.interval_seconds <= 300:
+        parser.error("L'intervalle doit etre compris entre 5 et 300 secondes.")
     os.umask(0o027)
-    try: result,code=once(config_read(CONFIG),CONFIG)
+    try:
+        config=config_read(CONFIG)
+        if args.healthcheck:
+            result,code=healthcheck(config)
+        elif args.loop:
+            run_loop(config,CONFIG,args.interval_seconds)
+            return 0
+        else:
+            result,code=once(config,CONFIG)
     except (OSError,ValueError,PolicyStorageError):
         result,code={"status":"unavailable","reason":"configuration_or_policy_unavailable"},1
     print(json.dumps(result,ensure_ascii=False))
