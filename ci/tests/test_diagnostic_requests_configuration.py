@@ -77,6 +77,13 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertEqual(document["postCreateCommand"], "bash scripts/codespaces/setup.sh")
         self.assertEqual(document["postStartCommand"], "bash scripts/codespaces/post-start.sh")
 
+    def test_codespaces_deploy_uses_explicit_ansible_paths(self):
+        script = (ROOT / "scripts/codespaces/deploy.sh").read_text()
+        self.assertIn('export ANSIBLE_CONFIG="$repo_dir/ansible.cfg"', script)
+        self.assertIn('export ANSIBLE_ROLES_PATH="$repo_dir/ansible/roles"', script)
+        self.assertIn("ansible/inventories/codespaces.ini", script)
+        self.assertIn("ansible/playbooks/pilot-codespaces.yml", script)
+
 
 if __name__ == "__main__":
     unittest.main()

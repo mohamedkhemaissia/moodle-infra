@@ -10,6 +10,11 @@ fi
 repo_dir="$(git rev-parse --show-toplevel)"
 cd "$repo_dir"
 export MOODLE_REPOSITORY_DIR="$repo_dir"
+# Le volume /workspaces de Codespaces est volontairement world-writable.
+# Ansible n'y decouvre donc pas ansible.cfg automatiquement : les chemins
+# absolus rendent le lancement independant de cette protection.
+export ANSIBLE_CONFIG="$repo_dir/ansible.cfg"
+export ANSIBLE_ROLES_PATH="$repo_dir/ansible/roles"
 
 bash scripts/codespaces/post-start.sh
 for attempt in {1..30}; do
