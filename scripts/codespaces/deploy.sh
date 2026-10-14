@@ -15,9 +15,14 @@ export MOODLE_REPOSITORY_DIR="$repo_dir"
 # absolus rendent le lancement independant de cette protection.
 export ANSIBLE_CONFIG="$repo_dir/ansible.cfg"
 export ANSIBLE_ROLES_PATH="$repo_dir/ansible/roles"
+export ANSIBLE_COLLECTIONS_PATH="$repo_dir/.venv/ansible-collections"
 
 if ! .venv/bin/python -c "import requests" >/dev/null 2>&1; then
   echo "Les dependances Codespaces ont change ; executer d'abord : bash scripts/codespaces/setup.sh" >&2
+  exit 2
+fi
+if [[ ! -f "$ANSIBLE_COLLECTIONS_PATH/ansible_collections/community/docker/MANIFEST.json" ]]; then
+  echo "La collection Ansible community.docker est absente ; executer d'abord : bash scripts/codespaces/setup.sh" >&2
   exit 2
 fi
 

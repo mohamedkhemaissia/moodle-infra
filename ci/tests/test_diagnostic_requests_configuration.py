@@ -120,6 +120,8 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         script = (ROOT / "scripts/codespaces/deploy.sh").read_text()
         self.assertIn('export ANSIBLE_CONFIG="$repo_dir/ansible.cfg"', script)
         self.assertIn('export ANSIBLE_ROLES_PATH="$repo_dir/ansible/roles"', script)
+        self.assertIn('export ANSIBLE_COLLECTIONS_PATH="$repo_dir/.venv/ansible-collections"', script)
+        self.assertIn("community/docker/MANIFEST.json", script)
         self.assertIn("ansible/inventories/codespaces.ini", script)
         self.assertIn("ansible/playbooks/pilot-codespaces.yml", script)
         self.assertIn("validate_bundle anomalies", script)
@@ -136,6 +138,8 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertIn("requests==", requirements)
         setup = (ROOT / "scripts/codespaces/setup.sh").read_text()
         self.assertIn("scripts/codespaces/requirements.txt", setup)
+        self.assertIn('--collections-path "$collection_root"', setup)
+        self.assertIn("community/docker/MANIFEST.json", setup)
 
     def test_control_plane_database_migration_is_self_contained(self):
         defaults = yaml.safe_load((ROOT / "ansible/roles/control_plane_database/defaults/main.yml").read_text())

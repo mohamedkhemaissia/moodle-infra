@@ -21,8 +21,18 @@ fi
 
 collection_fingerprint="$(sha256sum ansible/requirements.yml | cut -d' ' -f1)"
 collection_stamp=.venv/.codespaces-collections.sha256
-if [[ ! -f "$collection_stamp" ]] || [[ "$(<"$collection_stamp")" != "$collection_fingerprint" ]]; then
-  .venv/bin/ansible-galaxy collection install -r ansible/requirements.yml
+collection_root=.venv/ansible-collections
+docker_collection_manifest="$collection_root/ansible_collections/community/docker/MANIFEST.json"
+if [[ ! -f "$collection_stamp" ]] || [[ "$(<"$collection_stamp")" != "$collection_fingerprint" ]] || \
+   [[ ! -f "$docker_collection_manifest" ]]; then
+  mkdir -p "$collection_root"
+  .venv/bin/ansible-galaxy collection install \
+    --collections-path "$collection_root" \
+    -r ansible/requirements.yml
+  if [[ ! -f "$docker_collection_manifest" ]]; then
+    echo "La collection Ansible community.docker n'a pas ete installee correctement." >&2
+    exit 2
+  fi
   printf '%s\n' "$collection_fingerprint" > "$collection_stamp"
 fi
 
