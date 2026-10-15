@@ -23,6 +23,18 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
             "tests/test_diagnostic_requests_api.py",
         ):
             self.assertIn(name, api["control_plane_source_files"])
+
+    def test_api_build_context_removes_sources_deleted_from_the_manifest(self):
+        tasks = yaml.safe_load((ROOT / "ansible/roles/control_plane/tasks/main.yml").read_text())
+        inventory = next(task for task in tasks if task.get("name") ==
+                         "Inventorier les anciennes sources du contexte Docker")
+        cleanup = next(task for task in tasks if task.get("name") ==
+                       "Retirer les sources qui ne font plus partie de l image")
+        self.assertEqual(inventory["ansible.builtin.find"]["file_type"], "file")
+        self.assertTrue(inventory["ansible.builtin.find"]["hidden"])
+        self.assertEqual(cleanup["ansible.builtin.file"]["state"], "absent")
+        self.assertIn("control_plane_source_files", cleanup["when"])
+        self.assertIn("relpath", cleanup["when"])
         dashboard = yaml.safe_load((ROOT / "ansible/roles/dashboard/defaults/main.yml").read_text())
         for name in (
             "src/DiagnosticRequestPanel.jsx",

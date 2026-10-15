@@ -29,6 +29,26 @@
     - "{{ control_plane_base_dir }}/build/pilotage"
     - "{{ control_plane_base_dir }}/build/tests"
 
+- name: Inventorier les anciennes sources du contexte Docker
+  ansible.builtin.find:
+    paths: "{{ control_plane_base_dir }}/build"
+    recurse: true
+    file_type: file
+    hidden: true
+  register: control_plane_build_files
+  changed_when: false
+
+- name: Retirer les sources qui ne font plus partie de l image
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ control_plane_build_files.files }}"
+  loop_control:
+    label: "{{ item.path | relpath(control_plane_base_dir ~ '/build') }}"
+  when: >-
+    (item.path | relpath(control_plane_base_dir ~ '/build'))
+    not in control_plane_source_files
+
 - name: Copier les sources necessaires a l image
   ansible.builtin.copy:
     src: "{{ control_plane_source_dir }}/{{ item }}"
