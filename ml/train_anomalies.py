@@ -62,16 +62,14 @@ def read_inputs(directory: Path) -> Inputs:
         metadata = features.strict_json(raw_metadata)
         keys = ("tool_version", "schema_version", "source_dataset_sha256", "source_metadata_sha256",
                 "step_seconds", "lookback_seconds", "window_points_including_endpoints", "source_context_seconds",
-                "horizons_minutes", "feature_names", "target_names", "split_policy")
+                "feature_names", "split_policy")
         description = {key: metadata[key] for key in keys}
         fingerprint = hashlib.sha256(json.dumps(description, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         if (type(metadata["schema_version"]) is not int or metadata["schema_version"] != features.SCHEMA_VERSION
                 or metadata["input_sha256"] != fingerprint
                 or metadata["feature_names"] != list(features.FEATURE_NAMES)
-                or metadata["target_names"] != list(features.TARGET_NAMES)
                 or metadata["source_context_seconds"] != features.SOURCE_CONTEXT_SECONDS
-                or metadata["horizons_minutes"] != list(features.HORIZONS_MINUTES)
-                or metadata["split_policy"] != "chronological_duration_70_15_15_with_disjoint_context_and_targets"):
+                or metadata["split_policy"] != "chronological_duration_70_15_15_with_disjoint_contexts"):
             raise AnomalyError("Schema ou configuration des variables incoherents.")
         step, lookback = metadata["step_seconds"], metadata["lookback_seconds"]
         if type(step) is not int or step < 15 or type(lookback) is not int or lookback % 60:

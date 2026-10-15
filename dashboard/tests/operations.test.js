@@ -1,34 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateDocument, freshResult, analysisReady, decisionCurrent, recoveryProven, requestPath, RESOURCES } from '../src/operations.js';
+import { validateDocument, freshResult, analysisReady, decisionCurrent, recoveryProven, requestPath } from '../src/operations.js';
 
 const now = Date.parse('2026-10-07T20:57:30Z');
 const iso = (x = now) => new Date(x).toISOString();
-const analysis = (kind) => ({ status: 'available', experimental: true, evaluated_at: iso(), input_evaluated_at: iso(),
+const analysis = () => ({ status: 'available', experimental: true, evaluated_at: iso(), input_evaluated_at: iso(),
   collection: { linux: { status: 'up', scrape_age_seconds: 5 } },
   current_metrics: { cpu_usage_percent: 20, memory_usage_percent: 40, disk_available_percent: 70 },
-  ...(kind === 'forecast' ? { forecasts: Object.fromEntries(['5','10','15'].map((h) => [h, {
-    target_evaluated_at: iso(now + Number(h) * 60000),
-    metrics: Object.fromEntries(RESOURCES.map(([key]) => [key, { value: 0, method: 'persistence' }])) }])) }
-    : { anomaly: { score: 0.53, threshold: 0.65, statistical_anomaly: false, operational_rules: { alert: false } } }) });
-
-test('Prévisions : zéro reste valide, les horizons ou méthodes invalides sont refusés', () => {
-  assert.equal(validateDocument('forecast', analysis('forecast')).forecasts['5'].metrics.cpu_usage_percent.value, 0);
-  const trend = analysis('forecast');
-  trend.forecasts['5'].metrics.cpu_usage_percent.method = 'linear_trend';
-  assert.equal(validateDocument('forecast', trend).forecasts['5'].metrics.cpu_usage_percent.method, 'linear_trend');
-  for (const issue of ['missing', 'method', 'nan', 'overflow']) {
-    const data = analysis('forecast');
-    if (issue === 'missing') delete data.forecasts['15'];
-    if (issue === 'method') data.forecasts['5'].metrics.cpu_usage_percent.method = 'unknown';
-    if (issue === 'nan') data.forecasts['5'].metrics.cpu_usage_percent.value = NaN;
-    if (issue === 'overflow') data.forecasts['5'].metrics.cpu_usage_percent.value = 101;
-    assert.throws(() => validateDocument('forecast', data));
-  }
-  const invalidCurrent = analysis('forecast');
-  invalidCurrent.current_metrics.cpu_usage_percent = NaN;
-  assert.throws(() => validateDocument('forecast', invalidCurrent));
-});
+  anomaly: { score: 0.53, threshold: 0.65, statistical_anomaly: false, operational_rules: { alert: false } } });
 test('Une analyse indisponible conserve son motif et aucun score n’est inventé', () => {
   const data = { status: 'unavailable', experimental: true, evaluated_at: iso(), input_evaluated_at: iso(),
     reason: 'insufficient_contiguous_history', anomaly: null };
@@ -36,7 +15,7 @@ test('Une analyse indisponible conserve son motif et aucun score n’est invent�
   assert.equal(analysisReady(data, now), false);
 });
 test('Une analyse exige un historique et une collecte récents', () => {
-  const value = analysis('anomaly');
+  const value = analysis();
   assert.equal(analysisReady(value, now), true);
   assert.equal(analysisReady(value, now + 61000), false);
   value.collection.linux.status = 'stale'; assert.equal(analysisReady(value, now), false);
@@ -80,7 +59,7 @@ test('Seules les lectures prévues et les sélections valides construisent une U
     ['remediations', { runId: '../execute' }], ['incidents', { offset: 100001 }]]) assert.throws(() => requestPath(kind, options));
 });
 
-test('L’écran IA présente les anomalies et prévisions indépendamment, sans inventer un état normal', async (t) => {
+test('L’écran IA distingue anomalie, incident et cause sans inventer un état normal', async (t) => {
   const { createServer } = await import('vite');
   const React = await import('react');
   const { renderToStaticMarkup } = await import('react-dom/server');
@@ -88,7 +67,7 @@ test('L’écran IA présente les anomalies et prévisions indépendamment, sans
   t.after(() => server.close());
   const { AnalysisView, Anomalies } = await server.ssrLoadModule('/src/AIAnalysis.jsx');
   const render = (component, props) => renderToStaticMarkup(React.createElement(component, props));
-  const data = { ...analysis('anomaly'), model_sha256: 'b'.repeat(64), model_created_at: iso(now - 86400000) };
+  const data = { ...analysis(), model_sha256: 'b'.repeat(64), model_created_at: iso(now - 86400000) };
   data.anomaly.score = 0;
   const normal = render(Anomalies, { result: { data }, now });
   assert.match(normal, /Activité habituelle/);
@@ -96,6 +75,9 @@ test('L’écran IA présente les anomalies et prévisions indépendamment, sans
   assert.match(normal, /Aucune intervention nécessaire/);
   assert.match(normal, /0,000/);
   assert.match(normal, /Isolation Forest/);
+  assert.match(normal, /Anomalie statistique/);
+  assert.match(normal, /Incident confirmé/);
+  assert.match(normal, /Cause technique/);
   assert.doesNotMatch(normal, /Modèle et observations|Version · référence|<pre|b{12,64}|&quot;score&quot;/);
   const atypical = structuredClone(data);
   atypical.anomaly.score = 0.8;
@@ -113,17 +95,7 @@ test('L’écran IA présente les anomalies et prévisions indépendamment, sans
     assert.match(html, /Analyse temporairement indisponible/);
     assert.doesNotMatch(html, /Activité habituelle|0,000|ai-state-banner usual/);
   }
-  const forecast = { ...analysis('forecast'), model_sha256: 'c'.repeat(64) };
-  forecast.forecasts['10'].metrics.cpu_usage_percent.method = 'ridge';
-  const view = render(AnalysisView, { anomaly: { error: 'HTTP 503' }, forecast: { data: forecast }, now });
+  const view = render(AnalysisView, { anomaly: { error: 'HTTP 503' }, now });
   assert.match(view, /service d’analyse est indisponible/);
-  assert.match(view, /Prévisions disponibles/);
-  assert.match(view, /Évolution attendue des ressources/);
-  assert.match(view, /Maintenant/);
-  assert.match(view, /0 %/);
-  assert.match(view, /\+5 min|\+10 min|\+15 min/);
-  assert.doesNotMatch(view, /Modèle, méthodes et horizons|Régression Ridge|Maintien de la dernière valeur|<pre|c{12,64}/);
-  const reverse = render(AnalysisView, { anomaly: { data }, forecast: { error: 'HTTP 503' }, now });
-  assert.match(reverse, /Activité habituelle/);
-  assert.doesNotMatch(reverse, /Prévisions disponibles/);
+  assert.doesNotMatch(view, /Prévision|\+5 min|\+10 min|\+15 min/);
 });

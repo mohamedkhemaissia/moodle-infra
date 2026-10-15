@@ -56,10 +56,7 @@ if [[ -z "${MOODLE_ANOMALY_BUNDLE_DIR:-}" ]]; then
   MOODLE_ANOMALY_BUNDLE_DIR="$(latest_directory ml/data/models 'moodle_anomalies_*' model.json || true)"
   export MOODLE_ANOMALY_BUNDLE_DIR
 fi
-if [[ -z "${MOODLE_FORECAST_BUNDLE_DIR:-}" ]]; then
-  MOODLE_FORECAST_BUNDLE_DIR="$(latest_directory ml/data/models 'moodle_forecasts_*' models.json || true)"
-  export MOODLE_FORECAST_BUNDLE_DIR
-fi
+unset MOODLE_FORECAST_BUNDLE_DIR
 
 artifact_validation_dir="$(mktemp -d "${TMPDIR:-/tmp}/moodle-pilotage-artifacts.XXXXXX")"
 cleanup_artifact_validation() {
@@ -77,36 +74,25 @@ api_validation_context="$artifact_validation_dir/api-context"
 .venv/bin/python -B ci/prepare_api.py \
   --output-dir "$api_validation_context" >/dev/null
 
-validate_bundle() {
-  local module="$1" bundle_dir="$2" features_dir="$3"
-  local directory="$artifact_validation_dir/$module"
+validate_anomaly_bundle() {
+  local bundle_dir="$1" features_dir="$2"
+  local directory="$artifact_validation_dir/anomalies"
   mkdir -p "$directory"
-  if [[ "$module" == "anomalies" ]]; then
-    ln -sf "$bundle_dir/model.json" "$directory/model.json"
-  else
-    ln -sf "$bundle_dir/models.json" "$directory/models.json"
-  fi
+  ln -sf "$bundle_dir/model.json" "$directory/model.json"
   ln -sf "$bundle_dir/report.json" "$directory/report.json"
   ln -sf "$features_dir/metadata.json" "$directory/features_metadata.json"
-  PYTHONPATH="$api_validation_context" .venv/bin/python -B -m "app.$module" \
+  PYTHONPATH="$api_validation_context" .venv/bin/python -B -m app.anomalies \
     --check-bundle "$directory" >/dev/null 2>&1
 }
 
 if [[ -n "$MOODLE_FEATURES_DIR" ]] && [[ -n "$MOODLE_ANOMALY_BUNDLE_DIR" ]] && \
-   ! validate_bundle anomalies "$MOODLE_ANOMALY_BUNDLE_DIR" "$MOODLE_FEATURES_DIR"; then
+   ! validate_anomaly_bundle "$MOODLE_ANOMALY_BUNDLE_DIR" "$MOODLE_FEATURES_DIR"; then
   echo "Information : bundle d'anomalies local invalide ou incompatible ; detection IA desactivee."
   MOODLE_ANOMALY_BUNDLE_DIR=""
   export MOODLE_ANOMALY_BUNDLE_DIR
 fi
-if [[ -n "$MOODLE_FEATURES_DIR" ]] && [[ -n "$MOODLE_FORECAST_BUNDLE_DIR" ]] && \
-   ! validate_bundle forecasts "$MOODLE_FORECAST_BUNDLE_DIR" "$MOODLE_FEATURES_DIR"; then
-  echo "Information : bundle de previsions local invalide ou incompatible ; previsions IA desactivees."
-  MOODLE_FORECAST_BUNDLE_DIR=""
-  export MOODLE_FORECAST_BUNDLE_DIR
-fi
-
-if [[ -z "$MOODLE_FEATURES_DIR" ]] || [[ -z "$MOODLE_ANOMALY_BUNDLE_DIR" ]] || [[ -z "$MOODLE_FORECAST_BUNDLE_DIR" ]]; then
-  echo "Information : aucun jeu complet d'artefacts IA locaux détecté ; le socle sera déployé et l'IA restera explicitement indisponible."
+if [[ -z "$MOODLE_FEATURES_DIR" ]] || [[ -z "$MOODLE_ANOMALY_BUNDLE_DIR" ]]; then
+  echo "Information : aucun bundle Isolation Forest valide détecté ; le socle sera déployé et l'analyse restera explicitement indisponible."
 fi
 
 .venv/bin/ansible-playbook \

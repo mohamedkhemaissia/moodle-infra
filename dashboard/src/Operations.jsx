@@ -6,7 +6,6 @@ import { observerCurrent } from './navigation.js';
 import { EvidenceSummary, RunSummary } from './ReadableDetails.jsx';
 import { AnalysisView } from './AIAnalysis.jsx';
 import DiagnosticRequestPanel from './DiagnosticRequestPanel.jsx';
-export { Forecasts } from './AIAnalysis.jsx';
 
 const dates = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'medium' });
 const possibleCauses = {
@@ -93,9 +92,9 @@ export default function Operations({ now, refreshToken, section = 'incidents', i
   return <>
     {section === 'analysis' && <section id="analysis" className="panel ops-panel" aria-labelledby="analysis-heading">
       <div className="panel-heading"><div><h2 id="analysis-heading">Analyse IA</h2>
-        <p>Observations atypiques et prévisions des ressources à 5, 10 et 15 minutes.</p></div>
+        <p>Détection de comportements inhabituels dans les ressources du pilote.</p></div>
         <span className="subtle-badge">Expérimental</span></div>
-      <div className="ops-body"><AnalysisView anomaly={readings.anomaly} forecast={readings.forecast} now={now} onNavigate={onNavigate} /></div>
+      <div className="ops-body"><AnalysisView anomaly={readings.anomaly} now={now} onNavigate={onNavigate} /></div>
     </section>}
 
     {section === 'incidents' && <section id="incidents" className="panel ops-panel" aria-labelledby="incidents-heading">

@@ -1,4 +1,4 @@
-"""Historique des ressources commun aux previsions et a la detection d'anomalies."""
+"""Historique des ressources utilise par la detection d'anomalies."""
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone

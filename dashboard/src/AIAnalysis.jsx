@@ -20,8 +20,6 @@ const resourceNames = {
   disk_available_percent: ['SSD', 'Disque disponible'],
 };
 const percentage = (value) => percent(value) ? `${numbers.format(value)} %` : '—';
-const trend = (current, future) => !percent(current) || !percent(future) ? 'Indisponible' :
-  Math.abs(future - current) < 1 ? 'Stable' : future > current ? 'En hausse' : 'En baisse';
 
 function Unavailable({ result = {}, data }) {
   const message = result.pending ? 'Lecture de l’analyse…' : result.stale
@@ -65,6 +63,13 @@ export function Anomalies({ result = {}, now, onNavigate }) {
           'Continuez la surveillance habituelle de la plateforme.'}</p></div>
         {atypical && onNavigate && <button className="ops-button" type="button" onClick={() => onNavigate('incidents')}>
           Examiner les incidents</button>}</section>
+      <section className="ai-interpretation" aria-label="Interprétation de l’analyse">
+        <h4>Comment interpréter cette observation ?</h4>
+        <ul><li><strong>Anomalie statistique :</strong> le score dépasse le seuil du modèle.</li>
+          <li><strong>Incident confirmé :</strong> les règles de supervision et l’historique des incidents doivent le confirmer.</li>
+          <li><strong>Cause technique :</strong> elle est établie seulement après le diagnostic des services et des journaux.</li></ul>
+        <p>Les valeurs CPU, mémoire et disque ci-dessus aident à orienter la vérification ; elles ne prouvent pas une cause.</p>
+      </section>
       <DetailsPanel title="Afficher les détails du modèle" className="ai-technical-details">
         <dl className="summary-facts"><div><dt>Score d’anomalie</dt><dd>{scores.format(anomaly.score)}</dd></div>
           <div><dt>Seuil de détection</dt><dd>{scores.format(anomaly.threshold)}</dd></div>
@@ -75,30 +80,6 @@ export function Anomalies({ result = {}, now, onNavigate }) {
   </article>;
 }
 
-export function Forecasts({ result = {}, now }) {
-  const data = result.data;
-  const ready = !result.pending && !result.error && !result.stale && analysisReady(data, now);
-  const current = data?.current_metrics || {};
-  const stable = ready && RESOURCES.every(([key]) => percent(current[key]) &&
-    Math.abs(data.forecasts['15'].metrics[key].value - current[key]) < 1);
-  return <article className="forecast-card ai-analysis-card" aria-labelledby="forecast-heading">
-    <div className="overview-heading"><h3 id="forecast-heading">Prévisions des ressources</h3>
-      <StatusBadge state={ready ? 'operational' : 'unknown'} label={ready ? 'Prévisions disponibles' : 'Analyse indisponible'} /></div>
-    {ready ? <>
-      <p className="forecast-summary">{stable ? 'Tendance globalement stable' : 'Évolution attendue des ressources'}</p>
-      <div className="forecast-timeline" aria-label="Prévisions des ressources à 5, 10 et 15 minutes">
-        <div className="forecast-time-heading"><span>Ressource</span><span>Maintenant</span><span>+5 min</span><span>+10 min</span><span>+15 min</span></div>
-        {RESOURCES.map(([key]) => <article className={`forecast-track ${key}`} key={key}>
-          <div><strong>{resourceNames[key][1]}</strong><small>{trend(current[key], data.forecasts['15'].metrics[key].value)}</small></div>
-          <span>{percentage(current[key])}</span>{['5', '10', '15'].map((h) =>
-            <span key={h}>{percentage(data.forecasts[h].metrics[key].value)}</span>)}</article>)}
-      </div>
-      <p className="ai-disclaimer">Prévisions expérimentales d’aide à la surveillance. Elles ne garantissent pas une panne et ne déclenchent aucune intervention.</p>
-    </> : <Unavailable result={result} data={data} />}
-  </article>;
-}
-
-export function AnalysisView({ anomaly, forecast, now, onNavigate }) {
-  return <div className="ai-analysis-view"><Anomalies result={anomaly} now={now} onNavigate={onNavigate} />
-    <Forecasts result={forecast} now={now} /></div>;
+export function AnalysisView({ anomaly, now, onNavigate }) {
+  return <div className="ai-analysis-view"><Anomalies result={anomaly} now={now} onNavigate={onNavigate} /></div>;
 }

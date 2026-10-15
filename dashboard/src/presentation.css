@@ -114,25 +114,16 @@ input, select, .auth-form input, .ops-toolbar select, .reports-filters select {
 .ai-action-card.atypical { border-color: #fcd34d; }
 .ai-action-card h4 { font-size: 17px; margin: 0 0 5px; }
 .ai-action-card p { color: #c2cede; font-size: 14px; line-height: 1.5; }
+.ai-interpretation { margin-top: 18px; padding: 18px 20px; border: 1px solid #31425b; border-radius: 8px; background: #101b2b; }
+.ai-interpretation h4 { margin: 0 0 10px; font-size: 16px; }
+.ai-interpretation ul { margin: 0; padding-left: 20px; color: #d5deeb; line-height: 1.6; }
+.ai-interpretation p { margin: 10px 0 0; color: #aebcd0; font-size: 13px; }
 .ai-technical-details { margin-top: 18px; }
 .ai-technical-details .summary-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ai-technical-details p { color: var(--corona-muted); font-size: 13px; }
 .ai-unavailable { margin-top: 20px; padding: 24px; border: 1px solid #4c5c73; border-radius: 10px; background: #172338; }
 .ai-unavailable strong { display: block; color: #f1f5f9; font-size: 18px; margin-bottom: 8px; }
 .ai-unavailable p { color: #bdc9d9; font-size: 15px; line-height: 1.55; }
-.forecast-summary { color: #f1f5f9; font-size: 18px; font-weight: 600; margin: 18px 0; }
-.forecast-timeline { overflow: hidden; border: 1px solid #31425b; border-radius: 10px; background: #111d2e; }
-.forecast-time-heading, .forecast-track { display: grid; grid-template-columns: 1.35fr repeat(4, minmax(90px, 1fr)); align-items: center; }
-.forecast-time-heading { color: #aebcd0; background: #15243a; font-size: 13px; font-weight: 600; }
-.forecast-time-heading span, .forecast-track > span, .forecast-track > div { padding: 14px 16px; }
-.forecast-time-heading span:not(:first-child), .forecast-track > span { text-align: center; }
-.forecast-track + .forecast-track { border-top: 1px solid #2b3b53; }
-.forecast-track > div { border-left: 4px solid #60a5fa; }
-.forecast-track.memory_usage_percent > div { border-left-color: #c084fc; }
-.forecast-track.disk_available_percent > div { border-left-color: #6ee7b7; }
-.forecast-track strong { display: block; color: #f1f5f9; font-size: 15px; }
-.forecast-track small { display: block; color: #aebcd0; font-size: 13px; margin-top: 5px; }
-.forecast-track > span { color: #e6edf7; font-size: 16px; font-weight: 600; }
 .ai-disclaimer { color: #b4c1d3; font-size: 14px; line-height: 1.55; margin-top: 16px; }
 @media (max-width: 720px) {
   h1 { font-size: 24px; }

@@ -183,10 +183,10 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertIn("ansible/playbooks/pilot-codespaces.yml", script)
         self.assertIn("ci/prepare_api.py", script)
         self.assertIn('PYTHONPATH="$api_validation_context"', script)
-        self.assertIn("validate_bundle anomalies", script)
-        self.assertIn("validate_bundle forecasts", script)
+        self.assertIn("validate_anomaly_bundle", script)
         self.assertIn('MOODLE_ANOMALY_BUNDLE_DIR=""', script)
-        self.assertIn('MOODLE_FORECAST_BUNDLE_DIR=""', script)
+        self.assertIn("unset MOODLE_FORECAST_BUNDLE_DIR", script)
+        self.assertNotIn("moodle_forecasts_*", script)
 
     def test_codespaces_uses_venv_for_docker_modules(self):
         inventory = (ROOT / "ansible/inventories/codespaces.ini").read_text()

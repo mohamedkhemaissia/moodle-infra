@@ -253,10 +253,6 @@
   when: control_plane_image_lookup.stdout | trim | length == 0
   changed_when: true
 
-- name: Deployer les artefacts des previsions
-  ansible.builtin.include_tasks: forecasts.yml
-  when: control_plane_forecasts_enabled | bool
-
 - name: Deployer les artefacts des anomalies
   ansible.builtin.include_tasks: anomalies.yml
   when: control_plane_anomalies_enabled | bool
@@ -345,20 +341,6 @@
     wait_timeout: 120
   register: control_plane_deployment
 
-- name: Recharger les modeles modifies dans une API deja demarree
-  community.docker.docker_compose_v2:
-    project_src: "{{ control_plane_base_dir }}"
-    project_name: "{{ control_plane_project_name }}"
-    state: restarted
-    services:
-      - api
-    wait: true
-    wait_timeout: 120
-  when:
-    - control_plane_forecasts_enabled | bool
-    - control_plane_forecast_artifacts.changed
-    - not control_plane_deployment.changed
-
 - name: Verifier la sante de l API
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/health"
@@ -425,31 +407,6 @@
   failed_when: >-
     not (control_plane_auth_status.json.enabled | default(false) | bool) or
     (pilotage_storage_health.json.stores.accounts.backend | default('')) != 'postgresql'
-
-- name: Verifier l endpoint des previsions
-  ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/forecasts/summary"
-    return_content: true
-    status_code: 200
-    timeout: 10
-    use_proxy: false
-    headers: "{{ control_plane_read_headers }}"
-  no_log: "{{ pilotage_auth_activation.stat.exists }}"
-  register: control_plane_forecasts_response
-  retries: 6
-  delay: 5
-  until: >-
-    control_plane_forecasts_response.status | default(0) == 200 and
-    control_plane_forecasts_response.json is defined and
-    control_plane_forecasts_response.json.status | default('') in ['available', 'unavailable']
-  when: control_plane_forecasts_enabled | bool
-
-- name: Afficher l etat des previsions
-  ansible.builtin.debug:
-    msg: >-
-      Etat={{ control_plane_forecasts_response.json.status }},
-      raison={{ control_plane_forecasts_response.json.reason | default('historique complet') }}
-  when: control_plane_forecasts_enabled | bool
 
 - name: Verifier la configuration du modele d anomalies
   ansible.builtin.uri:

@@ -1,4 +1,4 @@
-"""Entrainer et valider les modeles IA a partir du Prometheus du pilote.
+"""Entrainer et valider Isolation Forest a partir du Prometheus du pilote.
 
 Le pipeline ne complete aucune valeur manquante et n'utilise que la plus longue
 periode continue de mesures CPU, memoire et disque. Les artefacts restent locaux
@@ -8,7 +8,6 @@ dans ``ml/data`` et sont verifies avec les chargeurs utilises par l'API.
 from __future__ import annotations
 
 import argparse
-import csv
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -41,9 +40,7 @@ def longest_complete_window(rows: list[dict[str, Any]], window: exporter.Window)
     return None if best_start is None else exporter.Window(best_start, best_end, window.step)
 
 
-def validate_runtime_bundles(
-    repository: Path, features_dir: Path, anomaly_dir: Path, forecast_dir: Path,
-) -> None:
+def validate_runtime_bundle(repository: Path, features_dir: Path, anomaly_dir: Path) -> None:
     """Charger les artefacts avec les validateurs reels de l'API."""
     # Le service ne charge pas directement ``control-plane/app`` : son image est
     # assemblee avec les sources partagees, dont le moteur numerique IA canonique
@@ -64,20 +61,12 @@ def validate_runtime_bundles(
         sys.path.insert(0, str(api_context))
         try:
             from app.anomalies import AnomalyBundle
-            from app.forecasts import ForecastBundle
-
             anomaly_bundle = root / "anomalies"
-            forecast_bundle = root / "forecasts"
             anomaly_bundle.mkdir()
-            forecast_bundle.mkdir()
             shutil.copy2(anomaly_dir / "model.json", anomaly_bundle / "model.json")
             shutil.copy2(anomaly_dir / "report.json", anomaly_bundle / "report.json")
             shutil.copy2(features_dir / "metadata.json", anomaly_bundle / "features_metadata.json")
-            shutil.copy2(forecast_dir / "models.json", forecast_bundle / "models.json")
-            shutil.copy2(forecast_dir / "report.json", forecast_bundle / "report.json")
-            shutil.copy2(features_dir / "metadata.json", forecast_bundle / "features_metadata.json")
             AnomalyBundle(anomaly_bundle)
-            ForecastBundle(forecast_bundle)
         finally:
             sys.path.remove(str(api_context))
             for name in list(sys.modules):
@@ -87,30 +76,9 @@ def validate_runtime_bundles(
 
 
 def evidence_document(
-    source: dict[str, Any], features: dict[str, Any], anomaly: dict[str, Any],
-    forecasts: dict[str, Any], paths: dict[str, str],
+    source: dict[str, Any], features: dict[str, Any], anomaly: dict[str, Any], paths: dict[str, str],
 ) -> tuple[dict[str, Any], str]:
-    """Construire une preuve JSON et un resume Markdown sans sur-vendre les modeles."""
-    forecast_rows = []
-    for horizon, report in forecasts["horizons"].items():
-        for metric, evaluation in report["test"].items():
-            forecast_rows.append({
-                "horizon_minutes": int(horizon),
-                "metric": metric,
-                "selected_method": evaluation["preferred_on_validation"],
-                "test_rows": evaluation["evaluated_rows"],
-                "test_mae_ridge": round(evaluation["ridge"]["mae"], 6),
-                "test_mae_persistence": round(evaluation["persistence"]["mae"], 6),
-                "test_mae_linear_trend": round(evaluation["linear_trend"]["mae"], 6),
-                "ridge_gain_vs_persistence_percent": (
-                    round(evaluation["ridge_gain_vs_persistence_percent"], 3)
-                    if evaluation["ridge_gain_vs_persistence_percent"] is not None else None
-                ),
-                "ridge_gain_vs_linear_trend_percent": (
-                    round(evaluation["ridge_gain_vs_linear_trend_percent"], 3)
-                    if evaluation["ridge_gain_vs_linear_trend_percent"] is not None else None
-                ),
-            })
+    """Construire la preuve Isolation Forest sans inventer de qualite de detection."""
     evidence = {
         "schema_version": 1,
         "status": "validated_for_observation",
@@ -120,7 +88,7 @@ def evidence_document(
             "range": source["range"],
             "resource_complete_rows": source["summary"]["resource_complete_rows"],
             "feature_rows_by_split": features["summary"]["rows_by_split"],
-            "split_periods": forecasts["split_periods"],
+            "split_periods": features["split_periods"],
             "interpolation": False,
         },
         "anomaly_detection": {
@@ -128,25 +96,21 @@ def evidence_document(
             "threshold": anomaly["anomaly_threshold"],
             "test_rows": anomaly["by_split"]["test"]["rows"],
             "test_statistical_anomaly_rate_percent": anomaly["by_split"]["test"]["statistical_anomaly_rate_percent"],
+            "observed_metrics": ["cpu_usage_percent", "memory_usage_percent", "disk_available_percent"],
+            "operational_rule_thresholds": anomaly["operational_rule_thresholds"],
             "quality": anomaly["detection_quality"],
         },
-        "forecasts": forecast_rows,
         "validation": {
-            "api_bundle_loaders": "passed",
+            "api_bundle_loader": "passed",
             "train_validation_test_separation": "chronological_70_15_15",
         },
         "paths": paths,
         "limits": [
             "Le score d'anomalie n'est pas une probabilite de panne.",
             "Precision et rappel exigent des incidents independamment annotes.",
-            "Les previsions portent sur ce pilote et sont comparees a la persistance et a une tendance lineaire historique.",
-            "Aucune remediation n'est declenchee par ces modeles.",
+            "Une anomalie statistique ne confirme ni un incident ni sa cause.",
+            "Aucune remediation n'est declenchee par ce modele.",
         ],
-    }
-    metric_labels = {
-        "cpu_usage_percent": "CPU utilise",
-        "memory_usage_percent": "Memoire utilisee",
-        "disk_available_percent": "Disque disponible",
     }
     lines = [
         "# Preuve d'entrainement IA du pilote Moodle", "",
@@ -159,25 +123,14 @@ def evidence_document(
         "Modele Isolation Forest, appris sur train uniquement.",
         f"Seuil : {anomaly['anomaly_threshold']:.6f}. "
         f"Taux de signalement sur test : {anomaly['by_split']['test']['statistical_anomaly_rate_percent']:.2f} %.",
-        "Ce score mesure un comportement atypique, pas une probabilite de panne.", "",
-        "## Previsions", "",
-        "| Horizon | Ressource | Mesures test | MAE Ridge | MAE persistance | MAE tendance | Gain vs persist. | Gain vs tendance | Methode retenue |",
-        "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        "Mesures observees : CPU utilise, memoire utilisee et disque disponible.",
+        "Ce score mesure un comportement atypique, pas une probabilite de panne.",
+        "Un incident doit etre confirme par la supervision ; sa cause exige un diagnostic.", "",
     ]
-    for row in forecast_rows:
-        gain_persistence = ("n/a" if row["ridge_gain_vs_persistence_percent"] is None
-                            else f"{row['ridge_gain_vs_persistence_percent']:.2f} %")
-        gain_trend = ("n/a" if row["ridge_gain_vs_linear_trend_percent"] is None
-                      else f"{row['ridge_gain_vs_linear_trend_percent']:.2f} %")
-        lines.append(
-            f"| {row['horizon_minutes']} min | {metric_labels[row['metric']]} | {row['test_rows']} | "
-            f"{row['test_mae_ridge']:.4f} | {row['test_mae_persistence']:.4f} | "
-            f"{row['test_mae_linear_trend']:.4f} | {gain_persistence} | {gain_trend} | "
-            f"{row['selected_method']} |"
-        )
     lines.extend([
-        "", "Le choix entre Ridge, persistance et tendance lineaire est fait sur validation ; le test reste reserve a l'evaluation.",
-        "La tendance prolonge uniquement la pente de la fenetre historique ; elle ne lit aucune mesure future.",
+        "## Validation future", "",
+        "Comparer les seuils classiques et Isolation Forest sur des scenarios independamment annotes.",
+        "Calculer precision, rappel, fausses alertes et delai de detection seulement lorsque les etiquettes existent.",
         "", "## Limites", "",
         *[f"- {item}" for item in evidence["limits"]], "",
     ])
@@ -192,15 +145,6 @@ def write_evidence(output_dir: Path, evidence: dict[str, Any], markdown: str) ->
         json.dumps(evidence, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8"
     )
     (directory / "jury-summary.md").write_text(markdown, encoding="utf-8")
-    comparison_fields = (
-        "horizon_minutes", "metric", "test_rows", "test_mae_ridge", "test_mae_persistence",
-        "test_mae_linear_trend", "ridge_gain_vs_persistence_percent",
-        "ridge_gain_vs_linear_trend_percent", "selected_method",
-    )
-    with (directory / "forecast-comparison.csv").open("w", encoding="utf-8", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=comparison_fields)
-        writer.writeheader()
-        writer.writerows({field: row[field] for field in comparison_fields} for row in evidence["forecasts"])
     return directory
 
 
@@ -208,7 +152,6 @@ def run_pipeline(repository: Path, prometheus_url: str, hours: float) -> dict[st
     # Les dependances numeriques sont chargees seulement pour l'entrainement ;
     # l'aide, les controles de fenetre et la generation de preuve restent legers.
     from ml import train_anomalies
-    from ml import train_forecasts
 
     data_dir = repository / "ml" / "data"
     reader = exporter.PrometheusReader(prometheus_url)
@@ -247,27 +190,18 @@ def run_pipeline(repository: Path, prometheus_url: str, hours: float) -> dict[st
     anomaly_report, anomaly_dir, _ = train_anomalies.perform_training(
         anomaly_inputs, data_dir / "models"
     )
-    forecast_inputs = train_forecasts.read_inputs(features_dir)
-    forecast_report, forecast_dir, _ = train_forecasts.perform_training(
-        forecast_inputs, data_dir / "models",
-        progress=lambda value: print(value, file=sys.stderr, flush=True),
-    )
-    validate_runtime_bundles(repository, features_dir, anomaly_dir, forecast_dir)
+    validate_runtime_bundle(repository, features_dir, anomaly_dir)
     paths = {
         "features_directory": str(features_dir),
         "anomaly_directory": str(anomaly_dir),
-        "forecast_directory": str(forecast_dir),
     }
-    evidence, markdown = evidence_document(
-        export_metadata, feature_metadata, anomaly_report, forecast_report, paths
-    )
+    evidence, markdown = evidence_document(export_metadata, feature_metadata, anomaly_report, paths)
     evidence_dir = write_evidence(data_dir / "reports", evidence, markdown)
     return {
         "status": "trained_and_validated",
         **paths,
         "evidence_json": str(evidence_dir / "evidence.json"),
         "jury_summary": str(evidence_dir / "jury-summary.md"),
-        "forecast_comparison_csv": str(evidence_dir / "forecast-comparison.csv"),
         "next_command": "bash scripts/codespaces/deploy.sh",
     }
 

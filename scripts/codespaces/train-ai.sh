@@ -27,7 +27,7 @@ fi
 
 lock_dir=.venv/.codespaces-ai-training.lock
 if ! mkdir "$lock_dir" 2>/dev/null; then
-  echo "Un entrainement IA est deja en cours." >&2
+  echo "Un entrainement Isolation Forest est deja en cours." >&2
   exit 2
 fi
 cleanup() {
@@ -41,6 +41,6 @@ if [[ "$deploy" == true ]]; then
   bash scripts/codespaces/deploy.sh
 else
   echo
-  echo "Artefacts reels entraines et valides. Pour les activer :"
+  echo "Artefact Isolation Forest entraine et valide. Pour l'activer :"
   echo "  bash scripts/codespaces/deploy.sh"
 fi

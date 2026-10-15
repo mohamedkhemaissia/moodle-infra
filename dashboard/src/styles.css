@@ -63,12 +63,11 @@ h1 { font-size: 24px; font-weight: 500; letter-spacing: -.35px; }
 .panel-heading h2 { font-size: 17px; font-weight: 500; }
 .panel-heading p { color: #a0a6bd; margin-top: 5px; font-size: 12px; }
 .subtle-badge { padding: 4px 9px; border: 1px solid #514365; border-radius: 3px; color: #c3a6ff; background: #8f5fe810; font-size: 10px; white-space: nowrap; }
-.ops-body, .forecast-body { padding: 0 25px 24px; min-width: 0; }
+.ops-body { padding: 0 25px 24px; min-width: 0; }
 .ops-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; padding: 0 25px 24px; }
 .ops-card { min-width: 0; padding: 18px 20px; border: 1px solid #2c2e33; border-radius: 4px; }
 .ops-card h3 { font-size: 15px; font-weight: 500; }
 .ops-caption { color: #a0a6bd; font-size: 11px; margin-top: 6px; overflow-wrap: anywhere; }
-.forecast-card > .ops-caption { margin-top: 14px; }
 .ops-table-wrap { overflow-x: auto; max-width: 100%; }
 table { border-collapse: collapse; width: 100%; text-align: left; }
 th, td { padding: 15px 18px; border-bottom: 1px solid #2c2e33; font-size: 12px; vertical-align: middle; }
@@ -78,9 +77,6 @@ tbody td { color: #c4c8d8; }
 tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
 tbody strong { display: block; font-weight: 400; color: #fff; font-size: 14px; }
 tbody small { display: block; font-size: 10px; color: #a0a6bd; margin-top: 4px; }
-.forecast-card td small { display: inline-block; padding: 2px 6px; margin-top: 6px; border-radius: 3px; background: #2a2d3a; color: #b5bfd6; font-size: 9px; }
-.forecast-card tbody th { min-width: 145px; }
-.forecast-card th:not(:first-child), .forecast-card td { text-align: center; }
 .analysis-guidance { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 18px; padding: 14px 16px; border-left: 2px solid #0090e7; background: #11151d; }
 .analysis-guidance p { color: #bac0d3; font-size: 12px; }
 .ops-section-note { padding: 12px 25px 16px; border-top: 1px solid #2c2e33; color: #a0a6bd; font-size: 10px; }
@@ -172,7 +168,7 @@ pre { max-height: 380px; overflow: auto; font-size: 10px; line-height: 1.65; bac
   .panel-heading h2 { font-size: 15px; }
   .panel-heading p { font-size: 11px; }
   .panel-heading > .ops-button { padding: 7px; font-size: 10px; white-space: normal; max-width: 90px; }
-  .ops-body, .forecast-body { padding: 0 18px 20px; }
+  .ops-body { padding: 0 18px 20px; }
   .ops-section-note { padding: 12px 18px 15px; }
   .ops-grid { grid-template-columns: 1fr; padding: 0 18px 20px; }
   .incident-summary { flex-wrap: wrap; gap: 15px; }
@@ -272,7 +268,6 @@ pre { max-height: 380px; overflow: auto; font-size: 10px; line-height: 1.65; bac
   .compact-table .ops-badge, .compact-table .ops-button, .compact-table .refresh-button { justify-self: start; }
   .compact-table tbody td > small { grid-column: 2; margin: 0; }
   .compact-table .row-details { width: 100%; }
-  .forecast-card .compact-table tbody td { text-align: left; }
   .overview .metric-card { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 16px 20px; }
   .overview .metric-label { max-width: none; }
   .overview .metric-value { margin: 0; font-size: 26px; }

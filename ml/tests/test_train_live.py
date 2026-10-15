@@ -13,54 +13,42 @@ class LiveTrainingTests(unittest.TestCase):
         result = train_live.longest_complete_window(rows, window)
         self.assertEqual((result.start, result.end, result.step), (90, 150, 30))
 
-    def test_evidence_reports_baseline_and_limitations(self):
+    def test_evidence_reports_anomaly_scope_and_limitations(self):
         source = {
             "range": {"start": "2026-10-14T08:00:00Z", "end": "2026-10-14T14:00:00Z", "step_seconds": 30},
             "summary": {"resource_complete_rows": 721},
         }
-        features = {"summary": {"rows_by_split": {"train": 400, "validation": 70, "test": 70}}}
+        periods = [
+            {"split": "train", "start": "2026-10-14T08:00:00Z", "end_exclusive": "2026-10-14T12:00:00Z"},
+            {"split": "validation", "start": "2026-10-14T12:00:00Z", "end_exclusive": "2026-10-14T13:00:00Z"},
+            {"split": "test", "start": "2026-10-14T13:00:00Z", "end_exclusive": "2026-10-14T14:00:30Z"},
+        ]
+        features = {"summary": {"rows_by_split": {"train": 400, "validation": 70, "test": 70}},
+                    "split_periods": periods}
         anomaly = {
             "anomaly_threshold": 0.61,
             "by_split": {"test": {"rows": 70, "statistical_anomaly_rate_percent": 2.5}},
             "detection_quality": {"status": "not_evaluated_no_incident_labels", "precision": None,
                                   "recall": None, "false_positive_rate": None},
+            "operational_rule_thresholds": {"cpu_usage_percent": 85.0,
+                                            "memory_usage_percent": 90.0,
+                                            "disk_available_percent": 10.0},
         }
-        evaluation = {
-            "ridge": {"mae": 1.2}, "persistence": {"mae": 1.5}, "linear_trend": {"mae": 1.4},
-            "evaluated_rows": 70, "ridge_gain_vs_persistence_percent": 20.0,
-            "ridge_gain_vs_linear_trend_percent": 14.2857, "preferred_on_validation": "ridge",
-        }
-        forecasts = {"horizons": {
-            str(horizon): {"test": {metric: dict(evaluation) for metric in (
-                "cpu_usage_percent", "memory_usage_percent", "disk_available_percent"
-            )}} for horizon in (5, 10, 15)
-        }, "split_periods": [
-            {"split": "train", "start": "2026-10-14T08:00:00Z", "end_exclusive": "2026-10-14T12:00:00Z"},
-            {"split": "validation", "start": "2026-10-14T12:00:00Z", "end_exclusive": "2026-10-14T13:00:00Z"},
-            {"split": "test", "start": "2026-10-14T13:00:00Z", "end_exclusive": "2026-10-14T14:00:30Z"},
-        ]}
-        evidence, markdown = train_live.evidence_document(source, features, anomaly, forecasts, {})
+        evidence, markdown = train_live.evidence_document(source, features, anomaly, {})
         self.assertEqual(evidence["status"], "validated_for_observation")
-        self.assertEqual(len(evidence["forecasts"]), 9)
-        self.assertIn("MAE persistance", markdown)
-        self.assertIn("MAE tendance", markdown)
-        self.assertEqual(evidence["forecasts"][0]["test_rows"], 70)
+        self.assertNotIn("forecasts", evidence)
+        self.assertEqual(evidence["anomaly_detection"]["test_rows"], 70)
+        self.assertIn("CPU utilise", markdown)
+        self.assertIn("precision, rappel, fausses alertes", markdown)
         self.assertIn("pas une probabilite de panne", markdown)
 
     def test_write_evidence_creates_json_and_jury_summary(self):
-        evidence = {"data": {"range": {"end": "2026-10-14T14:00:00Z"}}, "forecasts": [{
-            "horizon_minutes": 5, "metric": "cpu_usage_percent", "test_rows": 20,
-            "test_mae_ridge": 1.0, "test_mae_persistence": 2.0, "test_mae_linear_trend": 1.5,
-            "ridge_gain_vs_persistence_percent": 50.0, "ridge_gain_vs_linear_trend_percent": 33.333,
-            "selected_method": "ridge",
-        }]}
+        evidence = {"data": {"range": {"end": "2026-10-14T14:00:00Z"}}}
         with tempfile.TemporaryDirectory() as directory:
             result = train_live.write_evidence(Path(directory), evidence, "# Resume\n")
             self.assertTrue((result / "evidence.json").is_file())
             self.assertEqual((result / "jury-summary.md").read_text(encoding="utf-8"), "# Resume\n")
-            comparison = (result / "forecast-comparison.csv").read_text(encoding="utf-8")
-            self.assertIn("test_mae_linear_trend", comparison)
-            self.assertIn("cpu_usage_percent", comparison)
+            self.assertFalse((result / "forecast-comparison.csv").exists())
 
     def test_runtime_validation_loads_the_same_assembled_api_as_deployment(self):
         repository = Path(__file__).resolve().parents[2]
@@ -68,24 +56,19 @@ class LiveTrainingTests(unittest.TestCase):
             root = Path(directory)
             features = root / "features"
             anomalies = root / "anomalies"
-            forecasts = root / "forecasts"
-            for target in (features, anomalies, forecasts):
+            for target in (features, anomalies):
                 target.mkdir()
             for target in (
                 features / "metadata.json",
                 anomalies / "model.json",
                 anomalies / "report.json",
-                forecasts / "models.json",
-                forecasts / "report.json",
             ):
                 target.write_text("{}\n", encoding="utf-8")
 
             # Les faux artefacts doivent etre refuses par le validateur, mais le
             # chargement de app.isolation_model doit d'abord reussir.
             with self.assertRaisesRegex(ValueError, "Dossier d'anomalies incomplet"):
-                train_live.validate_runtime_bundles(
-                    repository, features, anomalies, forecasts,
-                )
+                train_live.validate_runtime_bundle(repository, features, anomalies)
 
 
 if __name__ == "__main__":

@@ -31,7 +31,6 @@ from .remediation_store import RemediationStore
 from .incidents import IncidentStore, IncidentStorageError
 from .decisions import policy_document, summarize as decision_summary
 from .anomalies import AnomalyBundle, AnomalyBundleError, AnomalyService
-from .forecasts import ForecastBundle, ForecastBundleError, ForecastService
 from .prometheus import (
     PrometheusClient,
     PrometheusInvalidResponse,
@@ -42,7 +41,6 @@ from .prometheus import (
 def create_app(
     prometheus_url: str | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
-    forecasts_dir: str | None = None,
     anomalies_dir: str | None = None,
     incidents_dir: str | None = None,
     decisions_enabled: bool | None = None,
@@ -110,8 +108,6 @@ def create_app(
     if type(container_metrics_enabled) is not bool:
         raise ValueError("Activation des mesures de conteneurs invalide.")
     container_targets = parse_targets(os.getenv("CONTAINER_METRICS_TARGETS", DEFAULT_TARGETS))
-    model_directory = forecasts_dir if forecasts_dir is not None else os.getenv("FORECASTS_DIR", "")
-
     anomaly_directory = anomalies_dir if anomalies_dir is not None else os.getenv("ANOMALIES_DIR", "")
 
     remediation_directory = remediation_dir if remediation_dir is not None else os.getenv("REMEDIATION_DIR", "")
@@ -202,13 +198,6 @@ def create_app(
             transport=transport,
         ) as client:
             application.state.prometheus = PrometheusClient(client, max_age)
-            application.state.forecasts = None
-            if model_directory:
-                try:
-                    application.state.forecasts = ForecastService(
-                        application.state.prometheus, ForecastBundle(model_directory))
-                except ForecastBundleError:
-                    logging.getLogger(__name__).error("Artefacts de previsions invalides ; endpoint indisponible.")
             application.state.anomalies = None
             if anomaly_directory:
                 try:
@@ -357,23 +346,6 @@ def create_app(
             raise HTTPException(503, detail="Prometheus est indisponible.") from exc
         except PrometheusInvalidResponse as exc:
             raise HTTPException(502, detail="La reponse de Prometheus est inexploitable.") from exc
-
-    @application.get("/api/v1/forecasts/summary", tags=["Previsions"], responses={
-        502: {"description": "Historique Prometheus inexploitable."},
-        503: {"description": "Prometheus ou artefacts des previsions indisponibles."},
-    })
-    async def forecasts_summary(request: Request):
-        service = request.app.state.forecasts
-        if service is None:
-            raise HTTPException(503, detail="Les previsions ne sont pas configurees ou leurs artefacts sont invalides.")
-        try:
-            return await service.summary(datetime.now(timezone.utc))
-        except PrometheusUnavailable as exc:
-            raise HTTPException(503, detail="Prometheus est indisponible.") from exc
-        except PrometheusInvalidResponse as exc:
-            raise HTTPException(502, detail="L'historique Prometheus est inexploitable.") from exc
-        except ForecastBundleError as exc:
-            raise HTTPException(503, detail="Le calcul des previsions est indisponible.") from exc
 
     @application.get("/api/v1/anomalies/model", tags=["Anomalies"], responses={
         503: {"description": "Artefacts des anomalies indisponibles."},

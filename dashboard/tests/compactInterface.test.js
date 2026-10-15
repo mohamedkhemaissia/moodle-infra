@@ -3,7 +3,6 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { NAVIGATION, NAVIGATION_GROUPS } from '../src/navigation.js';
 import { makeReport, reportCsv } from '../src/reports.js';
-import { RESOURCES, validateDocument } from '../src/operations.js';
 import { dashboardFixtures } from './fixtures.js';
 
 const now = Date.parse('2026-10-11T21:30:00Z');
@@ -53,7 +52,7 @@ test('catalogue is consultation-only for administrators too, with no isolated-te
   assert.equal((html.match(/scope="col"/g) || []).length, 5);
 });
 
-test('tables stay compact while containers and forecasts use visual cards', async (t) => {
+test('tables stay compact while containers use visual cards', async (t) => {
   const { createServer } = await import('vite');
   const React = await import('react');
   const { renderToStaticMarkup } = await import('react-dom/server');
@@ -62,7 +61,7 @@ test('tables stay compact while containers and forecasts use visual cards', asyn
   const f = dashboardFixtures(now);
   const { ApplicationTable } = await server.ssrLoadModule('/src/ApplicationServices.jsx');
   const { ContainerTable } = await server.ssrLoadModule('/src/Containers.jsx');
-  const { IncidentTable, Forecasts } = await server.ssrLoadModule('/src/Operations.jsx');
+  const { IncidentTable } = await server.ssrLoadModule('/src/Operations.jsx');
   const { HistoryView } = await server.ssrLoadModule('/src/DecisionHistory.jsx');
   const { RequestsArea } = await server.ssrLoadModule('/src/RecoveryRequests.jsx');
   const { ReportView } = await server.ssrLoadModule('/src/Reports.jsx');
@@ -70,13 +69,6 @@ test('tables stay compact while containers and forecasts use visual cards', asyn
   const { EvidenceSummary, RunSummary } = await server.ssrLoadModule('/src/ReadableDetails.jsx');
   const report = makeReport('incidents', { ...f.incidents, limit: 50 }, { retrievedAt: now });
   const recoveryReport = makeReport('recovery', { ...f.recovery, limit: 50 }, { retrievedAt: now });
-  const forecast = validateDocument('forecast', { status: 'available', experimental: true,
-    evaluated_at: f.at, input_evaluated_at: f.at, collection: { linux: { status: 'up', scrape_age_seconds: 2 } },
-    current_metrics: { cpu_usage_percent: 10, memory_usage_percent: 10, disk_available_percent: 10 },
-    forecasts: Object.fromEntries(['5', '10', '15'].map((horizon) => [horizon, {
-      target_evaluated_at: new Date(now + Number(horizon) * 60000).toISOString(),
-      metrics: Object.fromEntries(RESOURCES.map(([key]) => [key, { value: 10, method: 'persistence' }])),
-    }])) });
   const policy = { policy: { mode: 'observation', suspended: false, evaluation_context: false,
     revision: 1, updated_by: 'hamma', updated_at: f.at }, worker: { status: 'idle' }, eventTotal: 1,
     events: [{ id: 1, at: f.at, action: 'policy_updated', actor: 'hamma', revision: 1, details: { reason: 'Motif conservé dans le détail' } }] };
@@ -103,9 +95,6 @@ test('tables stay compact while containers and forecasts use visual cards', asyn
   assert.match(containers, /container-card-grid/);
   assert.match(containers, /Apache|PHP-FPM|PostgreSQL/);
   assert.doesNotMatch(containers, /Comprendre les mesures|scope="col"/);
-  const forecasts = renderToStaticMarkup(React.createElement(Forecasts, { result: { data: forecast }, now }));
-  assert.match(forecasts, /forecast-timeline|Maintenant|\+15 min/);
-  assert.doesNotMatch(forecasts, /scope="col"/);
   const incidents = renderToStaticMarkup(React.createElement(ReportView, { report }));
   assert.match(incidents, /Gravité|Critique/);
   assert.match(incidents, /CPU élevé/);

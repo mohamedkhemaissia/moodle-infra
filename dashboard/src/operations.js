@@ -26,25 +26,14 @@ export function validateDocument(kind, value) {
   if (kind === 'backup') return validateBackupDocument(value);
   if (kind === 'pilotage_backup') return validatePilotageBackupDocument(value);
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail();
-  if (kind === 'forecast' || kind === 'anomaly') {
+  if (kind === 'anomaly') {
     if (!['available', 'unavailable'].includes(value.status) || value.experimental !== true ||
         !date(value.evaluated_at) || !date(value.input_evaluated_at)) fail();
     if (value.status === 'available') {
       for (const [key] of RESOURCES) if (!percent(value.current_metrics?.[key])) fail();
-      if (kind === 'forecast') {
-        for (const horizon of ['5', '10', '15']) {
-          const forecast = value.forecasts?.[horizon];
-          if (!forecast || !date(forecast.target_evaluated_at)) fail();
-          for (const [key] of RESOURCES) {
-            const metric = forecast.metrics?.[key];
-            if (!metric || !percent(metric.value) || !['ridge', 'persistence', 'linear_trend'].includes(metric.method)) fail();
-          }
-        }
-      } else {
-        const a = value.anomaly;
-        if (!a || !finite(a.score) || !finite(a.threshold) ||
-            typeof a.statistical_anomaly !== 'boolean' || typeof a.operational_rules?.alert !== 'boolean') fail();
-      }
+      const a = value.anomaly;
+      if (!a || !finite(a.score) || !finite(a.threshold) ||
+          typeof a.statistical_anomaly !== 'boolean' || typeof a.operational_rules?.alert !== 'boolean') fail();
     }
   } else if (kind === 'summary') {
     if (value.status !== 'available' || !date(value.evaluated_at) ||
@@ -116,7 +105,7 @@ export function recoveryProven(value) {
 export function requestPath(kind, { status = '', offset = 0, incidentId = null, runId = null } = {}) {
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000 ||
       (incidentId !== null && !positiveId(incidentId))) throw new Error('Sélection invalide.');
-  const summaries = { forecast: 'forecasts/summary', anomaly: 'anomalies/summary', summary: 'incidents/summary' };
+  const summaries = { anomaly: 'anomalies/summary', summary: 'incidents/summary' };
   if (summaries[kind]) return '/api/v1/' + summaries[kind];
   if (kind === 'incidents') {
     if (!['', 'open', 'resolved'].includes(status)) throw new Error('Filtre invalide.');
@@ -135,10 +124,7 @@ export function requestPath(kind, { status = '', offset = 0, incidentId = null, 
 
 export function operationRequests(section, { status = '', offset = 0, incidentId = null,
   diagnosticOffset = 0, remediationOffset = 0, run = null } = {}) {
-  if (section === 'analysis') return [
-    { key: 'forecast', kind: 'forecast', path: requestPath('forecast') },
-    { key: 'anomaly', kind: 'anomaly', path: requestPath('anomaly') },
-  ];
+  if (section === 'analysis') return [{ key: 'anomaly', kind: 'anomaly', path: requestPath('anomaly') }];
   if (section === 'incidents') {
     const requests = [
       { key: 'summary', kind: 'summary', path: requestPath('summary') },
