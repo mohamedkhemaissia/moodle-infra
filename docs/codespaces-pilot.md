@@ -5,6 +5,7 @@
 Le Codespace héberge, dans un seul environnement de démonstration :
 
 - Moodle et PostgreSQL applicatif sous Docker Compose ;
+- le cron Moodle CLI exécuté automatiquement chaque minute dans un conteneur dédié ;
 - Prometheus, Node Exporter, Blackbox Exporter, métriques PHP-FPM/PostgreSQL et métriques des conteneurs ;
 - l’API FastAPI, le PostgreSQL séparé du pilotage et le tableau de bord React ;
 - la sauvegarde d'un cours en `.mbz` et sa restauration comme nouveau cours ;
@@ -105,6 +106,11 @@ Ce script attend Docker, détecte les artefacts IA et exécute uniquement `ansib
 3. authentification, politiques en observation, diagnostics guidés, puis republication de l’API et du dashboard.
 
 Il réutilise le Docker fourni par Codespaces et n’appelle jamais les rôles `linux`, `runtime`, `operations`, `recovery` ou les rôles de sauvegarde.
+Le rôle `operations` porte le cron de la VM cible avec Restic. Comme ce rôle
+reste volontairement exclu du pilote, Compose démarre après l'installation un
+service `cron` séparé qui exécute `admin/cli/cron.php` chaque minute sous
+l'utilisateur Moodle. Son contrôle de santé exige une exécution réussie dans
+les trois dernières minutes et `scripts/codespaces/status.sh` publie ce résultat.
 Le montage racine de `node-exporter` reste en lecture seule, sans propagation
 `rslave`, car celle-ci n'est pas disponible avec Docker-in-Docker.
 

@@ -86,6 +86,60 @@ services:
       retries: 12
       start_period: 20s
 
+{% if moodle_container_cron_enabled | bool %}
+  cron:
+    image: "{{ moodle_php_image }}"
+    profiles: ["moodle-cron"]
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
+    user: "33:33"
+    working_dir: /var/www/moodle
+    command:
+      - sh
+      - -ec
+      - |
+        while true; do
+          started=$$(date +%s)
+          if php admin/cli/cron.php --keep-alive=0; then
+            date +%s > /tmp/moodle-cron-last-success
+          fi
+          finished=$$(date +%s)
+          remaining=$$((60 - finished + started))
+          if [ "$$remaining" -gt 0 ]; then sleep "$$remaining"; fi
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+    secrets:
+      - moodle_db_password
+    volumes:
+      - "{{ moodle_code_dir }}:/var/www/moodle:ro"
+      - moodledata:/var/moodledata
+      - "{{ moodle_base_dir }}/config/php/moodle.ini:/usr/local/etc/php/conf.d/zz-moodle.ini:ro"
+    extra_hosts:
+      - "{{ moodle_hostname }}:host-gateway"
+    networks:
+      public:
+        gw_priority: 1
+      private: {}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: "1.0"
+    healthcheck:
+      test: ["CMD-SHELL", "last=$$(cat /tmp/moodle-cron-last-success 2>/dev/null || echo 0); now=$$(date +%s); [ $$((now - last)) -le 180 ]"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+{% endif %}
+
 {% if moodle_course_operations_enabled | bool %}
   course-operations:
     image: "{{ moodle_php_image }}"

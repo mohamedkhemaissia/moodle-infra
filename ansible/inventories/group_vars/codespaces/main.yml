@@ -91,3 +91,7 @@ control_plane_forecasts_enabled: >-
      (lookup('env', 'MOODLE_FEATURES_DIR') | length > 0) }}
 control_plane_forecast_bundle_dir: "{{ lookup('env', 'MOODLE_FORECAST_BUNDLE_DIR') }}"
 control_plane_forecast_features_dir: "{{ lookup('env', 'MOODLE_FEATURES_DIR') }}"
+
+# Codespaces n'utilise pas le role operations (qui inclut Restic). Le cron
+# Moodle reste toutefois indispensable et tourne dans un conteneur dedie.
+moodle_container_cron_enabled: true

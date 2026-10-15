@@ -78,6 +78,51 @@
   ansible.builtin.debug:
     var: moodle_install_check.stdout_lines
 
+- name: Demarrer le cron Moodle apres l installation
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - -p
+      - "{{ moodle_compose_project }}"
+      - -f
+      - "{{ moodle_base_dir }}/compose.yml"
+      - --profile
+      - moodle-cron
+      - up
+      - -d
+      - --no-build
+      - --wait
+      - --wait-timeout
+      - "240"
+      - cron
+  changed_when: true
+  when: moodle_container_cron_enabled | bool
+
+- name: Verifier une execution recente du cron Moodle
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - -p
+      - "{{ moodle_compose_project }}"
+      - -f
+      - "{{ moodle_base_dir }}/compose.yml"
+      - --profile
+      - moodle-cron
+      - exec
+      - -T
+      - cron
+      - sh
+      - -ec
+      - 'last=$(cat /tmp/moodle-cron-last-success 2>/dev/null || echo 0); now=$(date +%s); [ $((now - last)) -le 180 ]'
+  register: moodle_container_cron_health
+  changed_when: false
+  retries: 6
+  delay: 10
+  until: moodle_container_cron_health.rc == 0
+  when: moodle_container_cron_enabled | bool
+
 - name: Demarrer le worker des sauvegardes de cours apres l installation Moodle
   ansible.builtin.command:
     argv:

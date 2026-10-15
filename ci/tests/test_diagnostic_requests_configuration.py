@@ -60,6 +60,7 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         values = yaml.safe_load((ROOT / "ansible/inventories/group_vars/codespaces/main.yml").read_text())
         self.assertTrue(values["remediation_worker_enabled"])
         self.assertTrue(values["remediation_php_profiles_enabled"])
+        self.assertTrue(values["moodle_container_cron_enabled"])
         self.assertFalse(values["control_plane_backup_status_enabled"])
         self.assertFalse(values["control_plane_pilotage_backup_status_enabled"])
         self.assertFalse(values["control_plane_recovery_requests_enabled"])
@@ -109,6 +110,11 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertIn("Origine dashboard: acceptee", status)
         self.assertIn("moodle-remediation-worker --healthcheck", status)
         self.assertIn("moodle-fpm-profiles --status", status)
+        self.assertIn("Cron Moodle: actif", status)
+        restore = (ROOT / "scripts/codespaces/restore.sh").read_text()
+        self.assertIn("cron_was_running", restore)
+        self.assertIn("--profile moodle-cron stop --timeout 60 cron", restore)
+        self.assertIn("--profile moodle-cron up -d --no-recreate", restore)
 
     def test_codespaces_email_configuration_stays_outside_git_and_has_an_explicit_recipe(self):
         values = yaml.safe_load((ROOT / "ansible/inventories/group_vars/codespaces/main.yml").read_text())
@@ -133,6 +139,7 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
             moodle_apache_container_port=80,
             moodle_apache_tls_enabled=False,
             moodle_apache_forced_host="codespace-8443.example.test",
+            moodle_container_cron_enabled=True,
         )
         environment = jinja2.Environment(undefined=jinja2.StrictUndefined)
         environment.filters["bool"] = bool
@@ -148,6 +155,19 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertEqual(compose["services"]["apache"]["ports"], ["8443:80"])
         self.assertEqual(compose["services"]["apache"]["healthcheck"]["test"], ["CMD", "httpd", "-t"])
         self.assertFalse(any("/conf/tls/" in mount for mount in compose["services"]["apache"]["volumes"]))
+        cron = compose["services"]["cron"]
+        self.assertEqual(cron["profiles"], ["moodle-cron"])
+        self.assertEqual(cron["user"], "33:33")
+        self.assertTrue(cron["read_only"])
+        self.assertEqual(cron["cap_drop"], ["ALL"])
+        self.assertIn("admin/cli/cron.php --keep-alive=0", cron["command"][2])
+        self.assertIn("moodle-cron-last-success", cron["healthcheck"]["test"][1])
+        self.assertNotIn("ports", cron)
+        installation = json.dumps(yaml.safe_load(
+            (ROOT / "ansible/roles/moodle/tasks/installation.yml").read_text()
+        ))
+        self.assertIn("moodle-cron", installation)
+        self.assertIn("moodle_container_cron_health", installation)
 
     def test_codespaces_deploy_uses_explicit_ansible_paths(self):
         script = (ROOT / "scripts/codespaces/deploy.sh").read_text()

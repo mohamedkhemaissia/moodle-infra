@@ -9,6 +9,10 @@ BASE=/opt/moodle
 RESTIC=/workspaces/moodle-infra/scripts/codespaces/restic.sh
 DC=(docker compose -p moodle-pilote -f "$BASE/compose.yml")
 [[ -x "$RESTIC" && -f "$BASE/compose.yml" ]] || { echo 'Configuration manquante' >&2; exit 1; }
+cron_was_running=0
+if "${DC[@]}" --profile moodle-cron ps --status running --services | grep -qx cron; then
+  cron_was_running=1
+fi
 mkdir -p "$STORE/staging" "$STORE/rollback"
 exec 9>/run/lock/moodle-pilote-backup.lock
 flock -n 9 || { echo 'Sauvegarde ou restauration deja en cours' >&2; exit 1; }
@@ -29,7 +33,12 @@ cleanup() {
     tar -C "$DATA" -xpf "$rollback/moodledata-before.tar" || rc=1
     "${DC[@]}" exec -T --user postgres postgres sh -ec 'export PGPASSWORD="$(cat /run/secrets/postgres_admin_password)"; exec pg_restore -h 127.0.0.1 -U postgres -d moodle --clean --if-exists --single-transaction --exit-on-error' < "$rollback/moodle-before.pgdump" || rc=1
   fi
-  if (( frozen )); then "${DC[@]}" up -d --no-recreate --wait --wait-timeout 180 php apache || rc=1; fi
+  if (( frozen )); then
+    "${DC[@]}" up -d --no-recreate --wait --wait-timeout 180 php apache || rc=1
+    if (( cron_was_running )); then
+      "${DC[@]}" --profile moodle-cron up -d --no-recreate --wait --wait-timeout 240 cron || rc=1
+    fi
+  fi
   rm -rf -- "$stage"
   if (( rc != 0 )); then echo "Restauration en echec. Copie de securite : $rollback" >&2; fi
   exit "$rc"
@@ -50,6 +59,7 @@ exec 8>/run/lock/moodle-pilote-cron.lock
 flock -w 60 8 || { echo 'Cron Moodle occupe' >&2; exit 1; }
 rollback=$(mktemp -d "$STORE/rollback/pre-restore-XXXXXXXX")
 frozen=1
+if (( cron_was_running )); then "${DC[@]}" --profile moodle-cron stop --timeout 60 cron; fi
 "${DC[@]}" stop --timeout 60 apache
 "${DC[@]}" stop --timeout 60 php
 "${DC[@]}" exec -T --user postgres postgres sh -ec 'export PGPASSWORD="$(cat /run/secrets/postgres_admin_password)"; exec pg_dump -h 127.0.0.1 -U postgres -d moodle -Fc' > "$rollback/moodle-before.pgdump"
@@ -60,6 +70,7 @@ find "$DATA" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 tar -C "$DATA" -xpf "$archive/moodledata.tar"
 "${DC[@]}" exec -T --user postgres postgres sh -ec 'export PGPASSWORD="$(cat /run/secrets/postgres_admin_password)"; exec pg_restore -h 127.0.0.1 -U postgres -d moodle --clean --if-exists --single-transaction --exit-on-error' < "$archive/moodle.pgdump"
 "${DC[@]}" up -d --no-recreate --wait --wait-timeout 180 php apache
+if (( cron_was_running )); then "${DC[@]}" --profile moodle-cron up -d --no-recreate --wait --wait-timeout 240 cron; fi
 frozen=0
 replaced=0
 echo "Restauration des donnees Moodle terminee. Copie prealable : $rollback"
