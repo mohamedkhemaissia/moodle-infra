@@ -52,7 +52,7 @@
     argv:
       - /usr/bin/python3
       - -c
-      - "import secrets; open({{ (site_backup_config_dir ~ '/restic-password') | to_json }}, 'x', encoding='utf-8').write(secrets.token_urlsafe(48) + '\n')"
+      - "import secrets; open({{ (site_backup_config_dir ~ '/restic-password') | to_json }}, 'x', encoding='utf-8').write(secrets.token_urlsafe(48))"
     creates: "{{ site_backup_config_dir }}/restic-password"
   no_log: true
   when: site_backup_enabled | bool
