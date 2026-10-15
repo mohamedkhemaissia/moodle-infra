@@ -33,6 +33,16 @@ def vector(value, length, **kwargs):
     return [number(item, **kwargs) for item in value]
 
 
+def preferred_predictor(ridge_mae, persistence_mae, trend_mae):
+    """Rejouer exactement la selection faite sur la partition de validation."""
+    preferred, best = "persistence", persistence_mae
+    if trend_mae + 1e-9 < best:
+        preferred, best = "linear_trend", trend_mae
+    if ridge_mae + 1e-9 < best:
+        preferred = "ridge"
+    return preferred
+
+
 class ForecastBundle:
     def __init__(self, directory):
         try:
@@ -91,7 +101,8 @@ class ForecastBundle:
                     test = evaluation["test"][metric]
                     ridge_mae = number(validation["ridge"]["mae"], nonnegative=True)
                     baseline_mae = number(validation["persistence"]["mae"], nonnegative=True)
-                    preferred = "ridge" if ridge_mae + 1e-9 < baseline_mae else "persistence"
+                    trend_mae = number(validation["linear_trend"]["mae"], nonnegative=True)
+                    preferred = preferred_predictor(ridge_mae, baseline_mae, trend_mae)
                     if (record["preferred_on_validation"][metric] != preferred
                             or validation["preferred_on_validation"] != preferred
                             or test["preferred_on_validation"] != preferred):
@@ -99,6 +110,7 @@ class ForecastBundle:
                     scores[metric] = {
                         "ridge_mae_points": number(test["ridge"]["mae"], nonnegative=True),
                         "persistence_mae_points": number(test["persistence"]["mae"], nonnegative=True),
+                        "linear_trend_mae_points": number(test["linear_trend"]["mae"], nonnegative=True),
                     }
                 self.models[key], self.evaluations[key] = record, scores
             # Les dates sont seulement descriptives, jamais utilisees comme donnees d'entree.
@@ -138,13 +150,19 @@ class ForecastBundle:
             for index, metric in enumerate(METRICS):
                 ridge = min(100.0, max(0.0, raw[index]))
                 persistence = window[-1][metric]
+                slope = values[FEATURE_NAMES.index(f"{metric}__slope_per_minute")]
+                raw_trend = persistence + slope * int(key)
+                linear_trend = min(100.0, max(0.0, raw_trend))
                 method = model["preferred_on_validation"][metric]
+                selected = {"ridge": ridge, "persistence": persistence, "linear_trend": linear_trend}
                 predictions[key][metric] = {
-                    "value": round(ridge if method == "ridge" else persistence, 3),
+                    "value": round(selected[method], 3),
                     "method": method,
                     "ridge_value": round(ridge, 3),
                     "persistence_value": round(persistence, 3),
+                    "linear_trend_value": round(linear_trend, 3),
                     "ridge_clipped": raw[index] < 0 or raw[index] > 100,
+                    "linear_trend_clipped": raw_trend < 0 or raw_trend > 100,
                     "test_evaluation": self.evaluations[key][metric],
                 }
         return predictions

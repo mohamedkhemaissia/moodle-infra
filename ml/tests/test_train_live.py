@@ -26,26 +26,41 @@ class LiveTrainingTests(unittest.TestCase):
                                   "recall": None, "false_positive_rate": None},
         }
         evaluation = {
-            "ridge": {"mae": 1.2}, "persistence": {"mae": 1.5},
-            "mae_gain_percent": 20.0, "preferred_on_validation": "ridge",
+            "ridge": {"mae": 1.2}, "persistence": {"mae": 1.5}, "linear_trend": {"mae": 1.4},
+            "evaluated_rows": 70, "ridge_gain_vs_persistence_percent": 20.0,
+            "ridge_gain_vs_linear_trend_percent": 14.2857, "preferred_on_validation": "ridge",
         }
         forecasts = {"horizons": {
             str(horizon): {"test": {metric: dict(evaluation) for metric in (
                 "cpu_usage_percent", "memory_usage_percent", "disk_available_percent"
             )}} for horizon in (5, 10, 15)
-        }}
+        }, "split_periods": [
+            {"split": "train", "start": "2026-10-14T08:00:00Z", "end_exclusive": "2026-10-14T12:00:00Z"},
+            {"split": "validation", "start": "2026-10-14T12:00:00Z", "end_exclusive": "2026-10-14T13:00:00Z"},
+            {"split": "test", "start": "2026-10-14T13:00:00Z", "end_exclusive": "2026-10-14T14:00:30Z"},
+        ]}
         evidence, markdown = train_live.evidence_document(source, features, anomaly, forecasts, {})
         self.assertEqual(evidence["status"], "validated_for_observation")
         self.assertEqual(len(evidence["forecasts"]), 9)
         self.assertIn("MAE persistance", markdown)
+        self.assertIn("MAE tendance", markdown)
+        self.assertEqual(evidence["forecasts"][0]["test_rows"], 70)
         self.assertIn("pas une probabilite de panne", markdown)
 
     def test_write_evidence_creates_json_and_jury_summary(self):
-        evidence = {"data": {"range": {"end": "2026-10-14T14:00:00Z"}}}
+        evidence = {"data": {"range": {"end": "2026-10-14T14:00:00Z"}}, "forecasts": [{
+            "horizon_minutes": 5, "metric": "cpu_usage_percent", "test_rows": 20,
+            "test_mae_ridge": 1.0, "test_mae_persistence": 2.0, "test_mae_linear_trend": 1.5,
+            "ridge_gain_vs_persistence_percent": 50.0, "ridge_gain_vs_linear_trend_percent": 33.333,
+            "selected_method": "ridge",
+        }]}
         with tempfile.TemporaryDirectory() as directory:
             result = train_live.write_evidence(Path(directory), evidence, "# Resume\n")
             self.assertTrue((result / "evidence.json").is_file())
             self.assertEqual((result / "jury-summary.md").read_text(encoding="utf-8"), "# Resume\n")
+            comparison = (result / "forecast-comparison.csv").read_text(encoding="utf-8")
+            self.assertIn("test_mae_linear_trend", comparison)
+            self.assertIn("cpu_usage_percent", comparison)
 
     def test_runtime_validation_loads_the_same_assembled_api_as_deployment(self):
         repository = Path(__file__).resolve().parents[2]

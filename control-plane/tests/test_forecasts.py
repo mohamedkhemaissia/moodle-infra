@@ -31,12 +31,14 @@ def fixture():
         mean[8], scale[8] = 2.0, 2.0
         coefficients = [[0.0] * 21 for _ in range(3)]
         coefficients[0][0], coefficients[1][8], coefficients[2][14] = 1.0, 2.0, 1.0
-        preferred = {metric: "ridge" if metric == METRICS[1] else "persistence" for metric in METRICS}
+        preferred = {METRICS[0]: "persistence", METRICS[1]: "ridge", METRICS[2]: "linear_trend"}
         models["horizons"][str(horizon)] = {
             "horizon_minutes": horizon, "alpha": 100.0, "scaler_mean": mean, "scaler_scale": scale,
             "coefficients": coefficients, "intercept": [10.0, 3.0, 0.0], "preferred_on_validation": preferred}
         scores = {metric: {"ridge": {"mae": 1.0 if preferred[metric] == "ridge" else 3.0},
-                           "persistence": {"mae": 2.0}, "preferred_on_validation": preferred[metric]}
+                           "persistence": {"mae": 2.0},
+                           "linear_trend": {"mae": 1.0 if preferred[metric] == "linear_trend" else 4.0},
+                           "preferred_on_validation": preferred[metric]}
                   for metric in METRICS}
         report["horizons"][str(horizon)] = {"selected_alpha": 100.0,
                                             "validation": copy.deepcopy(scores), "test": copy.deepcopy(scores)}
@@ -75,7 +77,8 @@ class BundleTests(unittest.TestCase):
         self.assertEqual(prediction[METRICS[0]]["ridge_value"], 30)
         self.assertEqual(prediction[METRICS[1]]["value"], 26)
         self.assertEqual(prediction[METRICS[1]]["persistence_value"], 30)
-        self.assertEqual(prediction[METRICS[2]]["method"], "persistence")
+        self.assertEqual(prediction[METRICS[2]]["method"], "linear_trend")
+        self.assertEqual(prediction[METRICS[2]]["linear_trend_value"], 60)
 
     def test_clipping_matches_training_and_is_explicit(self):
         bundle = self.load()

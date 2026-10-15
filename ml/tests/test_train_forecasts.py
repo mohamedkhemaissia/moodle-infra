@@ -82,6 +82,31 @@ class EvaluationTests(unittest.TestCase):
         with self.assertRaises(training.TrainingError):
             training.error_scores(actual, np.full((2, 3), np.nan))
 
+    def test_linear_trend_uses_only_current_values_and_historical_slopes(self):
+        rows = [{
+            "cpu_usage_percent__current": 50.0, "cpu_usage_percent__slope_per_minute": 2.0,
+            "memory_usage_percent__current": 30.0, "memory_usage_percent__slope_per_minute": -1.0,
+            "disk_available_percent__current": 99.0, "disk_available_percent__slope_per_minute": 1.0,
+            "target__cpu_usage_percent": 1.0, "target__memory_usage_percent": 99.0,
+            "target__disk_available_percent": 50.0,
+        }]
+        np.testing.assert_array_equal(training.linear_trend_predictions(rows, 5, clip=False)[0], [60, 25, 104])
+        np.testing.assert_array_equal(training.linear_trend_predictions(rows, 5)[0], [60, 25, 100])
+        changed_targets = copy.deepcopy(rows)
+        for metric in training.METRICS:
+            changed_targets[0][f"target__{metric}"] = 0.0
+        np.testing.assert_array_equal(
+            training.linear_trend_predictions(rows, 5),
+            training.linear_trend_predictions(changed_targets, 5),
+        )
+        with self.assertRaises(training.TrainingError):
+            training.linear_trend_predictions([], 5)
+
+    def test_predictor_selection_uses_validation_and_prefers_simplicity_on_ties(self):
+        self.assertEqual(training.preferred_predictor(2.0, 2.0, 2.0), "persistence")
+        self.assertEqual(training.preferred_predictor(2.0, 3.0, 1.0), "linear_trend")
+        self.assertEqual(training.preferred_predictor(0.5, 3.0, 1.0), "ridge")
+
     def test_future_test_targets_do_not_change_training_or_selection(self):
         with tempfile.TemporaryDirectory() as temporary:
             inputs = training.read_inputs(make_features(Path(temporary)))
@@ -264,6 +289,11 @@ class PublicationTests(unittest.TestCase):
                                 and row["split"] == split and row["metric"] == metric]
                         errors = [abs(float(row["ridge"]) - float(row["actual"])) for row in rows]
                         self.assertAlmostEqual(sum(errors) / len(errors), report["horizons"][str(minutes)][split][metric]["ridge"]["mae"])
+                        trend_errors = [abs(float(row["linear_trend"]) - float(row["actual"])) for row in rows]
+                        self.assertAlmostEqual(
+                            sum(trend_errors) / len(trend_errors),
+                            report["horizons"][str(minutes)][split][metric]["linear_trend"]["mae"],
+                        )
             with patch.object(training, "train_horizon", side_effect=AssertionError("aucun nouvel entrainement attendu")):
                 again, same, reused = training.perform_training(inputs, root / "models")
             self.assertTrue(reused)

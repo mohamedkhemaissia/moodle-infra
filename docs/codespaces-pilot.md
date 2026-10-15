@@ -46,9 +46,12 @@ previsions 5/10/15 minutes et validation par les chargeurs reels de l'API. Elle
 ne remplace aucune valeur absente et ne fabrique aucun incident.
 
 Une preuve JSON et un resume lisible pour le jury sont ecrits sous
-`ml/data/reports/moodle_ai_evidence_*/`. Le tableau des previsions compare Ridge
-a la reference simple de persistance. Si Ridge n'est pas meilleur sur validation,
-la reference est honnetement retenue pour la ressource et l'horizon concernes.
+`ml/data/reports/moodle_ai_evidence_*/`. Le tableau compare Ridge a la
+persistance et a la prolongation lineaire de la tendance des cinq dernieres
+minutes. Il publie les trois MAE, les gains de Ridge et l'effectif de test pour
+chaque ressource et chaque horizon. Le choix est fait uniquement sur validation ;
+le test reste reserve au resultat final. Si Ridge n'est pas meilleur, la
+reference gagnante est honnetement retenue.
 
 Les artefacts et les donnees restent ignores par Git : ils proviennent de ce
 pilote et peuvent contenir des informations operationnelles. Apres l'activation,

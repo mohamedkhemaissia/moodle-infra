@@ -37,7 +37,7 @@ export function validateDocument(kind, value) {
           if (!forecast || !date(forecast.target_evaluated_at)) fail();
           for (const [key] of RESOURCES) {
             const metric = forecast.metrics?.[key];
-            if (!metric || !percent(metric.value) || !['ridge', 'persistence'].includes(metric.method)) fail();
+            if (!metric || !percent(metric.value) || !['ridge', 'persistence', 'linear_trend'].includes(metric.method)) fail();
           }
         }
       } else {

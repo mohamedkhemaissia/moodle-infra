@@ -1,7 +1,8 @@
 """Entrainer des regressions experimentales a 5, 10 et 15 minutes pour Moodle.
 
 Apprentissage et normalisation sur train ; choix du reglage sur validation ;
-test reserve a l'evaluation. Comparaison avec la derniere valeur mesuree.
+test reserve a l'evaluation. Comparaison avec la persistance et la tendance
+lineaire calculee exclusivement sur la fenetre historique.
 Python 3.10+, dependances dans ml/requirements.txt.
 """
 
@@ -35,14 +36,15 @@ from ml import prepare_dataset as preparation
 from ml import prepare_features as features
 
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SCHEMA_VERSION = 1
 ALPHAS = (0.1, 1.0, 10.0, 100.0)
 MIN_ROWS = {"train": 20, "validation": 10, "test": 10}
 METRICS = exporter.RESOURCE_METRICS
 PREDICTION_FIELDS = (
     "horizon_minutes", "split", "evaluated_at", "target_evaluated_at", "resource_segment_id",
-    "metric", "actual", "raw_ridge", "ridge", "persistence", "preferred_on_validation", "preferred_prediction",
+    "metric", "actual", "raw_ridge", "ridge", "persistence", "raw_linear_trend", "linear_trend",
+    "preferred_on_validation", "preferred_prediction",
 )
 TrainingError = exporter.ExportError
 
@@ -216,6 +218,38 @@ def error_scores(actual: np.ndarray, predicted: np.ndarray) -> dict[str, dict[st
                    "bias": float(np.mean(errors[:, index]))} for index, name in enumerate(METRICS)}
 
 
+def linear_trend_predictions(rows: list[dict], minutes: int, *, clip: bool = True) -> np.ndarray:
+    """Prolonger la pente historique sans lire une cible ou une ligne future."""
+    if isinstance(minutes, bool) or not isinstance(minutes, int) or minutes <= 0:
+        raise TrainingError("Horizon de tendance lineaire invalide.")
+    try:
+        current = np.asarray([[finite_number(row[f"{name}__current"]) for name in METRICS]
+                              for row in rows], dtype=float)
+        slopes = np.asarray([[finite_number(row[f"{name}__slope_per_minute"]) for name in METRICS]
+                             for row in rows], dtype=float)
+    except KeyError as exc:
+        raise TrainingError("Variables de tendance lineaire absentes.") from exc
+    if current.shape != (len(rows), len(METRICS)) or not len(rows):
+        raise TrainingError("Donnees de tendance lineaire insuffisantes.")
+    raw = current + slopes * minutes
+    if not np.isfinite(raw).all():
+        raise TrainingError("Prediction de tendance lineaire non finie.")
+    return np.clip(raw, 0, 100) if clip else raw
+
+
+def preferred_predictor(ridge_mae: float, persistence_mae: float, trend_mae: float) -> str:
+    """Choisir sur validation et garder la methode la plus simple en cas d'egalite."""
+    values = (ridge_mae, persistence_mae, trend_mae)
+    if any(not math.isfinite(value) or value < 0 for value in values):
+        raise TrainingError("MAE de validation invalide.")
+    preferred, best = "persistence", persistence_mae
+    if trend_mae + 1e-9 < best:
+        preferred, best = "linear_trend", trend_mae
+    if ridge_mae + 1e-9 < best:
+        preferred = "ridge"
+    return preferred
+
+
 def predict_record(record: dict, x: np.ndarray, *, clip: bool = True) -> np.ndarray:
     """Rejouer les coefficients JSON ; aucune deserialisation d'objet Python."""
     mean, scale = np.asarray(record["scaler_mean"], dtype=float), np.asarray(record["scaler_scale"], dtype=float)
@@ -261,17 +295,33 @@ def train_horizon(rows: list[dict], minutes: int, alphas=ALPHAS) -> tuple[dict, 
         x, actual, baseline = arrays[split]
         raw = predict_record(record, x, clip=False)
         model = np.clip(raw, 0, 100)
-        model_scores, baseline_scores = error_scores(actual, model), error_scores(actual, baseline)
+        raw_trend = linear_trend_predictions(partitions[split], minutes, clip=False)
+        trend = np.clip(raw_trend, 0, 100)
+        model_scores = error_scores(actual, model)
+        baseline_scores = error_scores(actual, baseline)
+        trend_scores = error_scores(actual, trend)
         comparison = {}
         for index, name in enumerate(METRICS):
-            model_mae, baseline_mae = model_scores[name]["mae"], baseline_scores[name]["mae"]
+            model_mae = model_scores[name]["mae"]
+            baseline_mae = baseline_scores[name]["mae"]
+            trend_mae = trend_scores[name]["mae"]
             if split == "validation":
-                preferred[name] = "ridge" if model_mae + 1e-9 < baseline_mae else "persistence"
+                preferred[name] = preferred_predictor(model_mae, baseline_mae, trend_mae)
             comparison[name] = {
-                "ridge": model_scores[name], "persistence": baseline_scores[name],
+                "ridge": model_scores[name], "persistence": baseline_scores[name], "linear_trend": trend_scores[name],
                 "mae_gain_percent": (1 - model_mae / baseline_mae) * 100 if baseline_mae > 1e-12 else None,
+                "ridge_gain_vs_persistence_percent": (
+                    (1 - model_mae / baseline_mae) * 100 if baseline_mae > 1e-12 else None
+                ),
+                "ridge_gain_vs_linear_trend_percent": (
+                    (1 - model_mae / trend_mae) * 100 if trend_mae > 1e-12 else None
+                ),
                 "preferred_on_validation": preferred[name],
                 "clipped_predictions": int(np.sum((raw[:, index] < 0) | (raw[:, index] > 100))),
+                "linear_trend_clipped_predictions": int(
+                    np.sum((raw_trend[:, index] < 0) | (raw_trend[:, index] > 100))
+                ),
+                "evaluated_rows": len(partitions[split]),
             }
         evaluations[split] = comparison
         for row_index, row in enumerate(partitions[split]):
@@ -280,8 +330,11 @@ def train_horizon(rows: list[dict], minutes: int, alphas=ALPHAS) -> tuple[dict, 
                                     "target_evaluated_at": row["target_evaluated_at"], "resource_segment_id": row["resource_segment_id"],
                                     "metric": name, "actual": float(actual[row_index, column]), "raw_ridge": float(raw[row_index, column]),
                                     "ridge": float(model[row_index, column]), "persistence": float(baseline[row_index, column]),
+                                    "raw_linear_trend": float(raw_trend[row_index, column]),
+                                    "linear_trend": float(trend[row_index, column]),
                                     "preferred_on_validation": preferred[name],
-                                    "preferred_prediction": float(model[row_index, column] if preferred[name] == "ridge" else baseline[row_index, column])})
+                                    "preferred_prediction": float({"ridge": model, "persistence": baseline,
+                                                                   "linear_trend": trend}[preferred[name]][row_index, column])})
     record["preferred_on_validation"] = preferred
     report = {"rows_by_split": {name: len(items) for name, items in partitions.items()},
               "selected_alpha": alpha, "candidates": candidates, **evaluations}
@@ -298,6 +351,8 @@ def perform_training(inputs: Inputs, output_dir: Path, progress=None) -> tuple[d
                 "source_metadata_sha256": inputs.metadata_sha256, "source_input_sha256": inputs.metadata["input_sha256"],
                 "environment": environment(), "alphas": list(ALPHAS), "minimum_rows": MIN_ROWS,
                 "solver": "svd", "threads": 1, "clip_predictions_to_percent_domain": True,
+                "linear_trend": "current_plus_horizon_times_historical_least_squares_slope",
+                "linear_trend_history_minutes": inputs.metadata["lookback_seconds"] // 60,
                 "selection": "validation_mean_mae_all_resources_then_larger_alpha_on_12_decimal_tie"}
     fingerprint = hashlib.sha256(json.dumps(settings, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     end = datetime.fromtimestamp(preparation.parse_utc(inputs.metadata["source_range"]["end"]), timezone.utc)
@@ -333,9 +388,12 @@ def perform_training(inputs: Inputs, output_dir: Path, progress=None) -> tuple[d
             "units": "MAE, RMSE et biais en points de pourcentage de la ressource.",
             "fit": "Normalisation et coefficients appris uniquement sur train ; aucun reajustement sur validation ou test.",
             "selection": "Reglage Ridge sur la MAE moyenne des trois ressources en validation ; test jamais utilise pour choisir.",
-            "preferred_predictor": "Choix par ressource sur validation ; persistance en cas d'egalite a 1e-9 point pres.",
-            "baseline": "Prediction egale a la derniere valeur mesuree, avec les memes lignes et horizons que Ridge.",
-            "gain": "100*(1-MAE_Ridge/MAE_persistance) ; negatif si Ridge fait moins bien ; null si reference presque sans erreur.",
+            "preferred_predictor": "Choix par ressource sur validation entre Ridge, persistance et tendance lineaire ; methode la plus simple en cas d'egalite a 1e-9 point pres.",
+            "baselines": {
+                "persistence": "Prediction egale a la derniere valeur mesuree.",
+                "linear_trend": "Valeur courante plus pente historique par minute multipliee par l'horizon ; aucune cible future utilisee.",
+            },
+            "gain": "100*(1-MAE_Ridge/MAE_reference) ; negatif si Ridge fait moins bien ; null si la reference est presque sans erreur.",
             "clipping": "Predictions bornees a [0,100] avant selection et evaluation ; valeurs brutes conservees dans predictions.csv.",
             "target": "Valeur a l'instant t+h ; CPU deja moyenne sur deux minutes ; disque = pourcentage disponible.",
             "models_json": "Coefficients, moyennes et echelles numeriques ; predictions rejouables sans charger un objet pickle.",
@@ -367,10 +425,11 @@ def compact_summary(report: dict, directory: Path, reused: bool) -> dict:
     return {"status": "already_trained_experimental" if reused else report["status"],
             "report_file": str(directory / "report.json"), "models_file": str(directory / "models.json"),
             "predictions_file": str(directory / "predictions.csv"),
-            "horizons": {minutes: {"rows_by_split": horizon["rows_by_split"], "selected_alpha": horizon["selected_alpha"],
-                                   "test": {name: {"mae_ridge": round(values["ridge"]["mae"], 6),
-                                                   "mae_persistence": round(values["persistence"]["mae"], 6),
-                                                   "gain_percent": round(values["mae_gain_percent"], 3) if values["mae_gain_percent"] is not None else None,
+             "horizons": {minutes: {"rows_by_split": horizon["rows_by_split"], "selected_alpha": horizon["selected_alpha"],
+                                    "test": {name: {"mae_ridge": round(values["ridge"]["mae"], 6),
+                                                    "mae_persistence": round(values["persistence"]["mae"], 6),
+                                                    "mae_linear_trend": round(values["linear_trend"]["mae"], 6),
+                                                    "gain_percent": round(values["mae_gain_percent"], 3) if values["mae_gain_percent"] is not None else None,
                                                    "preferred_on_validation": values["preferred_on_validation"]}
                                             for name, values in horizon["test"].items()}}
                          for minutes, horizon in report["horizons"].items()}}

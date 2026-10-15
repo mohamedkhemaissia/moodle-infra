@@ -8,6 +8,7 @@ dans ``ml/data`` et sont verifies avec les chargeurs utilises par l'API.
 from __future__ import annotations
 
 import argparse
+import csv
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -97,11 +98,17 @@ def evidence_document(
                 "horizon_minutes": int(horizon),
                 "metric": metric,
                 "selected_method": evaluation["preferred_on_validation"],
+                "test_rows": evaluation["evaluated_rows"],
                 "test_mae_ridge": round(evaluation["ridge"]["mae"], 6),
                 "test_mae_persistence": round(evaluation["persistence"]["mae"], 6),
-                "test_gain_percent": (
-                    round(evaluation["mae_gain_percent"], 3)
-                    if evaluation["mae_gain_percent"] is not None else None
+                "test_mae_linear_trend": round(evaluation["linear_trend"]["mae"], 6),
+                "ridge_gain_vs_persistence_percent": (
+                    round(evaluation["ridge_gain_vs_persistence_percent"], 3)
+                    if evaluation["ridge_gain_vs_persistence_percent"] is not None else None
+                ),
+                "ridge_gain_vs_linear_trend_percent": (
+                    round(evaluation["ridge_gain_vs_linear_trend_percent"], 3)
+                    if evaluation["ridge_gain_vs_linear_trend_percent"] is not None else None
                 ),
             })
     evidence = {
@@ -113,6 +120,7 @@ def evidence_document(
             "range": source["range"],
             "resource_complete_rows": source["summary"]["resource_complete_rows"],
             "feature_rows_by_split": features["summary"]["rows_by_split"],
+            "split_periods": forecasts["split_periods"],
             "interpolation": False,
         },
         "anomaly_detection": {
@@ -131,7 +139,7 @@ def evidence_document(
         "limits": [
             "Le score d'anomalie n'est pas une probabilite de panne.",
             "Precision et rappel exigent des incidents independamment annotes.",
-            "Les previsions portent sur ce pilote et sont comparees a la persistance.",
+            "Les previsions portent sur ce pilote et sont comparees a la persistance et a une tendance lineaire historique.",
             "Aucune remediation n'est declenchee par ces modeles.",
         ],
     }
@@ -153,18 +161,23 @@ def evidence_document(
         f"Taux de signalement sur test : {anomaly['by_split']['test']['statistical_anomaly_rate_percent']:.2f} %.",
         "Ce score mesure un comportement atypique, pas une probabilite de panne.", "",
         "## Previsions", "",
-        "| Horizon | Ressource | Methode retenue | MAE Ridge | MAE persistance | Gain Ridge |",
-        "| ---: | --- | --- | ---: | ---: | ---: |",
+        "| Horizon | Ressource | Mesures test | MAE Ridge | MAE persistance | MAE tendance | Gain vs persist. | Gain vs tendance | Methode retenue |",
+        "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for row in forecast_rows:
-        gain = "n/a" if row["test_gain_percent"] is None else f"{row['test_gain_percent']:.2f} %"
+        gain_persistence = ("n/a" if row["ridge_gain_vs_persistence_percent"] is None
+                            else f"{row['ridge_gain_vs_persistence_percent']:.2f} %")
+        gain_trend = ("n/a" if row["ridge_gain_vs_linear_trend_percent"] is None
+                      else f"{row['ridge_gain_vs_linear_trend_percent']:.2f} %")
         lines.append(
-            f"| {row['horizon_minutes']} min | {metric_labels[row['metric']]} | "
-            f"{row['selected_method']} | {row['test_mae_ridge']:.4f} | "
-            f"{row['test_mae_persistence']:.4f} | {gain} |"
+            f"| {row['horizon_minutes']} min | {metric_labels[row['metric']]} | {row['test_rows']} | "
+            f"{row['test_mae_ridge']:.4f} | {row['test_mae_persistence']:.4f} | "
+            f"{row['test_mae_linear_trend']:.4f} | {gain_persistence} | {gain_trend} | "
+            f"{row['selected_method']} |"
         )
     lines.extend([
-        "", "Le choix Ridge/persistance est fait sur validation ; le test reste reserve a l'evaluation.",
+        "", "Le choix entre Ridge, persistance et tendance lineaire est fait sur validation ; le test reste reserve a l'evaluation.",
+        "La tendance prolonge uniquement la pente de la fenetre historique ; elle ne lit aucune mesure future.",
         "", "## Limites", "",
         *[f"- {item}" for item in evidence["limits"]], "",
     ])
@@ -179,6 +192,15 @@ def write_evidence(output_dir: Path, evidence: dict[str, Any], markdown: str) ->
         json.dumps(evidence, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8"
     )
     (directory / "jury-summary.md").write_text(markdown, encoding="utf-8")
+    comparison_fields = (
+        "horizon_minutes", "metric", "test_rows", "test_mae_ridge", "test_mae_persistence",
+        "test_mae_linear_trend", "ridge_gain_vs_persistence_percent",
+        "ridge_gain_vs_linear_trend_percent", "selected_method",
+    )
+    with (directory / "forecast-comparison.csv").open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=comparison_fields)
+        writer.writeheader()
+        writer.writerows({field: row[field] for field in comparison_fields} for row in evidence["forecasts"])
     return directory
 
 
@@ -245,6 +267,7 @@ def run_pipeline(repository: Path, prometheus_url: str, hours: float) -> dict[st
         **paths,
         "evidence_json": str(evidence_dir / "evidence.json"),
         "jury_summary": str(evidence_dir / "jury-summary.md"),
+        "forecast_comparison_csv": str(evidence_dir / "forecast-comparison.csv"),
         "next_command": "bash scripts/codespaces/deploy.sh",
     }
 

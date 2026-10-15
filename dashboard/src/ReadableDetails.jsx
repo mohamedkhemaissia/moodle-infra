@@ -90,7 +90,7 @@ export function RunSummary({ run }) {
 }
 
 export function ForecastMethods({ forecasts }) {
-  const methods = { persistence: 'Maintien de la dernière valeur', ridge: 'Régression', linear: 'Régression linéaire' };
+  const methods = { persistence: 'Maintien de la dernière valeur', ridge: 'Régression', linear_trend: 'Tendance récente' };
   return <SummaryList rows={Object.entries(forecasts).map(([horizon, forecast]) => {
     const used = [...new Set(Object.values(forecast.metrics).map((metric) => methods[metric.method] || 'Modèle de prévision'))];
     return ['À ' + horizon + ' minutes', used.join(' · ')];

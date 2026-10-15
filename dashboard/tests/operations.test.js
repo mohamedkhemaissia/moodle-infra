@@ -14,6 +14,9 @@ const analysis = (kind) => ({ status: 'available', experimental: true, evaluated
 
 test('Prévisions : zéro reste valide, les horizons ou méthodes invalides sont refusés', () => {
   assert.equal(validateDocument('forecast', analysis('forecast')).forecasts['5'].metrics.cpu_usage_percent.value, 0);
+  const trend = analysis('forecast');
+  trend.forecasts['5'].metrics.cpu_usage_percent.method = 'linear_trend';
+  assert.equal(validateDocument('forecast', trend).forecasts['5'].metrics.cpu_usage_percent.method, 'linear_trend');
   for (const issue of ['missing', 'method', 'nan', 'overflow']) {
     const data = analysis('forecast');
     if (issue === 'missing') delete data.forecasts['15'];
