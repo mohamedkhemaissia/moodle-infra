@@ -24,6 +24,11 @@ printf 'Moodle HTTPS: %s\n' "$moodle_status"
 printf 'File diagnostics: %s\n' "$worker_status"
 printf 'Remediation automatique: %s\n' "$remediation_status"
 printf 'Profils PHP-FPM: %s\n' "$php_profiles_status"
+if sudo /usr/local/sbin/moodle-site-operations-worker --healthcheck >/dev/null 2>&1; then
+  printf '%s\n' 'Sauvegarde complete: disponible (automatique toutes les 24 h)'
+else
+  printf '%s\n' 'Sauvegarde complete: indisponible'
+fi
 if sudo docker compose -p moodle-pilote -f /opt/moodle/compose.yml --profile moodle-cron exec -T cron \
   sh -ec 'last=$(cat /tmp/moodle-cron-last-success 2>/dev/null || echo 0); now=$(date +%s); [ $((now - last)) -le 180 ]' \
   >/dev/null 2>&1; then
@@ -43,4 +48,4 @@ if [[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/moodle-pilotage/email.json" ]]; then
 else
   printf 'Notifications email: non configurees\n'
 fi
-sudo supervisorctl status moodle-container-metrics moodle-diagnostic-requests moodle-remediation-worker
+sudo supervisorctl status moodle-container-metrics moodle-diagnostic-requests moodle-remediation-worker moodle-site-operations

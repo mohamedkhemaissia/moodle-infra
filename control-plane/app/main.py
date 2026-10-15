@@ -14,6 +14,7 @@ from .container_metrics import summary as container_metrics_summary, parse_targe
 from .auth import Settings as AuthSettings, install as install_auth
 from .diagnostic_requests import install as install_diagnostic_requests
 from .course_operations import CourseOperationError, CourseOperationStore, install as install_course_operations
+from .site_operations import SiteOperationError, SiteOperationStore, install as install_site_operations
 from .recovery_requests import install as install_recovery_requests
 from .operating_policy import install as install_operating_policy
 from .php_profiles import read_status as read_php_profiles
@@ -67,6 +68,8 @@ def create_app(
     decision_journal_enabled: bool | None = None,
     course_operations_enabled: bool | None = None,
     course_operations_dir: str | None = None,
+    site_operations_enabled: bool | None = None,
+    site_operations_dir: str | None = None,
 ) -> FastAPI:
     authentication = AuthSettings.load(auth_enabled, auth_origins, auth_secure_cookie, auth_worker_hash_file)
     backup_file = backup_status_file if backup_status_file is not None else os.getenv("BACKUP_STATUS_FILE", "")
@@ -154,6 +157,16 @@ def create_app(
     if type(course_operations_enabled) is not bool or (course_operations_enabled and (
             not authentication.enabled or not course_operations_directory)):
         raise ValueError("Les sauvegardes de cours exigent les comptes et un stockage dedie.")
+    if site_operations_enabled is None:
+        setting = os.getenv("SITE_OPERATIONS_ENABLED", "false")
+        if setting not in ("true", "false"):
+            raise ValueError("SITE_OPERATIONS_ENABLED doit valoir true ou false.")
+        site_operations_enabled = setting == "true"
+    site_operations_directory = (site_operations_dir if site_operations_dir is not None
+                                 else os.getenv("SITE_OPERATIONS_DIR", ""))
+    if type(site_operations_enabled) is not bool or (site_operations_enabled and (
+            not authentication.enabled or not site_operations_directory)):
+        raise ValueError("La sauvegarde complete exige les comptes et un stockage dedie.")
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -172,6 +185,10 @@ def create_app(
         if course_operations_enabled:
             application.state.course_operations = CourseOperationStore(course_operations_directory)
             await asyncio.to_thread(application.state.course_operations.check)
+        application.state.site_operations = None
+        if site_operations_enabled:
+            application.state.site_operations = SiteOperationStore(site_operations_directory)
+            await asyncio.to_thread(application.state.site_operations.check)
         application.state.recovery_execution_enabled = recovery_execution_enabled
         application.state.recovery_requests = None
         if recovery_requests_enabled:
@@ -217,6 +234,7 @@ def create_app(
     install_recovery_requests(application)
     install_operating_policy(application)
     install_course_operations(application)
+    install_site_operations(application)
 
     @application.get("/api/v1/health", tags=["Sante"])
     async def health():
@@ -308,11 +326,16 @@ def create_app(
                 request.app.state.course_operations.check()
                 result["course_operations"] = {"status": "available", "schema_version": 1,
                                                 "backend": "filesystem", "mode": "course_only"}
+            if request.app.state.site_operations is not None:
+                request.app.state.site_operations.check()
+                result["site_operations"] = {"status": "available", "schema_version": 1,
+                                              "backend": "filesystem", "mode": "site_full"}
             return result
         try:
             stores = await asyncio.to_thread(inspect_storage)
         except (IncidentStorageError, DiagnosticStorageError, DiagnosticRequestStorageError,
-                AuthStorageError, RecoveryStorageError, PolicyStorageError, CourseOperationError) as exc:
+                AuthStorageError, RecoveryStorageError, PolicyStorageError, CourseOperationError,
+                SiteOperationError) as exc:
             raise HTTPException(503, detail="Le stockage du pilotage est indisponible.") from exc
         if not stores:
             raise HTTPException(503, detail="Aucun historique du pilotage n'est configure.")

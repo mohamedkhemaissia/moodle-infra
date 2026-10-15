@@ -16,6 +16,8 @@ moodle_wwwroot: "https://{{ codespaces_moodle_hostname }}"
 moodle_reverseproxy_enabled: false
 moodle_sslproxy_enabled: true
 moodle_course_operations_enabled: true
+site_backup_enabled: true
+site_backup_operations_dir: /var/lib/moodle-site-operations
 
 monitoring_moodle_hostname: "{{ codespaces_moodle_hostname }}"
 monitoring_moodle_https_port: "{{ codespaces_moodle_port }}"
@@ -43,6 +45,8 @@ diagnostic_requests_scheduler: supervisor
 control_plane_diagnostic_requests_enabled: true
 control_plane_course_operations_enabled: true
 control_plane_course_operations_dir: /var/lib/moodle-course-operations
+control_plane_site_operations_enabled: true
+control_plane_site_operations_dir: /var/lib/moodle-site-operations
 
 # Le worker est installe mais le pilote reste en observation par defaut.
 # Seul l'administrateur peut confirmer le passage en mode automatique.
@@ -69,8 +73,8 @@ monitoring_alert_smtp_from: "{{ codespaces_email_settings.smtp_from | default(''
 monitoring_alert_smtp_username: "{{ codespaces_email_settings.smtp_username | default('') }}"
 monitoring_alert_email_to: "{{ codespaces_email_settings.email_to | default('') }}"
 
-# Hors périmètre demandé : aucun statut Restic, aucune demande de reprise et
-# aucune exécution de restauration n'est publiée dans ce déploiement.
+# Les anciens modules de PRA isole restent desactives. Le pilote utilise le
+# parcours simplifie de sauvegarde complete et de restauration directe.
 control_plane_backup_status_enabled: false
 control_plane_backup_catalog_enabled: false
 control_plane_pilotage_backup_status_enabled: false

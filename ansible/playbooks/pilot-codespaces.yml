@@ -14,11 +14,14 @@
           - remediation_worker_scheduler == 'supervisor'
           - remediation_php_profiles_enabled | bool
           - moodle_course_operations_enabled | bool
+          - site_backup_enabled | bool
+          - control_plane_site_operations_enabled | bool
           - not (control_plane_backup_status_enabled | bool)
           - not (control_plane_recovery_requests_enabled | bool)
-        fail_msg: "Utiliser le Codespace du depot ; le PRA complet reste exclu et la remediation est bornee a PHP."
+        fail_msg: "Utiliser le Codespace du depot ; la reprise reste bornee au pilote et la remediation a PHP."
   roles:
     - moodle
+    - site_backup
     - application_monitoring
     - container_monitoring
     - monitoring

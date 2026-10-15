@@ -6,7 +6,8 @@ umask 077
 SNAPSHOT=$1
 STORE=/opt/moodle-pfe-backup
 BASE=/opt/moodle
-RESTIC=/workspaces/moodle-infra/scripts/codespaces/restic.sh
+RESTIC="${MOODLE_RESTIC_WRAPPER:-/usr/local/sbin/moodle-site-restic}"
+[[ -x "$RESTIC" ]] || RESTIC=/workspaces/moodle-infra/scripts/codespaces/restic.sh
 DC=(docker compose -p moodle-pilote -f "$BASE/compose.yml")
 [[ -x "$RESTIC" && -f "$BASE/compose.yml" ]] || { echo 'Configuration manquante' >&2; exit 1; }
 cron_was_running=0
