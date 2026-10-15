@@ -5,6 +5,7 @@ remediation_source_dir: "{{ playbook_dir }}/../../remediation"
 remediation_diagnostics_source_dir: "{{ playbook_dir }}/../../diagnostics"
 remediation_python: /opt/moodle-diagnostics/venv/bin/python
 remediation_api_url: "http://127.0.0.1:{{ control_plane_port | default(8000) }}"
+remediation_moodle_project: moodle-pilote
 remediation_php_profiles_enabled: false
 remediation_worker_enabled: true
 remediation_worker_scheduler: systemd

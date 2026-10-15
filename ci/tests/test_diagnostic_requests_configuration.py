@@ -86,9 +86,14 @@ class DiagnosticRequestsConfigurationTests(unittest.TestCase):
         self.assertTrue(values["remediation_proxy_tls_terminated"])
         self.assertEqual(values["remediation_operations_check_mode"], "marker_only")
         self.assertEqual(values["remediation_probe_hostname"], "{{ codespaces_moodle_hostname }}")
-        remediation_tasks = json.dumps(yaml.safe_load(
-            (ROOT / "ansible/roles/remediation/tasks/main.yml").read_text()
-        ))
+        remediation_task_list = yaml.safe_load(
+            (ROOT / "ansible/roles/remediation/tasks/main.yml").read_text())
+        dependency_wait = next(task for task in remediation_task_list if task.get("name") ==
+                               "Attendre les dependances Moodle avant de preparer les profils")
+        self.assertEqual(dependency_wait["loop"], ["php", "apache", "postgres"])
+        self.assertEqual(dependency_wait["retries"], 24)
+        self.assertIn("healthy", dependency_wait["until"])
+        remediation_tasks = json.dumps(remediation_task_list)
         self.assertIn("/usr/bin/supervisorctl", remediation_tasks)
         self.assertIn("--healthcheck", remediation_tasks)
         supervisor = (ROOT / "ansible/roles/remediation/templates/moodle-remediation-worker.supervisor.j2").read_text()

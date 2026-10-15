@@ -12,6 +12,7 @@
       - remediation_worker_interval_seconds | int >= 5
       - remediation_worker_interval_seconds | int <= 300
       - remediation_worker_supervisor_program is match('^[a-z][a-z0-9-]{2,63}$')
+      - remediation_moodle_project is match('^[a-z0-9][a-z0-9_-]{2,63}$')
       - remediation_probe_scheme in ['http', 'https']
       - remediation_operations_check_mode in ['systemd', 'marker_only']
       - control_plane_remediation_enabled | bool
@@ -162,6 +163,26 @@
     group: root
     mode: "0755"
   when: remediation_php_profiles_enabled | bool
+
+- name: Attendre les dependances Moodle avant de preparer les profils
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{.State.Health.Status}}' }}"
+      - "{{ remediation_moodle_project }}-{{ item }}-1"
+  loop: [php, apache, postgres]
+  register: remediation_profile_dependencies
+  changed_when: false
+  retries: 24
+  delay: 5
+  until: >-
+    remediation_profile_dependencies.rc == 0 and
+    remediation_profile_dependencies.stdout | trim == 'healthy'
+  when:
+    - remediation_php_profiles_enabled | bool
+    - remediation_policy_activation.stat.exists
 
 - name: Preparer les profils avec PHP sans changer le pool en service
   ansible.builtin.command:
