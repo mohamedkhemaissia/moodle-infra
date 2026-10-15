@@ -15,7 +15,7 @@ La version 0.4.0 de l’API ajoute un historique d’incidents. Un processus `ob
 | Historique d’analyse | Ressources ne présentant pas les 420 secondes d’historique continu nécessaires. |
 | Anomalie statistique | Score Isolation Forest supérieur au seuil du modèle ; aucune cause de panne établie. |
 
-Ces signaux restent distincts. Une interruption de collecte ne prouve pas une panne Moodle. Les prévisions ne déclenchent pas d’incident de saturation dans cette version.
+Ces signaux restent distincts. Une interruption de collecte ne prouve pas une panne Moodle. Un score atypique ne suffit pas, à lui seul, à prouver une saturation ni sa cause.
 
 ## Cycle de vie
 

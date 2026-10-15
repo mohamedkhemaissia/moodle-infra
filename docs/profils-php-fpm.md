@@ -50,7 +50,7 @@ consommation des extensions PHP : les mesures après changement restent nécessa
 Le même verrou, Runner, journal PostgreSQL et délai de protection de 300 secondes
 sont utilisés pour les deux corrections. La réservation et l'autorisation sont
 durables avant l'écriture ; une seule action est autorisée par incident. Un score
-Isolation Forest ou une prévision ne suffit pas à lancer un profil.
+Un score Isolation Forest ou un simple dépassement ponctuel ne suffit pas à lancer un profil.
 
 Le fichier `/opt/moodle/config/php/zz-moodle.conf`, monté individuellement dans PHP,
 garde son inode. Le module valide la configuration effective de `www`, confirme le

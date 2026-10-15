@@ -41,22 +41,20 @@ bash scripts/codespaces/train-ai.sh --deploy
 
 Cette commande examine les six dernieres heures de Prometheus, conserve la plus
 longue periode continue de CPU, memoire et disque, puis execute toute la chaine :
-export verifie, partitions chronologiques 70/15/15, variables, Isolation Forest,
-previsions 5/10/15 minutes et validation par les chargeurs reels de l'API. Elle
-ne remplace aucune valeur absente et ne fabrique aucun incident.
+export verifie, partitions chronologiques 70/15/15, variables, entrainement
+Isolation Forest et validation par le chargeur reel de l'API. Elle ne remplace
+aucune valeur absente et ne fabrique aucun incident.
 
 Une preuve JSON et un resume lisible pour le jury sont ecrits sous
-`ml/data/reports/moodle_ai_evidence_*/`. Le tableau compare Ridge a la
-persistance et a la prolongation lineaire de la tendance des cinq dernieres
-minutes. Il publie les trois MAE, les gains de Ridge et l'effectif de test pour
-chaque ressource et chaque horizon. Le choix est fait uniquement sur validation ;
-le test reste reserve au resultat final. Si Ridge n'est pas meilleur, la
-reference gagnante est honnetement retenue.
+`ml/data/reports/moodle_ai_evidence_*/`. Ils publient la provenance des donnees,
+le seuil appris, les effectifs train/validation/test et le taux d'observations
+signalees. Sans incidents annotes independamment, precision, rappel et taux de
+fausses alertes restent explicitement non mesures.
 
 Les artefacts et les donnees restent ignores par Git : ils proviennent de ce
 pilote et peuvent contenir des informations operationnelles. Apres l'activation,
-la section IA du tableau de bord affiche le score Isolation Forest et les
-horizons 5, 10 et 15 minutes.
+la section IA du tableau de bord affiche uniquement le resultat Isolation Forest
+et une interpretation destinee a l'administrateur.
 
 Si moins de quatre heures continues sont disponibles, la commande s'arrete avec
 la duree mesuree et demande simplement de laisser le Codespace actif. Ce minimum
@@ -71,8 +69,6 @@ Les données et modèles sont volontairement exclus de Git. Si les artefacts val
 ml/data/features/moodle_features_*/metadata.json
 ml/data/models/moodle_anomalies_*/model.json
 ml/data/models/moodle_anomalies_*/report.json
-ml/data/models/moodle_forecasts_*/models.json
-ml/data/models/moodle_forecasts_*/report.json
 ```
 
 `deploy.sh` sélectionne la version locale complète la plus récente. Il est aussi possible de fournir explicitement des chemins absolus :
@@ -80,10 +76,9 @@ ml/data/models/moodle_forecasts_*/report.json
 ```bash
 export MOODLE_FEATURES_DIR=/workspaces/moodle-infra/ml/data/features/moodle_features_VERSION
 export MOODLE_ANOMALY_BUNDLE_DIR=/workspaces/moodle-infra/ml/data/models/moodle_anomalies_VERSION
-export MOODLE_FORECAST_BUNDLE_DIR=/workspaces/moodle-infra/ml/data/models/moodle_forecasts_VERSION
 ```
 
-En l’absence d’artefacts réels, le déploiement continue mais l’API affiche honnêtement l’IA comme indisponible. Aucun modèle fictif n’est créé. Lorsque les artefacts sont présents, les écrans exposent le score Isolation Forest et les horizons de prévision 5, 10 et 15 minutes.
+En l’absence d’artefacts réels, le déploiement continue mais l’API affiche honnêtement l’IA comme indisponible. Aucun modèle fictif n’est créé. Lorsque les artefacts sont présents, l’écran expose le score Isolation Forest et son interprétation.
 Avant Ansible, le script applique aux bundles locaux les mêmes contrôles de
 structure, d'empreinte et de provenance que l'API. Un bundle incomplet, ancien
 ou associé à un autre jeu de features est ignoré et la capacité concernée
@@ -213,7 +208,7 @@ panne Moodle. Conserver les ports Codespaces en visibilité **Private**.
 
 1. Se connecter au tableau de bord avec le compte administrateur.
 2. Montrer les ressources, services applicatifs, conteneurs et état de collecte.
-3. Montrer le score d’anomalie et les prévisions 5/10/15 minutes si les artefacts sont présents.
+3. Montrer le résultat Isolation Forest, puis rappeler qu'une anomalie statistique n'est ni un incident confirmé ni une cause technique.
 4. Ouvrir un incident réellement observé et expliquer les causes possibles, les mesures liées et l’avertissement de non-causalité.
 5. Si une recommandation courante existe, cliquer sur **Demander un diagnostic**. La demande passe par React → FastAPI → PostgreSQL → worker → Ansible Runner et reste en lecture seule.
 6. Montrer le résultat et son lien vers l’historique des diagnostics.

@@ -1,6 +1,6 @@
 # Plateforme de pilotage et de résilience Moodle
 
-Ce dépôt contient le pilote du PFE : Moodle conteneurisé, supervision Prometheus, détection d’anomalies Isolation Forest, prévisions à 5/10/15 minutes, incidents, diagnostics guidés et interventions encadrées depuis un tableau de bord React.
+Ce dépôt contient le pilote du PFE : Moodle conteneurisé, supervision Prometheus, détection d’anomalies Isolation Forest, incidents, diagnostics guidés, interventions encadrées et récupération pédagogique depuis un tableau de bord React.
 
 Le parcours de démonstration est prévu pour **GitHub Codespaces** sur la branche `demo-codespaces`. Il ne nécessite pas de VM dédiée.
 
