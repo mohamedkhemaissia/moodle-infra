@@ -3,7 +3,7 @@ import { useReadings } from './useReadings.js';
 import { applicationView } from './applicationMetrics.js';
 import { containerView } from './containerMetrics.js';
 import { requestPath } from './operations.js';
-import { STATUS, displayDate, readingStatus, OVERVIEW_REQUESTS, currentRecommendations, importantIncidents, moodleBackupStatus, moodleStatus, observerCurrent } from './navigation.js';
+import { STATUS, displayDate, readingStatus, OVERVIEW_REQUESTS, currentRecommendations, importantIncidents, moodleStatus, observerCurrent } from './navigation.js';
 import './backups.css';
 
 // Shared presentation components for operational screens.
@@ -143,8 +143,6 @@ export default function ApplicationServices({ now, view, refreshToken }) {
   </section>;
 }
 
-const numbers = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
-
 function SectionLink({ section, children, onNavigate, incidentId }) {
   return <a className="section-link" href={`#${section}`} onClick={(event) => {
     if (onNavigate) { event.preventDefault(); onNavigate(section, incidentId); }
@@ -158,7 +156,6 @@ export function OverviewView({ view, readings, decisions = {}, now, onNavigate }
   const count = readings.summary?.data?.counts.open;
   const alertStatus = !observed ? readingStatus(readings.summary) : count > 0 ?
     (incidents.some((row) => row.severity === 'critical') ? 'critical' : 'warning') : 'operational';
-  const backup = moodleBackupStatus(readings, now);
   const php = applicationView(readings.applications?.data, 'php_fpm', now);
   const apache = containerView(readings.containers?.data, now).rows.find((row) => row.service === 'apache');
   const recommendations = currentRecommendations(incidents, decisions, readings.summary?.data, now);
@@ -170,14 +167,19 @@ export function OverviewView({ view, readings, decisions = {}, now, onNavigate }
       php.reachable === true ? 'Accès confirmé' : 'Disponibilité non confirmée'],
   ];
   return <section id="overview" className="overview" aria-label="Vue de pilotage Moodle">
-    <div className="health-summary card">
-      <div><p className="eyebrow">Plateforme Moodle</p><h2>{status === 'operational' ? 'Moodle est accessible' :
-        status === 'degraded' ? 'Un service Moodle est dégradé' : status === 'unavailable' ? 'Moodle est indisponible' : 'Disponibilité à confirmer'}</h2>
-        <p className="ops-caption">{view.metrics.moodle_probe_duration_ms !== null && view.metrics.moodle_probe_duration_ms !== undefined ?
-          `Réponse HTTPS : ${numbers.format(view.metrics.moodle_probe_duration_ms)} ms` : 'En attente de mesures HTTPS récentes.'}</p></div>
-      <StatusBadge state={status} />
+    <div className="overview-kpis" aria-label="État synthétique de la plateforme">
+      <article className="card overview-kpi"><p>Plateforme Moodle</p>
+        <strong>{status === 'operational' ? 'Accessible' : status === 'degraded' ? 'Dégradée' :
+          status === 'unavailable' ? 'Indisponible' : 'À confirmer'}</strong><StatusBadge state={status} /></article>
+      <article className="card overview-kpi"><p>Incidents ouverts</p>
+        <strong>{typeof count === 'number' ? count : '—'}</strong><StatusBadge state={alertStatus} /></article>
+      <article className="card overview-kpi"><p>Ressources</p>
+        <strong>{['cpu_usage_percent', 'memory_usage_percent', 'disk_available_percent'].every((key) =>
+          Number.isFinite(view.metrics[key])) ? 'Mesurées' : 'À confirmer'}</strong>
+        <StatusBadge state={['cpu_usage_percent', 'memory_usage_percent', 'disk_available_percent'].every((key) =>
+          Number.isFinite(view.metrics[key])) ? 'operational' : 'unknown'} /></article>
     </div>
-    <div className="overview-grid">
+    <div className="overview-grid overview-grid-wide">
       <article className="card overview-panel" aria-labelledby="overview-alerts">
         <div className="overview-heading"><h2 id="overview-alerts">Alertes et incidents</h2><StatusBadge state={alertStatus} /></div>
         <p className="overview-count">{typeof count === 'number' ? count : '—'} <span>incident{count !== 1 ? 's' : ''} ouvert{count !== 1 ? 's' : ''}</span></p>
@@ -188,14 +190,6 @@ export function OverviewView({ view, readings, decisions = {}, now, onNavigate }
           <p className="ops-caption">{readings.incidents?.error || 'Liste des incidents indisponible ou en cours de lecture.'}</p>}
         {incidents.length > 0 && <p className="ops-caption">Priorités parmi les 10 incidents ouverts les plus récents.</p>}
         <SectionLink section="incidents" onNavigate={onNavigate}>Consulter les incidents</SectionLink>
-      </article>
-      <article className="card overview-panel" aria-labelledby="overview-backups">
-        <div className="overview-heading"><h2 id="overview-backups">Sauvegardes Moodle</h2><StatusBadge state={backup.status} /></div>
-        <dl className="summary-facts"><div><dt>Dernier point confirmé</dt><dd>{displayDate(readings.backup?.data?.latest_success?.frozen_at_utc)}</dd></div>
-          <div><dt>Ancienneté</dt><dd>{Number.isFinite(backup.ageHours) ? numbers.format(backup.ageHours) + ' h' : 'Inconnue'}</dd></div>
-          <div><dt>Disponibilité dans le dépôt</dt><dd>{backup.presence === 'present' ? 'Présent' : backup.presence === 'absent' ? 'Absent' : 'À confirmer'}</dd></div></dl>
-        {(readings.backup?.error || readings.catalog?.error) && <p className="ops-caption" role="status">Suivi des sauvegardes incomplet.</p>}
-        <SectionLink section="backups" onNavigate={onNavigate}>Consulter les sauvegardes</SectionLink>
       </article>
     </div>
     <div className="overview-section-heading"><h2>Ressources principales</h2>
@@ -215,7 +209,6 @@ export function OverviewView({ view, readings, decisions = {}, now, onNavigate }
             <SectionLink section="incidents" incidentId={incident.id} onNavigate={onNavigate}>Consulter la recommandation</SectionLink></div></li>)}</ul> :
           <p className="ops-caption">{observed && count === 0 ? 'Aucune action recommandée pour les incidents ouverts.' :
             'Consultez les incidents pour leurs recommandations, blocages et données actuelles.'}</p>}
-        {backup.status === 'warning' && <p className="ops-caption">Vérifier le point de sauvegarde et sa disponibilité dans le dépôt.</p>}
         <SectionLink section="policies" onNavigate={onNavigate}>Consulter la politique active</SectionLink>
       </article>
     </div>

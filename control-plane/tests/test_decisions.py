@@ -279,7 +279,7 @@ class DecisionAPITests(unittest.IsolatedAsyncioTestCase):
                     store.apply(at,observations(metrics(cpu=90),analysis(at)),completed_at=at)
             def reject_network(request):
                 raise AssertionError("Une lecture des decisions ne doit pas interroger Prometheus.")
-            application=create_app(incidents_dir=directory if storage else "",forecasts_dir="",anomalies_dir="",
+            application=create_app(incidents_dir=directory if storage else "",anomalies_dir="",
                                    decisions_enabled=enabled,transport=httpx.MockTransport(reject_network))
             async with application.router.lifespan_context(application):
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application),base_url="http://testserver") as client:

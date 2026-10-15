@@ -1,5 +1,0 @@
----
-# Artefacts experimentaux entraines sur le pilote ; fichiers de donnees exclus de Git.
-control_plane_forecasts_enabled: true
-control_plane_forecast_bundle_dir: /home/hamma/moodle-infra/ml/data/models/moodle_forecasts_20261006T192230Z_ed82da34589f
-control_plane_forecast_features_dir: /home/hamma/moodle-infra/ml/data/features/moodle_features_20261006T192230Z_a4188acb4149

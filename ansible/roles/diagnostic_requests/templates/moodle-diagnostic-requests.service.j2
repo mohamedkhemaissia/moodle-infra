@@ -1,0 +1,24 @@
+[Unit]
+Description=Traiter les diagnostics guides Moodle en lecture seule
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/sbin/moodle-diagnostic-requests-worker
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=190
+UMask=0027
+Nice=10
+CPUQuota=50%
+MemoryMax=512M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ReadWritePaths={{ diagnostics_data_dir | default('/var/lib/moodle-diagnostics') }}
+
+[Install]
+WantedBy=multi-user.target

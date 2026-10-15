@@ -14,7 +14,6 @@ import httpx
 from app.anomalies import AnomalyBundle, AnomalyBundleError, QUALITY, SETTINGS_KEYS
 from app.main import create_app
 from app.resource_history import FEATURE_NAMES, METRICS, feature_vector
-import test_forecasts as forecast_fixtures
 
 
 def fixture():
@@ -86,6 +85,12 @@ class AnomalyBundleTests(unittest.TestCase):
         self.assertFalse(bundle.evaluate(self.rows(cpu=20))["statistical_anomaly"])
         self.assertFalse(bundle.evaluate(self.rows(cpu=0))["statistical_anomaly"])
 
+    def test_current_feature_schema_and_previous_bundle_remain_loadable(self):
+        self.load()
+        self.model,self.report,self.metadata = fixture()
+        self.metadata["schema_version"] = 2
+        self.load()
+
     def test_operational_rules_are_independent_and_disk_direction_is_correct(self):
         bundle = self.load()
         value = bundle.evaluate(self.rows(memory=90,disk=10))
@@ -151,23 +156,64 @@ class AnomalyBundleTests(unittest.TestCase):
 
 class AnomalyAPITests(unittest.IsolatedAsyncioTestCase):
     @asynccontextmanager
-    async def client(self,handler,*,enabled=True,corrupt=False,forecasts=False):
-        with tempfile.TemporaryDirectory() as directory,tempfile.TemporaryDirectory() as forecast_directory:
+    async def client(self,handler,*,enabled=True,corrupt=False):
+        with tempfile.TemporaryDirectory() as directory:
             write_bundle(directory,*fixture())
             if corrupt:
                 (Path(directory)/"model.json").write_text("{}")
-            if forecasts:
-                forecast_fixtures.write_bundle(forecast_directory,*forecast_fixtures.fixture())
-            application = create_app(transport=httpx.MockTransport(handler),
-                forecasts_dir=forecast_directory if forecasts else "",anomalies_dir=directory if enabled else "")
+            application = create_app(transport=httpx.MockTransport(handler), anomalies_dir=directory if enabled else "")
             async with application.router.lifespan_context(application):
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application),base_url="http://testserver") as client:
                     with patch("app.main.datetime") as clock:
                         clock.now.return_value = datetime(2026,10,7,8,30,12,tzinfo=timezone.utc)
                         yield client
 
-    def handler(self,**kwargs):
-        return forecast_fixtures.ForecastAPITests.handler(None,**kwargs)
+    def handler(self,mode=None,seen=None,live=None):
+        def handle(request):
+            if seen is not None:
+                seen.append(request)
+            if mode == "offline":
+                raise httpx.ConnectError("Simulation",request=request)
+            if mode == "timeout":
+                raise httpx.ReadTimeout("Simulation",request=request)
+            if mode == "server_error":
+                return httpx.Response(503)
+            if mode == "invalid_json":
+                return httpx.Response(200,text="{invalid")
+            params=request.url.params
+            query=params["query"]
+            key="age" if query.startswith("time()") else "up" if query.startswith("up{") else \
+                "cpu" if "node_cpu" in query else "memory" if "node_memory" in query else "disk"
+            if request.url.path.endswith("/query"):
+                value=1
+                if key == "age" and (mode == "live_stale" or live and live.get("stale")):
+                    value=61
+                if key == "up" and mode == "live_down":
+                    value=0
+                result=[] if mode == "live_missing" else [{"metric":{},"value":[float(params["time"]),str(value)]}]
+                return httpx.Response(200,json={"status":"success","data":{"resultType":"vector","result":result}})
+            start,end,step=(int(params[name]) for name in ("start","end","step"))
+            samples=[]
+            for index,timestamp in enumerate(range(start,end+1,step)):
+                value={"up":1,"age":1,"cpu":10+index,"memory":30+index/10,"disk":40}[key]
+                if index == 0 and mode == "old_context_gap" and key == "cpu":
+                    continue
+                if index == 7 and mode == "missing" and key == "cpu":
+                    continue
+                if index == 7 and mode == "stale" and key == "age": value=61
+                if index == 7 and mode == "down" and key == "up": value=0
+                if index == 7 and mode == "nan" and key == "cpu": value="NaN"
+                if mode == "zero" and key == "cpu": value=0
+                if mode == "out_of_domain" and key == "memory": value=101
+                samples.append([timestamp,str(value)])
+            if mode == "off_grid" and key == "cpu": samples[0][0]+=1
+            if mode == "reordered" and key == "cpu": samples.reverse()
+            if mode == "duplicate" and key == "cpu": samples[1]=samples[0]
+            result=[{"metric":{},"values":samples}]
+            if mode == "ambiguous" and key == "memory": result*=2
+            if mode == "empty": result=[]
+            return httpx.Response(200,json={"status":"success","data":{"resultType":"matrix","result":result}})
+        return handle
 
     async def test_complete_history_scores_current_grid_with_provenance(self):
         async with self.client(self.handler()) as client:
@@ -242,13 +288,9 @@ class AnomalyAPITests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual((await client.get("/api/v1/health")).status_code,200)
                 self.assertEqual((await client.get("/api/v1/metrics/summary")).status_code,200)
 
-    async def test_forecasts_and_anomalies_can_be_enabled_together(self):
-        async with self.client(self.handler(),forecasts=True) as client:
-            for path in ("/api/v1/forecasts/summary","/api/v1/anomalies/summary"):
-                response=await client.get(path)
-                self.assertEqual(response.status_code,200)
-                self.assertEqual(response.json()["status"],"available")
-
+    async def test_forecast_endpoint_is_outside_the_final_scope(self):
+        async with self.client(self.handler()) as client:
+            self.assertEqual((await client.get("/api/v1/forecasts/summary")).status_code,404)
 
 if __name__=="__main__":
     unittest.main()

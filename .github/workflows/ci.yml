@@ -3,6 +3,7 @@ name: Moodle - verification continue
 on:
   push:
     paths:
+      - '.devcontainer/**'
       - '.github/**'
       - 'ci/**'
       - 'ansible/**'
@@ -21,6 +22,7 @@ on:
       - 'tests/postgresql/**'
   pull_request:
     paths:
+      - '.devcontainer/**'
       - '.github/**'
       - 'ci/**'
       - 'ansible/**'

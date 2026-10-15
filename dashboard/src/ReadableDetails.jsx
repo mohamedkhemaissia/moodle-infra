@@ -88,11 +88,3 @@ export function RunSummary({ run }) {
           {event.event === 'runner_on_ok' ? 'Réussi' : ['runner_on_failed', 'runner_on_unreachable'].includes(event.event) ? 'Échec' : 'Enregistré'}</span></li>)}</ul></>}
   </>;
 }
-
-export function ForecastMethods({ forecasts }) {
-  const methods = { persistence: 'Maintien de la dernière valeur', ridge: 'Régression', linear: 'Régression linéaire' };
-  return <SummaryList rows={Object.entries(forecasts).map(([horizon, forecast]) => {
-    const used = [...new Set(Object.values(forecast.metrics).map((metric) => methods[metric.method] || 'Modèle de prévision'))];
-    return ['À ' + horizon + ' minutes', used.join(' · ')];
-  })} />;
-}

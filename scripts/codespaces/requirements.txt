@@ -1,0 +1,4 @@
+# Dependances des modules community.docker executees sur l'hote Codespaces.
+charset-normalizer==3.4.3
+requests==2.32.5
+urllib3==2.5.0

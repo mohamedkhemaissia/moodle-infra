@@ -4,6 +4,11 @@
     that:
       - pilotage_database_base_dir is match('^/opt/[^/]+$')
       - pilotage_database_config_dir is match('^/etc/[^/]+$')
+      - pilotage_database_migration_python is match('^/opt/[^/]+/.+/python$')
+      - pilotage_database_migration_code_dir is match('^/opt/[^/]+/code$')
+      - pilotage_database_incident_source_dir is match('^/var/lib/[^/]+/.+$')
+      - pilotage_database_diagnostics_source_dir is match('^/var/lib/[^/]+$')
+      - pilotage_database_remediation_source_dir is match('^/var/lib/[^/]+$')
       - pilotage_database_base_dir != (moodle_base_dir | default('/opt/moodle'))
       - pilotage_database_port | int > 1023
       - pilotage_database_port | int < 65536
@@ -34,7 +39,7 @@
 - name: Generer les secrets sans remplacer les valeurs existantes
   ansible.builtin.command:
     argv:
-      - "{{ diagnostics_base_dir }}/venv/bin/python"
+      - "{{ pilotage_database_migration_python }}"
       - -c
       - |
         import os, re, secrets, sys
@@ -119,21 +124,21 @@
     - name: Copier et verifier les trois journaux dans une transaction
       ansible.builtin.command:
         argv:
-          - "{{ diagnostics_base_dir }}/venv/bin/python"
+          - "{{ pilotage_database_migration_python }}"
           - -B
           - -m
           - pilotage.migrate
           - --config
           - "{{ pilotage_database_config_dir }}/database.json"
           - --incidents-dir
-          - "{{ control_plane_incident_data_dir }}"
+          - "{{ pilotage_database_incident_source_dir }}"
           - --diagnostics-dir
-          - "{{ diagnostics_data_dir }}"
+          - "{{ pilotage_database_diagnostics_source_dir }}"
           - --remediation-dir
-          - "{{ remediation_data_dir }}"
+          - "{{ pilotage_database_remediation_source_dir }}"
           - --activation-file
           - "{{ pilotage_database_config_dir }}/active"
-        chdir: "{{ diagnostics_base_dir }}/code"
+        chdir: "{{ pilotage_database_migration_code_dir }}"
       register: pilotage_migration
       changed_when: (pilotage_migration.stdout | from_json).status == 'migrated'
 

@@ -4,6 +4,8 @@ container_monitoring_state_dir: /var/lib/moodle-container-monitoring
 container_monitoring_textfile_dir: "{{ container_monitoring_state_dir }}/textfile"
 container_monitoring_config_dir: /etc/moodle-container-monitoring
 container_monitoring_source_dir: "{{ playbook_dir }}/../../container_monitoring"
+container_monitoring_scheduler: systemd
+container_monitoring_supervisor_program: moodle-container-metrics
 container_monitoring_targets:
   - {project: moodle-pilote, service: apache}
   - {project: moodle-pilote, service: php}

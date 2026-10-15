@@ -32,7 +32,7 @@ Le worker utilise le même Runner et les mêmes contrôles que la commande manue
 
 La politique est relue juste avant l’autorisation. Une réservation durable précède l’appel Docker ; une issue incertaine n’est pas rejouée automatiquement. Le worker effectue au plus une tentative par incident et révision ; une action autorisée ne peut pas être répétée pour ce même incident. Le délai de protection existant entre corrections reste appliqué.
 
-Après démarrage, trois vérifications HTTPS consécutives et une nouvelle observation Prometheus doivent confirmer le rétablissement. Un score Isolation Forest, une prévision ou un simple dépassement CPU ne déclenche pas cette correction.
+Après démarrage, trois vérifications HTTPS consécutives et une nouvelle observation Prometheus doivent confirmer le rétablissement. Un score Isolation Forest ou un simple dépassement CPU ne déclenche pas cette correction.
 
 ## Persistance et audit
 

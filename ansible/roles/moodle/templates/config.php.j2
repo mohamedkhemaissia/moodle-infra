@@ -27,6 +27,8 @@ $CFG->dboptions = [
 ];
 
 $CFG->wwwroot = '{{ moodle_wwwroot }}';
+$CFG->reverseproxy = {{ (moodle_reverseproxy_enabled | bool) | ternary('true', 'false') }};
+$CFG->sslproxy = {{ (moodle_sslproxy_enabled | bool) | ternary('true', 'false') }};
 $CFG->dataroot = '/var/moodledata';
 $CFG->directorypermissions = 02770;
 $CFG->admin = 'admin';

@@ -1,4 +1,4 @@
-"""Preparer des variables temporelles et des cibles futures pour les ressources Moodle.
+"""Preparer les variables temporelles utilisees par Isolation Forest.
 
 Python 3.10+, bibliotheque standard uniquement ; aucun modele n'est entraine.
 Execution : python3 -B -m ml.prepare_features --dataset-dir CHEMIN_DU_DATASET
@@ -25,17 +25,14 @@ from ml import export_metrics as exporter
 from ml import prepare_dataset as preparation
 
 
-VERSION = "0.1.0"
-SCHEMA_VERSION = 1
+VERSION = "0.2.0"
+SCHEMA_VERSION = 2
 MAX_INPUT_ROWS = 50_000
-HORIZONS_MINUTES = (5, 10, 15)
 SOURCE_CONTEXT_SECONDS = 120  # La requete CPU contient deja rate(...[2m]).
 STATISTICS = ("current", "mean", "std", "min", "max", "delta", "slope_per_minute")
 FEATURE_NAMES = tuple(f"{name}__{stat}" for name in exporter.RESOURCE_METRICS for stat in STATISTICS)
 CONTEXT_FIELDS = ("evaluated_at", "window_start", "input_context_start", "resource_segment_id", "split")
 FEATURE_FIELDS = (*CONTEXT_FIELDS, *FEATURE_NAMES)
-TARGET_NAMES = tuple(f"target__{name}" for name in exporter.RESOURCE_METRICS)
-FORECAST_FIELDS = (*FEATURE_FIELDS, "target_evaluated_at", *TARGET_NAMES)
 SPLITS = ("train", "validation", "test")
 FeatureError = exporter.ExportError
 
@@ -173,9 +170,8 @@ def validate_settings(step: int, lookback_minutes: int) -> int:
     if type(lookback_minutes) is not int or not 1 <= lookback_minutes <= 60:
         raise FeatureError("La fenetre doit durer de 1 a 60 minutes entieres.")
     lookback_seconds = lookback_minutes * 60
-    if (lookback_seconds % step or lookback_seconds < step
-            or any(minutes * 60 % step for minutes in HORIZONS_MINUTES)):
-        raise FeatureError("La fenetre et les horizons doivent etre des multiples du pas temporel.")
+    if lookback_seconds % step or lookback_seconds < step:
+        raise FeatureError("La fenetre doit etre un multiple du pas temporel.")
     return lookback_seconds // step + 1
 
 
@@ -212,11 +208,7 @@ def build_tables(dataset: Dataset, lookback_minutes: int = 5) -> tuple[dict[str,
     lookback_seconds = lookback_minutes * 60
     periods = split_periods(dataset)
     tables: dict[str, list[dict]] = {"features.csv": []}
-    forecasts = {minutes: f"forecast_{minutes}m.csv" for minutes in HORIZONS_MINUTES}
-    tables.update({filename: [] for filename in forecasts.values()})
     skipped = {"incomplete_resources": 0, "insufficient_history": 0, "split_boundary": 0}
-    target_skips = {str(minutes): {"missing_future_or_gap": 0, "split_boundary": 0}
-                    for minutes in HORIZONS_MINUTES}
     segment_start = 0
     previous_segment = None
     for index, row in enumerate(dataset.rows):
@@ -249,18 +241,6 @@ def build_tables(dataset: Dataset, lookback_minutes: int = 5) -> tuple[dict[str,
             statistics = window_statistics([item[name] for item in window_rows], step)
             feature.update({f"{name}__{stat}": value for stat, value in statistics.items()})
         tables["features.csv"].append(feature)
-        for minutes, filename in forecasts.items():
-            target_index = index + minutes * 60 // step
-            if (target_index >= len(dataset.rows)
-                    or dataset.rows[target_index]["resource_segment_id"] != segment):
-                target_skips[str(minutes)]["missing_future_or_gap"] += 1
-                continue
-            if timestamp + minutes * 60 >= period["end_exclusive"]:
-                target_skips[str(minutes)]["split_boundary"] += 1
-                continue
-            target = dataset.rows[target_index]
-            tables[filename].append({**feature, "target_evaluated_at": target["evaluated_at"],
-                                     **{f"target__{name}": target[name] for name in exporter.RESOURCE_METRICS}})
     counts = {filename: {name: sum(row["split"] == name for row in rows) for name in SPLITS}
               for filename, rows in tables.items()}
     summary = {
@@ -268,13 +248,6 @@ def build_tables(dataset: Dataset, lookback_minutes: int = 5) -> tuple[dict[str,
         "input_resource_complete_rows": dataset.metadata["summary"]["resource_complete_rows"],
         "feature_count": len(FEATURE_NAMES), "feature_rows": len(tables["features.csv"]),
         "rows_by_split": counts["features.csv"], "skipped_feature_rows": skipped,
-        "forecast_rows": {str(minutes): {"total": len(tables[filename]), **counts[filename]}
-                          for minutes, filename in forecasts.items()},
-        "skipped_forecast_rows": target_skips,
-        "splits_available_for_each_horizon": {
-            str(minutes): all(counts[filename][name] > 0 for name in SPLITS)
-            for minutes, filename in forecasts.items()
-        },
     }
     settings = {
         "tool_version": VERSION, "schema_version": SCHEMA_VERSION,
@@ -282,8 +255,8 @@ def build_tables(dataset: Dataset, lookback_minutes: int = 5) -> tuple[dict[str,
         "source_metadata_sha256": dataset.metadata_sha256,
         "step_seconds": step, "lookback_seconds": lookback_seconds,
         "window_points_including_endpoints": points, "source_context_seconds": SOURCE_CONTEXT_SECONDS,
-        "horizons_minutes": list(HORIZONS_MINUTES), "feature_names": list(FEATURE_NAMES),
-        "target_names": list(TARGET_NAMES), "split_policy": "chronological_duration_70_15_15_with_disjoint_context_and_targets",
+        "feature_names": list(FEATURE_NAMES),
+        "split_policy": "chronological_duration_70_15_15_with_disjoint_contexts",
     }
     fingerprint = hashlib.sha256(json.dumps(settings, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     metadata = {
@@ -298,11 +271,9 @@ def build_tables(dataset: Dataset, lookback_minutes: int = 5) -> tuple[dict[str,
             "delta": "Derniere valeur moins premiere valeur ; points de pourcentage.",
             "slope_per_minute": "Pente par moindres carres ; points de pourcentage par minute.",
             "source_context": "Deux minutes reservees avant la fenetre car CPU est deja une moyenne rate[2m].",
-            "gaps": "Historique et cibles dans le meme segment complet ; aucune interpolation.",
+            "gaps": "Historique dans le meme segment complet ; aucune interpolation.",
             "splits": "70/15/15 de la duree entre premiere et derniere ligne complete, avant exclusions ; nombres finaux de lignes variables.",
-            "boundaries": "Contexte des entrees et cibles contenus dans une meme partition ; les fenetres chevauchantes sont exclues.",
-            "forecast": "Cible mesuree a l'instant exact t+h, pas un maximum futur ni une probabilite de saturation.",
-            "baseline": "La future evaluation pourra comparer au maintien de chaque valeur courante.",
+            "boundaries": "Contexte des entrees contenu dans une meme partition ; les fenetres chevauchantes sont exclues.",
             "training": "Aucun modele, normalisation apprise ou selection de variables ; apprendre ces traitements uniquement sur train.",
             "labels": "Aucune etiquette d'anomalie ; completude des ressources ne signifie pas fonctionnement normal.",
             "scope": "Cette version prepare uniquement les ressources serveur ; la sonde Moodle reste dans le dataset source.",
@@ -335,7 +306,7 @@ def publish_features(tables: dict[str, list[dict]], metadata: dict[str, Any], ou
         for filename, rows in tables.items():
             path = temporary / filename
             with path.open("w", encoding="utf-8", newline="") as stream:
-                writer = csv.DictWriter(stream, fieldnames=FEATURE_FIELDS if filename == "features.csv" else FORECAST_FIELDS)
+                writer = csv.DictWriter(stream, fieldnames=FEATURE_FIELDS)
                 writer.writeheader()
                 writer.writerows(rows)
             files[filename] = {"rows": len(rows), "sha256": exporter.file_sha256(path)}

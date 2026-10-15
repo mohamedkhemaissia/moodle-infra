@@ -22,12 +22,25 @@ def config_read(path):
     config = strict_json(Path(path).read_text())
     required={"api_url", "data_dir", "hostname", "https_port", "ca_file", "restoration_marker"}
     if (not required <= set(config) or set(config) - required - {"policy_required", "php_profiles_enabled"}
+            - {"probe_scheme", "proxy_tls_terminated", "operations_check_mode"}
             or any(type(config.get(k, False)) is not bool for k in ("policy_required", "php_profiles_enabled"))):
         raise ValueError("Configuration de remediation invalide.")
     config["api_url"] = local_url(config["api_url"])
-    if config["hostname"] != "moodle-pfe.test" or type(config["https_port"]) is not int or not 1 <= config["https_port"] <= 65535 or \
-            not Path(config["ca_file"]).is_absolute() or \
-            not Path(config["restoration_marker"]).is_absolute():
+    config.setdefault("probe_scheme","https")
+    config.setdefault("proxy_tls_terminated",False)
+    config.setdefault("operations_check_mode","systemd")
+    hostname=config["hostname"]
+    if (not isinstance(hostname,str) or len(hostname) > 253
+            or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?",hostname)
+            or type(config["https_port"]) is not int or not 1 <= config["https_port"] <= 65535
+            or config["probe_scheme"] not in ("http","https")
+            or type(config["proxy_tls_terminated"]) is not bool
+            or config["operations_check_mode"] not in ("systemd","marker_only")
+            or (config["probe_scheme"] == "https" and (not Path(config["ca_file"]).is_absolute()
+                or config["proxy_tls_terminated"] is not False))
+            or (config["probe_scheme"] == "http" and (config["ca_file"] != ""
+                or config["proxy_tls_terminated"] is not True))
+            or not Path(config["restoration_marker"]).is_absolute()):
         raise ValueError("Cible differente du pilote valide.")
     if not Path(config["data_dir"]).is_absolute() or config["data_dir"] in ("/", "/var/lib"):
         raise ValueError("Journal invalide.")
@@ -63,6 +76,8 @@ def inspect(service):
 def operations_clear(config):
     if Path(config["restoration_marker"]).exists():
         raise Blocked("restoration_in_progress")
+    if config.get("operations_check_mode","systemd") == "marker_only":
+        return
     process = command(["/usr/bin/systemctl", "list-units", "--type=service",
                        "--state=active,activating,deactivating", "--output=json", "--no-pager"])
     if process.returncode:
@@ -97,9 +112,18 @@ def current(config, incident_id, expected):
     return decision, metrics, document
 
 
+def trusted_probe(config, result):
+    if config.get("probe_scheme","https") == "https":
+        return result.get("tls_validated") is True
+    return (config.get("proxy_tls_terminated") is True
+            and result.get("scheme") == "http"
+            and result.get("loopback_validated") is True)
+
+
 def apply(config, incident_id, identifier, expected, *, inspect_fn=inspect, probe_fn=None,
           operations_fn=operations_clear, start_fn=None, wait_seconds=60, pause=time.sleep):
-    probe_fn = probe_fn or (lambda: login_probe(config["hostname"], config["https_port"], config["ca_file"]))
+    probe_fn = probe_fn or (lambda: login_probe(
+        config["hostname"],config["https_port"],config["ca_file"],config.get("probe_scheme","https")))
     start_fn = start_fn or (lambda container_id: command(["/usr/bin/docker", "start", container_id], timeout=15))
     report = {"status": "blocked", "mode": "manual_guarded", "action": ACTION,
               "action_dispatched": False, "recovered": False, "checks": {}}
@@ -115,7 +139,7 @@ def apply(config, incident_id, identifier, expected, *, inspect_fn=inspect, prob
         # Le pilote peut renvoyer HTTP 500 lorsque PHP est arrete. Ce code seul
         # ne prouve aucune cause : l'etat PHP et les dependances sont controles
         # ci-dessus, puis revalides juste avant le demarrage du conteneur identifie.
-        if before["success"] is not False or before["tls_validated"] is not True or before["http_status"] not in (500,502,503,504):
+        if before["success"] is not False or not trusted_probe(config,before) or before["http_status"] not in (500,502,503,504):
             raise Blocked("php_upstream_failure_not_confirmed")
         # Revalidation apres les sondes et comparaison du conteneur juste avant l'action.
         decision, _, document = current(config, incident_id, expected)
@@ -164,7 +188,7 @@ def apply(config, incident_id, identifier, expected, *, inspect_fn=inspect, prob
             state = inspect_fn("php")
             running = state["id"] == latest["php"]["id"] and state["state"]["Running"] is True and \
                       state["state"]["Status"] == "running" and all(state["state"].get(k) is False for k in ("Restarting", "Paused", "OOMKilled", "Dead"))
-            consecutive = consecutive + 1 if after.get("success") is True and after.get("tls_validated") is True and running else 0
+            consecutive = consecutive + 1 if after.get("success") is True and trusted_probe(config,after) and running else 0
             checks.append({"https": after, "php_running": running})
             report["checks"]["recovery_samples"] = checks
             if consecutive >= 3:

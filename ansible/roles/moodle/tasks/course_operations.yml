@@ -1,0 +1,32 @@
+---
+- name: Verifier le stockage dedie aux sauvegardes de cours
+  ansible.builtin.assert:
+    that:
+      - moodle_course_operations_dir is match('^/var/lib/[a-z0-9-]+$')
+      - moodle_course_operations_dir not in ['/var/lib', '/var/lib/moodle']
+    fail_msg: "Utiliser un repertoire dedie sous /var/lib pour les sauvegardes de cours."
+  when: moodle_course_operations_enabled | bool
+
+- name: Creer la file et le stockage des sauvegardes de cours
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "10001"
+    group: "10001"
+    mode: "2770"
+  loop:
+    - "{{ moodle_course_operations_dir }}"
+    - "{{ moodle_course_operations_dir }}/requests"
+    - "{{ moodle_course_operations_dir }}/processing"
+    - "{{ moodle_course_operations_dir }}/operations"
+    - "{{ moodle_course_operations_dir }}/backups"
+  when: moodle_course_operations_enabled | bool
+
+- name: Installer le worker Moodle des sauvegardes de cours
+  ansible.builtin.template:
+    src: course-operations-worker.php.j2
+    dest: "{{ moodle_base_dir }}/config/course-operations-worker.php"
+    owner: root
+    group: root
+    mode: "0644"
+  when: moodle_course_operations_enabled | bool

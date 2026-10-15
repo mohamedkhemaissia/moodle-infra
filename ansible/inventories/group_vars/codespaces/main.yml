@@ -1,0 +1,95 @@
+---
+codespaces_name: "{{ lookup('env', 'CODESPACE_NAME') }}"
+codespaces_forwarding_domain: "{{ lookup('env', 'GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN') }}"
+codespaces_moodle_port: 8443
+codespaces_moodle_hostname: "{{ codespaces_name }}-{{ codespaces_moodle_port }}.{{ codespaces_forwarding_domain }}"
+codespaces_dashboard_origin: "https://{{ codespaces_name }}-8088.{{ codespaces_forwarding_domain }}"
+
+moodle_repository_dir: "{{ lookup('env', 'CODESPACE_VSCODE_FOLDER') }}"
+ansible_python_interpreter: "{{ moodle_repository_dir }}/.venv/bin/python"
+moodle_hostname: "{{ codespaces_moodle_hostname }}"
+moodle_https_port: "{{ codespaces_moodle_port }}"
+moodle_apache_container_port: 80
+moodle_apache_tls_enabled: false
+moodle_apache_forced_host: "{{ codespaces_moodle_hostname }}"
+moodle_wwwroot: "https://{{ codespaces_moodle_hostname }}"
+moodle_reverseproxy_enabled: false
+moodle_sslproxy_enabled: true
+moodle_course_operations_enabled: true
+site_backup_enabled: true
+site_backup_operations_dir: /var/lib/moodle-site-operations
+
+monitoring_moodle_hostname: "{{ codespaces_moodle_hostname }}"
+monitoring_moodle_https_port: "{{ codespaces_moodle_port }}"
+monitoring_moodle_probe_url: "http://{{ codespaces_moodle_hostname }}:{{ codespaces_moodle_port }}/login/index.php"
+monitoring_probe_requires_tls: false
+monitoring_moodle_probe_headers:
+  X-Forwarded-Proto: https
+  X-Forwarded-Host: "{{ codespaces_moodle_hostname }}"
+  X-Forwarded-Port: '443'
+# Docker-in-Docker n'autorise pas la propagation rslave du montage racine.
+# Un bind en lecture seule suffit pour node-exporter dans le pilote Codespaces.
+monitoring_node_exporter_mount_mode: ro
+# Codespaces n'expose pas le stockage du projet avec le label mountpoint="/".
+# /workspaces porte le depot, les artefacts IA et les donnees persistantes utiles.
+monitoring_linux_filesystem_mountpoint: /workspaces
+
+control_plane_auth_origins:
+  - "{{ codespaces_dashboard_origin }}"
+  - http://localhost:8088
+control_plane_auth_secure_cookie: true
+dashboard_api_origin: http://127.0.0.1:8000
+
+container_monitoring_scheduler: supervisor
+diagnostic_requests_scheduler: supervisor
+control_plane_diagnostic_requests_enabled: true
+control_plane_course_operations_enabled: true
+control_plane_course_operations_dir: /var/lib/moodle-course-operations
+control_plane_site_operations_enabled: true
+control_plane_site_operations_dir: /var/lib/moodle-site-operations
+
+# Le worker est installe mais le pilote reste en observation par defaut.
+# Seul l'administrateur peut confirmer le passage en mode automatique.
+remediation_worker_enabled: true
+remediation_worker_scheduler: supervisor
+remediation_worker_interval_seconds: 30
+remediation_probe_scheme: http
+remediation_probe_hostname: "{{ codespaces_moodle_hostname }}"
+remediation_probe_port: "{{ codespaces_moodle_port }}"
+remediation_probe_ca_file: ''
+remediation_proxy_tls_terminated: true
+remediation_operations_check_mode: marker_only
+remediation_php_profiles_enabled: true
+
+# L'email reste inactif tant que l'operateur n'a pas fourni son relais et son
+# destinataire avec scripts/codespaces/configure-email.sh. Le JSON ne contient
+# que les adresses ; le mot de passe reste dans un fichier root hors du depot.
+codespaces_email_settings_path: "{{ lookup('env', 'HOME') }}/.config/moodle-pilotage/email.json"
+codespaces_email_settings_raw: "{{ lookup('file', codespaces_email_settings_path, errors='ignore') }}"
+codespaces_email_settings: "{{ (codespaces_email_settings_raw | default('{}', true)) | from_json }}"
+monitoring_alert_email_enabled: "{{ codespaces_email_settings.enabled | default(false) | bool }}"
+monitoring_alert_smtp_smarthost: "{{ codespaces_email_settings.smtp_smarthost | default('') }}"
+monitoring_alert_smtp_from: "{{ codespaces_email_settings.smtp_from | default('') }}"
+monitoring_alert_smtp_username: "{{ codespaces_email_settings.smtp_username | default('') }}"
+monitoring_alert_email_to: "{{ codespaces_email_settings.email_to | default('') }}"
+
+# Les anciens modules de PRA isole restent desactives. Le pilote utilise le
+# parcours simplifie de sauvegarde complete et de restauration directe.
+control_plane_backup_status_enabled: false
+control_plane_backup_catalog_enabled: false
+control_plane_pilotage_backup_status_enabled: false
+control_plane_recovery_requests_enabled: false
+control_plane_recovery_execution_enabled: false
+backup_status_pilotage_enabled: false
+backup_catalog_pilotage_enabled: false
+
+# Les artefacts sont des données générées et ignorées par Git. Le code active
+# chaque capacité uniquement quand le chemin correspondant est fourni.
+control_plane_anomalies_enabled: >-
+  {{ (lookup('env', 'MOODLE_ANOMALY_BUNDLE_DIR') | length > 0) and
+     (lookup('env', 'MOODLE_FEATURES_DIR') | length > 0) }}
+control_plane_anomaly_bundle_dir: "{{ lookup('env', 'MOODLE_ANOMALY_BUNDLE_DIR') }}"
+control_plane_anomaly_features_dir: "{{ lookup('env', 'MOODLE_FEATURES_DIR') }}"
+# Codespaces n'utilise pas le role operations (qui inclut Restic). Le cron
+# Moodle reste toutefois indispensable et tourne dans un conteneur dedie.
+moodle_container_cron_enabled: true

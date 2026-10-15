@@ -121,6 +121,15 @@ class ProfileTests(unittest.TestCase):
         self.assertFalse(f.prepare(self.config, runtime=self.rt, profiles=self.p)["changed"])
         self.assertEqual((self.p.root/"catalog.json").read_bytes(), catalog_bytes)
 
+    def test_offline_maintenance_allows_read_only_preparation_but_blocks_intervention(self):
+        self.rt.services["php"]["offline_maintenance"] = True
+        self.assertFalse(f.prepare(self.config, runtime=self.rt, profiles=self.p)["changed"])
+        self.assertEqual(self.rt.reloads, 0)
+        result = self.run_profile()
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["reason"], "profile_dependency_not_ready:php")
+        self.assertEqual(self.rt.reloads, 0)
+
     def test_first_preparation_requires_observation_before_enlarging_action_scope(self):
         (self.p.root/"catalog.json").unlink(); self.ps.view.return_value["policy"]["mode"] = "automatic"
         with self.assertRaisesRegex(Blocked, "set_observation"):
@@ -196,8 +205,33 @@ class ProfileTests(unittest.TestCase):
         metrics = self.rt.read("/api/v1/metrics/summary"); metrics["metrics"]["cpu_usage_percent"] = 70
         with self.assertRaises(Blocked): f.resource_gate(metrics, BASE)
 
+    def test_codespaces_loopback_http_is_accepted_only_as_declared_tls_termination(self):
+        self.config.update(probe_scheme="http", proxy_tls_terminated=True, ca_file="")
+        self.rt.probe = Mock(return_value={"success":True,"http_status":200,"tls_validated":False,
+                                           "loopback_validated":True,"scheme":"http"})
+        result=self.run_profile()
+        self.assertEqual(result["status"],"completed",result)
+
+        self.target.write_text(CONTENT)
+        (self.p.root/"status.json").unlink(missing_ok=True)
+        (self.p.root/"catalog.json").unlink(missing_ok=True)
+        self.rt.reloads=0; self.rt.starts=[int(BASE-100)]
+        f.prepare(self.config,runtime=self.rt,profiles=self.p,policy_store=self.ps)
+        self.config["proxy_tls_terminated"]=False
+        result=self.run_profile()
+        self.assertEqual(result["reason"],"moodle_access_not_confirmed")
+
 
 class RuntimeGuardTests(unittest.TestCase):
+    def test_offline_maintenance_is_allowed_only_for_read_only_preparation(self):
+        services = {name: {"id": letter*64, "health": "healthy", "offline_maintenance": name == "php",
+            "state": {"Status": "running", "Running": True, "Restarting": False, "Paused": False,
+                      "OOMKilled": False, "Dead": False}}
+            for name,letter in (("php","a"),("apache","b"),("postgres","c"))}
+        f.running(services, allow_php_offline_maintenance=True)
+        with self.assertRaisesRegex(Blocked, "profile_dependency_not_ready:php"):
+            f.running(services)
+
     def test_effective_pool_limit_is_checked_after_all_includes(self):
         rt = f.Runtime({})
         output = "NOTICE: [global]\nNOTICE: [www]\nNOTICE: pm = dynamic\nNOTICE: pm.max_children = 8\nNOTICE: [status]\nNOTICE: pm.max_children = 1\n"

@@ -1,0 +1,166 @@
+---
+- name: Valider la file des diagnostics guides
+  ansible.builtin.assert:
+    that:
+      - control_plane_diagnostic_requests_enabled | bool
+      - control_plane_diagnostics_enabled | bool
+      - control_plane_incidents_enabled | bool
+      - control_plane_decisions_enabled | bool
+      - diagnostic_requests_base_dir is match('^/opt/[^/]+$')
+      - diagnostic_requests_scheduler in ['systemd', 'supervisor']
+      - diagnostic_requests_supervisor_program is match('^[a-z][a-z0-9-]{2,63}$')
+      - diagnostic_requests_poll_seconds | float >= 0.2
+      - diagnostic_requests_poll_seconds | float <= 60
+
+- name: Verifier les dependances PostgreSQL et comptes
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - "{{ pilotage_database_config_dir }}/active"
+    - "{{ pilotage_database_config_dir }}/auth-active"
+    - "{{ pilotage_database_config_dir }}/database.json"
+    - "{{ pilotage_database_config_dir }}/worker-token"
+  register: diagnostic_requests_dependencies
+
+- name: Exiger les dependances avant de creer la file
+  ansible.builtin.assert:
+    that:
+      - item.stat.isreg | default(false)
+      - not (item.stat.islnk | default(false))
+    fail_msg: "Migrer PostgreSQL et activer les comptes avant les diagnostics guides."
+  loop: "{{ diagnostic_requests_dependencies.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Actualiser le code de la file et du worker
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../{{ item.src }}"
+    dest: "{{ diagnostic_requests_base_dir }}/code/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - {src: pilotage/diagnostic_requests.py, dest: pilotage/diagnostic_requests.py}
+    - {src: pilotage/diagnostic_requests_cli.py, dest: pilotage/diagnostic_requests_cli.py}
+    - {src: diagnostics/worker.py, dest: diagnostics/worker.py}
+  register: diagnostic_requests_sources
+
+- name: Verifier le contrat unitaire du worker
+  ansible.builtin.command:
+    argv:
+      - "{{ diagnostic_requests_python }}"
+      - -B
+      - -m
+      - unittest
+      - discover
+      - -s
+      - diagnostics/tests
+      - -p
+      - test_diagnostic_worker.py
+      - -q
+    chdir: "{{ diagnostic_requests_base_dir }}/code"
+  environment:
+    PILOTAGE_DATABASE_CONFIG: ''
+    PILOTAGE_SERVICE_TOKEN_FILE: ''
+  changed_when: false
+  when: diagnostic_requests_sources.changed
+
+- name: Initialiser le schema PostgreSQL de la file
+  ansible.builtin.command:
+    argv:
+      - "{{ diagnostic_requests_python }}"
+      - -B
+      - -m
+      - pilotage.diagnostic_requests_cli
+      - init
+    chdir: "{{ diagnostic_requests_base_dir }}/code"
+  environment:
+    PILOTAGE_DATABASE_CONFIG: "{{ pilotage_database_config_dir }}/database.json"
+  register: diagnostic_requests_initialization
+  changed_when: (diagnostic_requests_initialization.stdout | from_json).changed
+
+- name: Installer la commande bornee du worker
+  ansible.builtin.template:
+    src: moodle-diagnostic-requests-worker.j2
+    dest: /usr/local/sbin/moodle-diagnostic-requests-worker
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Verifier la configuration et la file sans reserver de demande
+  ansible.builtin.command:
+    argv: [/usr/local/sbin/moodle-diagnostic-requests-worker, --healthcheck]
+  register: diagnostic_requests_health
+  changed_when: false
+  failed_when: >-
+    diagnostic_requests_health.rc != 0 or
+    (diagnostic_requests_health.stdout | from_json).status != 'available'
+
+- name: Installer le service systemd du worker
+  ansible.builtin.template:
+    src: moodle-diagnostic-requests.service.j2
+    dest: /etc/systemd/system/moodle-diagnostic-requests.service
+    owner: root
+    group: root
+    mode: '0644'
+  register: diagnostic_requests_systemd_unit
+  when: diagnostic_requests_scheduler == 'systemd'
+
+- name: Valider le service systemd du worker
+  ansible.builtin.command:
+    argv: [/usr/bin/systemd-analyze, verify, /etc/systemd/system/moodle-diagnostic-requests.service]
+  changed_when: false
+  when: diagnostic_requests_scheduler == 'systemd'
+
+- name: Activer le worker systemd
+  ansible.builtin.systemd_service:
+    name: moodle-diagnostic-requests.service
+    enabled: true
+    state: started
+    daemon_reload: "{{ diagnostic_requests_systemd_unit.changed | default(false) }}"
+  when: diagnostic_requests_scheduler == 'systemd'
+
+- name: Installer le worker Codespaces gere par Supervisor
+  ansible.builtin.template:
+    src: moodle-diagnostic-requests.supervisor.j2
+    dest: "/etc/supervisor/conf.d/{{ diagnostic_requests_supervisor_program }}.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  when: diagnostic_requests_scheduler == 'supervisor'
+
+- name: Recharger la configuration Supervisor
+  ansible.builtin.command:
+    argv: [/usr/bin/supervisorctl, reread]
+  register: diagnostic_requests_supervisor_reread
+  changed_when: "diagnostic_requests_supervisor_program in diagnostic_requests_supervisor_reread.stdout"
+  when: diagnostic_requests_scheduler == 'supervisor'
+
+- name: Appliquer le worker Supervisor
+  ansible.builtin.command:
+    argv: [/usr/bin/supervisorctl, update, "{{ diagnostic_requests_supervisor_program }}"]
+  register: diagnostic_requests_supervisor_update
+  changed_when: >-
+    'added process group' in diagnostic_requests_supervisor_update.stdout or
+    'stopped:' in diagnostic_requests_supervisor_update.stdout
+  when: diagnostic_requests_scheduler == 'supervisor'
+
+- name: Verifier le worker Supervisor
+  ansible.builtin.command:
+    argv: [/usr/bin/supervisorctl, status, "{{ diagnostic_requests_supervisor_program }}"]
+  register: diagnostic_requests_supervisor_status
+  changed_when: false
+  failed_when: "'RUNNING' not in diagnostic_requests_supervisor_status.stdout"
+  retries: 5
+  delay: 1
+  until: "'RUNNING' in diagnostic_requests_supervisor_status.stdout"
+  when: diagnostic_requests_scheduler == 'supervisor'
+
+- name: Conserver l activation de la file pour l API
+  ansible.builtin.copy:
+    content: "Diagnostics guides actifs ; schema PostgreSQL pilotage_diagnostic_requests.\n"
+    dest: "{{ pilotage_database_config_dir }}/diagnostic-requests-active"
+    owner: root
+    group: '10001'
+    mode: '0640'

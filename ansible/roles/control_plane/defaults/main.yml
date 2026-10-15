@@ -23,10 +23,6 @@ control_plane_backup_status_dir: /var/lib/moodle-backup-status
 # En production : origine HTTPS exacte et cookie secure=true.
 control_plane_auth_origins: [http://127.0.0.1:8088, http://localhost:8088]
 control_plane_auth_secure_cookie: false
-control_plane_forecasts_enabled: false
-control_plane_forecast_bundle_dir: ""
-control_plane_forecast_features_dir: ""
-control_plane_forecast_runtime_dir: "{{ control_plane_base_dir }}/forecasts"
 control_plane_anomalies_enabled: false
 control_plane_anomaly_bundle_dir: ""
 control_plane_anomaly_features_dir: ""
@@ -42,6 +38,11 @@ control_plane_decision_journal_enabled: false
 control_plane_diagnostics_enabled: false
 control_plane_diagnostics_data_dir: /var/lib/moodle-diagnostics
 control_plane_diagnostics_store_source: "{{ playbook_dir }}/../../diagnostics/store.py"
+control_plane_diagnostic_requests_enabled: false
+control_plane_course_operations_enabled: false
+control_plane_course_operations_dir: /var/lib/moodle-course-operations
+control_plane_site_operations_enabled: false
+control_plane_site_operations_dir: /var/lib/moodle-site-operations
 control_plane_remediation_enabled: false
 control_plane_remediation_data_dir: /var/lib/moodle-remediation
 control_plane_remediation_store_source: "{{ playbook_dir }}/../../remediation/store.py"
@@ -62,6 +63,7 @@ control_plane_source_files:
   - pilotage/recovery_execution.py
   - pilotage/operating_policy.py
   - pilotage/decision_journal.py
+  - pilotage/diagnostic_requests.py
   - app/__init__.py
   - app/main.py
   - app/auth.py
@@ -71,7 +73,6 @@ control_plane_source_files:
   - app/backup_status.py
   - app/pilotage_backup_status.py
   - app/backup_catalog_status.py
-  - app/forecasts.py
   - app/resource_history.py
   - app/anomalies.py
   - app/isolation_model.py
@@ -80,6 +81,11 @@ control_plane_source_files:
   - app/incident_observer.py
   - app/decisions.py
   - app/diagnostics_store.py
+  - app/diagnostic_requests.py
+  - app/course_operations.py
+  - app/site_operations.py
+  - tests/test_course_operations_api.py
+  - tests/test_site_operations_api.py
   - app/remediation_store.py
   - app/models.py
   - app/prometheus.py
@@ -96,12 +102,12 @@ control_plane_source_files:
   - tests/test_recovery_requests_api.py
   - tests/test_operating_policy_api.py
   - tests/test_pilotage_backups_api.py
-  - tests/test_forecasts.py
   - tests/test_anomalies.py
   - tests/test_incidents.py
   - tests/test_incident_observer.py
   - tests/test_decisions.py
   - tests/test_diagnostics_api.py
+  - tests/test_diagnostic_requests_api.py
   - tests/test_remediation_api.py
   - tests/test_storage_api.py
 

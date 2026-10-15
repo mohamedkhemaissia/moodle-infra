@@ -1,6 +1,6 @@
 ServerRoot "/usr/local/apache2"
 ServerName {{ moodle_hostname }}
-Listen 443
+Listen {{ moodle_apache_container_port }}
 
 LoadModule mpm_event_module modules/mod_mpm_event.so
 LoadModule unixd_module modules/mod_unixd.so
@@ -10,8 +10,11 @@ LoadModule log_config_module modules/mod_log_config.so
 LoadModule dir_module modules/mod_dir.so
 LoadModule proxy_module modules/mod_proxy.so
 LoadModule proxy_fcgi_module modules/mod_proxy_fcgi.so
+LoadModule headers_module modules/mod_headers.so
+{% if moodle_apache_tls_enabled | bool %}
 LoadModule socache_shmcb_module modules/mod_socache_shmcb.so
 LoadModule ssl_module modules/mod_ssl.so
+{% endif %}
 
 User www-data
 Group www-data
@@ -33,16 +36,23 @@ CustomLog /proc/self/fd/1 combined
     Require all denied
 </Directory>
 
+{% if moodle_apache_tls_enabled | bool %}
 SSLProtocol -all +TLSv1.2 +TLSv1.3
 SSLSessionCache "shmcb:/usr/local/apache2/logs/ssl_scache(512000)"
+{% endif %}
 
-<VirtualHost *:443>
+<VirtualHost *:{{ moodle_apache_container_port }}>
     ServerName {{ moodle_hostname }}
     DocumentRoot "/var/www/moodle/public"
 
+{% if moodle_apache_forced_host | length > 0 %}
+    RequestHeader set Host "{{ moodle_apache_forced_host }}"
+{% endif %}
+{% if moodle_apache_tls_enabled | bool %}
     SSLEngine on
     SSLCertificateFile "/usr/local/apache2/conf/tls/server.crt"
     SSLCertificateKeyFile "/usr/local/apache2/conf/tls/server.key"
+{% endif %}
 
     <Directory "/var/www/moodle/public">
         Options -Indexes +FollowSymLinks
