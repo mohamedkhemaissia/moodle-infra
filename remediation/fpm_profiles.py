@@ -230,13 +230,14 @@ class Runtime:
     def read(self, path): return get_json(self.config["api_url"] + path, timeout=8)
 
 
-def running(services, previous=None):
+def running(services, previous=None, *, allow_php_offline_maintenance=False):
     if set(services) != set(NAMES): raise Blocked("profile_dependencies_incomplete")
     for name, item in services.items():
         s = item["state"]
         if (s["Status"] != "running" or s["Running"] is not True or item["health"] not in (None,"healthy")
                 or any(s.get(k) is not False for k in ("Restarting","Paused","OOMKilled","Dead"))
-                or (name == "php" and item.get("offline_maintenance") is not False)
+                or (name == "php" and item.get("offline_maintenance") is not False
+                    and not allow_php_offline_maintenance)
                 or (previous and item["id"] != previous[name]["id"])):
             raise Blocked("profile_dependency_not_ready:"+name)
     if services["postgres"]["health"] != "healthy": raise Blocked("database_health_not_confirmed")
@@ -276,7 +277,10 @@ def prepare(config, *, runtime=None, profiles=None, policy_store=None):
     if not config.get("policy_required") or not config.get("php_profiles_enabled"):
         raise Blocked("profiles_require_policies_and_activation")
     runtime = runtime or Runtime(config); p = profiles or Profiles(config["data_dir"])
-    runtime.clear(); services = runtime.inspect(); running(services)
+    runtime.clear(); services = runtime.inspect()
+    # La preparation valide des fichiers temporaires et ne recharge jamais PHP.
+    # Le mode maintenance reste bloquant pour toute application reelle de profil.
+    running(services, allow_php_offline_maintenance=True)
     container = services["php"]["id"]
     runtime.master(container)
     p.root.mkdir(mode=0o750, exist_ok=True)
