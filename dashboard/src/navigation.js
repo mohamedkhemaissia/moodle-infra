@@ -11,7 +11,7 @@ export const NAVIGATION = [
   { id: 'incidents', title: 'Incidents', description: 'Épisodes détectés et recommandations de correction.', icon: 'alert', color: '#0090e7' },
   { id: 'audits', title: 'Historique des exécutions', description: 'Journaux des diagnostics et des remédiations.', icon: 'clock', color: '#0090e7' },
   { id: 'decision-history', title: 'Décisions et recommandations', description: 'Historique des décisions, mesures et justifications.', icon: 'clock', color: '#0090e7' },
-  { id: 'backups', title: 'Sauvegardes', description: 'Suivi des sauvegardes et des points de reprise.', icon: 'disk', color: '#8f5fe8' },
+  { id: 'backups', title: 'Sauvegarde du site', description: 'Sauvegarde complète et restauration du pilote.', icon: 'disk', color: '#8f5fe8' },
   { id: 'policies', title: 'Politiques', description: 'Règles qui encadrent les corrections.', icon: 'server', color: '#0090e7' },
   { id: 'php-profiles', title: 'Profils PHP-FPM', description: 'Configuration des profils de capacité PHP-FPM.', icon: 'server', color: '#00d25b' },
   { id: 'reports', title: 'Rapports', description: 'Consultation et export des opérations enregistrées.', icon: 'chart', color: '#0090e7' },

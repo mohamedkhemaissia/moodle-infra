@@ -9,6 +9,9 @@ Le Codespace héberge, dans un seul environnement de démonstration :
 - Prometheus, Node Exporter, Blackbox Exporter, métriques PHP-FPM/PostgreSQL et métriques des conteneurs ;
 - l’API FastAPI, le PostgreSQL séparé du pilotage et le tableau de bord React ;
 - la sauvegarde d'un cours en `.mbz` et sa restauration comme nouveau cours ;
+- la sauvegarde complète quotidienne de PostgreSQL, `moodledata` et de la
+  configuration dans un dépôt Restic chiffré, avec restauration directe
+  confirmée par l'administrateur ;
 - les incidents observés, les recommandations, l’historique et les exports CSV/HTML ;
 - la file PostgreSQL des diagnostics guidés et son worker Ansible Runner en lecture seule ;
 - les politiques persistantes initialisées en mode `observation` ;
@@ -17,8 +20,8 @@ Le Codespace héberge, dans un seul environnement de démonstration :
 - Alertmanager et, après saisie du relais par l'opérateur, les notifications
   externes par e-mail.
 
-Le déploiement ne lance ni sauvegarde Restic, ni PRA complet, ni charge ou
-panne volontaire. Le worker de remédiation est installé mais reste inactif avec
+Le déploiement prépare la reprise simplifiée du pilote, mais ne lance ni PRA sur
+une seconde machine, ni charge ou panne volontaire. Le worker de remédiation est installé mais reste inactif avec
 la politique initiale `observation`.
 
 ## 1. Créer le Codespace
@@ -105,7 +108,8 @@ Ce script attend Docker, détecte les artefacts IA et exécute uniquement `ansib
 2. migration des trois journaux du pilotage vers le PostgreSQL dédié ;
 3. authentification, politiques en observation, diagnostics guidés, puis republication de l’API et du dashboard.
 
-Il réutilise le Docker fourni par Codespaces et n’appelle jamais les rôles `linux`, `runtime`, `operations`, `recovery` ou les rôles de sauvegarde.
+Il réutilise le Docker fourni par Codespaces et n’appelle jamais les rôles `linux`, `runtime`, `operations` ou `recovery`. Le rôle léger `site_backup`
+installe uniquement le dépôt Restic local et la file du parcours simplifié.
 Le rôle `operations` porte le cron de la VM cible avec Restic. Comme ce rôle
 reste volontairement exclu du pilote, Compose démarre après l'installation un
 service `cron` séparé qui exécute `admin/cli/cron.php` chaque minute sous
@@ -113,6 +117,20 @@ l'utilisateur Moodle. Son contrôle de santé exige une exécution réussie dans
 les trois dernières minutes et `scripts/codespaces/status.sh` publie ce résultat.
 Le montage racine de `node-exporter` reste en lecture seule, sans propagation
 `rslave`, car celle-ci n'est pas disponible avec Docker-in-Docker.
+
+### Sauvegarde complète simplifiée
+
+La page « Sauvegarde du site » permet à l'administrateur de créer un point de
+reprise et de restaurer un point choisi par sa date. La restauration exige la
+saisie exacte de `RESTAURER`, crée d'abord une copie locale de sécurité, arrête
+Apache, PHP-FPM et le cron, puis remet PostgreSQL et `moodledata` en place. Un
+échec déclenche le retour aux données précédentes. Le worker crée également un
+point toutes les 24 heures. Les identifiants Restic, chemins et journaux bruts
+ne sont pas affichés dans l'interface.
+
+Cette reprise directe est réservée au pilote : le dépôt Restic reste dans le
+même Codespace. La copie hors site et la reprise sur une autre machine restent
+des perspectives de déploiement pour BeeCoders.
 
 ## 4. Créer l’unique administrateur
 

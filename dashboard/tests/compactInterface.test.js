@@ -140,17 +140,15 @@ test('dashboard shows Moodle backups only and preserves admin-only recovery requ
   const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' });
   t.after(() => server.close());
   const { AuthContext } = await server.ssrLoadModule('/src/Auth.jsx');
-  const { default: Backups, BackupArea } = await server.ssrLoadModule('/src/Backups.jsx');
+  const { default: Backups } = await server.ssrLoadModule('/src/Backups.jsx');
   const { default: RecoveryRequests } = await server.ssrLoadModule('/src/RecoveryRequests.jsx');
   const markup = (component, props, role = 'admin') => renderToStaticMarkup(React.createElement(AuthContext.Provider,
     { value: { enabled: true, user: { role, active: true } } }, React.createElement(component, props)));
   const backup = markup(Backups, { now });
   assert.doesNotMatch(backup, /Sauvegardes du pilotage|PostgreSQL du pilotage/);
-  assert.match(backup, /<details[^>]*><summary>Gestion des restaurations<\/summary>/);
-  const { backup: savedBackup } = dashboardFixtures(now);
-  const secondary = markup(BackupArea, { now, reading: { data: savedBackup } });
-  assert.match(secondary, /Moodle|Point récent/);
-  assert.doesNotMatch(secondary, /PostgreSQL du pilotage/);
+  assert.match(backup, /Sauvegarde complète du site/);
+  assert.match(backup, /<details[^>]*><summary>Sauvegarde d’un cours<\/summary>/);
+  assert.doesNotMatch(backup, /Identifiant complet|SHA-256|\/var\/lib/);
   const props = { now, onSelectPoint() {}, onCloseSelection() {} };
   assert.match(markup(RecoveryRequests, props), /Préparer une demande/);
   assert.doesNotMatch(markup(RecoveryRequests, props, 'reader'), /Préparer une demande|Approuver|Lancer le test/);

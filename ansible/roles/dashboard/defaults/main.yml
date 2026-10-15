@@ -31,6 +31,8 @@ dashboard_source_files:
   - src/decisionHistory.css
   - tests/decisionHistory.test.js
   - src/Backups.jsx
+  - src/SiteOperations.jsx
+  - src/siteOperations.js
   - src/CourseOperations.jsx
   - src/courseOperations.js
   - src/BackupCatalog.jsx
@@ -77,6 +79,7 @@ dashboard_source_files:
   - tests/diagnosticRequests.test.js
   - tests/auth.test.js
   - tests/backups.test.js
+  - tests/siteOperations.test.js
   - tests/courseOperations.test.js
   - tests/backupCatalog.test.js
   - tests/recoveryRequests.test.js
