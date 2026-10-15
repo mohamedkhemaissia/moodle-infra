@@ -53,7 +53,7 @@ test('catalogue is consultation-only for administrators too, with no isolated-te
   assert.equal((html.match(/scope="col"/g) || []).length, 5);
 });
 
-test('services, containers, incidents, decisions, forecasts, policies and reports have at most five columns', async (t) => {
+test('tables stay compact while containers and forecasts use visual cards', async (t) => {
   const { createServer } = await import('vite');
   const React = await import('react');
   const { renderToStaticMarkup } = await import('react-dom/server');
@@ -72,6 +72,7 @@ test('services, containers, incidents, decisions, forecasts, policies and report
   const recoveryReport = makeReport('recovery', { ...f.recovery, limit: 50 }, { retrievedAt: now });
   const forecast = validateDocument('forecast', { status: 'available', experimental: true,
     evaluated_at: f.at, input_evaluated_at: f.at, collection: { linux: { status: 'up', scrape_age_seconds: 2 } },
+    current_metrics: { cpu_usage_percent: 10, memory_usage_percent: 10, disk_available_percent: 10 },
     forecasts: Object.fromEntries(['5', '10', '15'].map((horizon) => [horizon, {
       target_evaluated_at: new Date(now + Number(horizon) * 60000).toISOString(),
       metrics: Object.fromEntries(RESOURCES.map(([key]) => [key, { value: 10, method: 'persistence' }])),
@@ -81,13 +82,11 @@ test('services, containers, incidents, decisions, forecasts, policies and report
     events: [{ id: 1, at: f.at, action: 'policy_updated', actor: 'hamma', revision: 1, details: { reason: 'Motif conservé dans le détail' } }] };
   const samples = [
     [ApplicationTable, { now, reading: { data: f.applications }, onSelect() {} }],
-    [ContainerTable, { now, reading: { data: f.containers } }],
     [IncidentTable, { items: f.incidents.items, onSelect() {} }],
     [HistoryView, { now, value: f.history, onSelect() {} }],
     [RequestsArea, { now, reading: { data: f.recovery }, onOpen() {}, onPage() {}, offset: 0 }],
     [ReportView, { report }],
     [ReportView, { report: recoveryReport }],
-    [Forecasts, { result: { data: forecast }, now }],
     [PolicyView, { data: policy, admin: false }],
   ];
   for (const [component, props] of samples) {
@@ -100,6 +99,13 @@ test('services, containers, incidents, decisions, forecasts, policies and report
     assert.doesNotMatch(primary, /<pre/);
     assert.doesNotMatch(html, /<pre|href="\/api\/v1\//);
   }
+  const containers = renderToStaticMarkup(React.createElement(ContainerTable, { now, reading: { data: f.containers } }));
+  assert.match(containers, /container-card-grid/);
+  assert.match(containers, /Apache|PHP-FPM|PostgreSQL/);
+  assert.doesNotMatch(containers, /Comprendre les mesures|scope="col"/);
+  const forecasts = renderToStaticMarkup(React.createElement(Forecasts, { result: { data: forecast }, now }));
+  assert.match(forecasts, /forecast-timeline|Maintenant|\+15 min/);
+  assert.doesNotMatch(forecasts, /scope="col"/);
   const incidents = renderToStaticMarkup(React.createElement(ReportView, { report }));
   assert.match(incidents, /Gravité|Critique/);
   assert.match(incidents, /CPU élevé/);

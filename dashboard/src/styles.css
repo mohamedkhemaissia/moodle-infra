@@ -204,8 +204,6 @@ pre { max-height: 380px; overflow: auto; font-size: 10px; line-height: 1.65; bac
 .overview-panel { padding: 22px; min-width: 0; }
 .overview-heading, .overview-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .overview-heading h2, .overview-section-heading h2 { font-size: 16px; font-weight: 500; }
-.health-summary { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 24px; margin-bottom: 20px; }
-.health-summary h2 { font-size: 24px; font-weight: 500; margin: 6px 0; }
 .eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #a7acc3; }
 .overview-count { font-size: 32px; line-height: 1.25; margin-bottom: 12px; }
 .overview-count > span { font-size: 12px; color: #b7bdd0; }
@@ -260,8 +258,6 @@ pre { max-height: 380px; overflow: auto; font-size: 10px; line-height: 1.65; bac
 @media (max-width: 1100px) { .overview-grid { gap: 16px; } .overview-panel { padding: 18px; } }
 @media (max-width: 720px) {
   .overview-grid { grid-template-columns: 1fr; }
-  .health-summary { padding: 20px; align-items: flex-start; flex-wrap: wrap; }
-  .health-summary h2 { font-size: 21px; }
   .overview-heading { flex-wrap: wrap; }
   .overview-section-heading { align-items: baseline; }
   .overview-section-heading .section-link { font-size: 11px; text-align: right; }

@@ -30,6 +30,7 @@ export function validateDocument(kind, value) {
     if (!['available', 'unavailable'].includes(value.status) || value.experimental !== true ||
         !date(value.evaluated_at) || !date(value.input_evaluated_at)) fail();
     if (value.status === 'available') {
+      for (const [key] of RESOURCES) if (!percent(value.current_metrics?.[key])) fail();
       if (kind === 'forecast') {
         for (const horizon of ['5', '10', '15']) {
           const forecast = value.forecasts?.[horizon];
