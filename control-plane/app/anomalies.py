@@ -77,7 +77,7 @@ class AnomalyBundle:
                 raise AnomalyBundleError("Identifiant de l'experience incoherent.")
             if (report["tool_version"] != "0.1.0" or type(report["schema_version"]) is not int
                     or report["schema_version"] != 1 or type(metadata["schema_version"]) is not int
-                    or metadata["schema_version"] != 1 or report["status"] != "trained_experimental"
+                    or metadata["schema_version"] not in (1, 2) or report["status"] != "trained_experimental"
                     or metadata["feature_names"] != FEATURE_NAMES
                     or report["threshold_calibration"] != {"partition": "train", "quantile": 0.98,
                         "method": "higher", "comparison": "strictly_greater"}

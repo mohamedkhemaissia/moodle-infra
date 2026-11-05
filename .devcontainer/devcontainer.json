@@ -1,0 +1,60 @@
+{
+  "name": "PFE Moodle - pilote Codespaces",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": true,
+      "dockerDashComposeVersion": "v2"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24"
+    }
+  },
+  "privileged": true,
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+    "PYTHONDONTWRITEBYTECODE": "1"
+  },
+  "forwardPorts": [8443, 8088, 9090],
+  "portsAttributes": {
+    "8443": {
+      "label": "Moodle HTTPS",
+      "protocol": "http",
+      "onAutoForward": "notify"
+    },
+    "8088": {
+      "label": "Pilotage Moodle",
+      "protocol": "http",
+      "onAutoForward": "openPreview"
+    },
+    "9090": {
+      "label": "Prometheus (lecture seule)",
+      "protocol": "http",
+      "onAutoForward": "silent"
+    }
+  },
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb"
+  },
+  "postCreateCommand": "bash scripts/codespaces/setup.sh",
+  "postStartCommand": "bash scripts/codespaces/post-start.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "redhat.ansible",
+        "redhat.vscode-yaml",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  }
+}

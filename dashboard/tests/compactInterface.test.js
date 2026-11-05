@@ -3,7 +3,6 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { NAVIGATION, NAVIGATION_GROUPS } from '../src/navigation.js';
 import { makeReport, reportCsv } from '../src/reports.js';
-import { RESOURCES, validateDocument } from '../src/operations.js';
 import { dashboardFixtures } from './fixtures.js';
 
 const now = Date.parse('2026-10-11T21:30:00Z');
@@ -53,7 +52,7 @@ test('catalogue is consultation-only for administrators too, with no isolated-te
   assert.equal((html.match(/scope="col"/g) || []).length, 5);
 });
 
-test('services, containers, incidents, decisions, forecasts, policies and reports have at most five columns', async (t) => {
+test('tables stay compact while containers use visual cards', async (t) => {
   const { createServer } = await import('vite');
   const React = await import('react');
   const { renderToStaticMarkup } = await import('react-dom/server');
@@ -62,7 +61,7 @@ test('services, containers, incidents, decisions, forecasts, policies and report
   const f = dashboardFixtures(now);
   const { ApplicationTable } = await server.ssrLoadModule('/src/ApplicationServices.jsx');
   const { ContainerTable } = await server.ssrLoadModule('/src/Containers.jsx');
-  const { IncidentTable, Forecasts } = await server.ssrLoadModule('/src/Operations.jsx');
+  const { IncidentTable } = await server.ssrLoadModule('/src/Operations.jsx');
   const { HistoryView } = await server.ssrLoadModule('/src/DecisionHistory.jsx');
   const { RequestsArea } = await server.ssrLoadModule('/src/RecoveryRequests.jsx');
   const { ReportView } = await server.ssrLoadModule('/src/Reports.jsx');
@@ -70,24 +69,16 @@ test('services, containers, incidents, decisions, forecasts, policies and report
   const { EvidenceSummary, RunSummary } = await server.ssrLoadModule('/src/ReadableDetails.jsx');
   const report = makeReport('incidents', { ...f.incidents, limit: 50 }, { retrievedAt: now });
   const recoveryReport = makeReport('recovery', { ...f.recovery, limit: 50 }, { retrievedAt: now });
-  const forecast = validateDocument('forecast', { status: 'available', experimental: true,
-    evaluated_at: f.at, input_evaluated_at: f.at, collection: { linux: { status: 'up', scrape_age_seconds: 2 } },
-    forecasts: Object.fromEntries(['5', '10', '15'].map((horizon) => [horizon, {
-      target_evaluated_at: new Date(now + Number(horizon) * 60000).toISOString(),
-      metrics: Object.fromEntries(RESOURCES.map(([key]) => [key, { value: 10, method: 'persistence' }])),
-    }])) });
   const policy = { policy: { mode: 'observation', suspended: false, evaluation_context: false,
     revision: 1, updated_by: 'hamma', updated_at: f.at }, worker: { status: 'idle' }, eventTotal: 1,
     events: [{ id: 1, at: f.at, action: 'policy_updated', actor: 'hamma', revision: 1, details: { reason: 'Motif conservé dans le détail' } }] };
   const samples = [
     [ApplicationTable, { now, reading: { data: f.applications }, onSelect() {} }],
-    [ContainerTable, { now, reading: { data: f.containers } }],
     [IncidentTable, { items: f.incidents.items, onSelect() {} }],
     [HistoryView, { now, value: f.history, onSelect() {} }],
     [RequestsArea, { now, reading: { data: f.recovery }, onOpen() {}, onPage() {}, offset: 0 }],
     [ReportView, { report }],
     [ReportView, { report: recoveryReport }],
-    [Forecasts, { result: { data: forecast }, now }],
     [PolicyView, { data: policy, admin: false }],
   ];
   for (const [component, props] of samples) {
@@ -100,6 +91,10 @@ test('services, containers, incidents, decisions, forecasts, policies and report
     assert.doesNotMatch(primary, /<pre/);
     assert.doesNotMatch(html, /<pre|href="\/api\/v1\//);
   }
+  const containers = renderToStaticMarkup(React.createElement(ContainerTable, { now, reading: { data: f.containers } }));
+  assert.match(containers, /container-card-grid/);
+  assert.match(containers, /Apache|PHP-FPM|PostgreSQL/);
+  assert.doesNotMatch(containers, /Comprendre les mesures|scope="col"/);
   const incidents = renderToStaticMarkup(React.createElement(ReportView, { report }));
   assert.match(incidents, /Gravité|Critique/);
   assert.match(incidents, /CPU élevé/);
@@ -134,17 +129,15 @@ test('dashboard shows Moodle backups only and preserves admin-only recovery requ
   const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' });
   t.after(() => server.close());
   const { AuthContext } = await server.ssrLoadModule('/src/Auth.jsx');
-  const { default: Backups, BackupArea } = await server.ssrLoadModule('/src/Backups.jsx');
+  const { default: Backups } = await server.ssrLoadModule('/src/Backups.jsx');
   const { default: RecoveryRequests } = await server.ssrLoadModule('/src/RecoveryRequests.jsx');
   const markup = (component, props, role = 'admin') => renderToStaticMarkup(React.createElement(AuthContext.Provider,
     { value: { enabled: true, user: { role, active: true } } }, React.createElement(component, props)));
   const backup = markup(Backups, { now });
   assert.doesNotMatch(backup, /Sauvegardes du pilotage|PostgreSQL du pilotage/);
-  assert.match(backup, /<details[^>]*><summary>Gestion des restaurations<\/summary>/);
-  const { backup: savedBackup } = dashboardFixtures(now);
-  const secondary = markup(BackupArea, { now, reading: { data: savedBackup } });
-  assert.match(secondary, /Moodle|Point récent/);
-  assert.doesNotMatch(secondary, /PostgreSQL du pilotage/);
+  assert.match(backup, /Sauvegarde complète du site/);
+  assert.match(backup, /<details[^>]*><summary>Sauvegarde d’un cours<\/summary>/);
+  assert.doesNotMatch(backup, /Identifiant complet|SHA-256|\/var\/lib/);
   const props = { now, onSelectPoint() {}, onCloseSelection() {} };
   assert.match(markup(RecoveryRequests, props), /Préparer une demande/);
   assert.doesNotMatch(markup(RecoveryRequests, props, 'reader'), /Préparer une demande|Approuver|Lancer le test/);

@@ -95,8 +95,10 @@ class PolicyTests(unittest.TestCase):
 
 class ProbeTests(unittest.TestCase):
     def test_history_gaps_stale_and_down_are_not_filled(self):
+        queries = []
         def response(url):
             query = parse_qs(urlsplit(url).query)["query"][0]
+            queries.append(query)
             value = "1" if query.startswith("up{") else "10"
             vals = [[timestamp, value] for timestamp in range(0, 421, 30)]
             if query.startswith("time()"):
@@ -111,6 +113,9 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(result["status"], "warning")
         self.assertEqual([row["timestamp"] for row in result["invalid_points"]], [90, 120, 150])
         self.assertIsNone(result["invalid_points"][-1]["cpu"])
+        disk = next(query for query in queries if 'node_filesystem_avail_bytes' in query)
+        self.assertIn('mountpoint="/"', disk)
+        self.assertIn('mountpoint="/workspaces"', disk)
     def test_ambiguous_series_is_not_aggregated(self):
         body = {"status": "success", "data": {"resultType": "matrix", "result": [{}, {}]}}
         with patch("diagnostics.collector.get_json", return_value=body):

@@ -1,0 +1,235 @@
+<?php
+declare(strict_types=1);
+
+define('CLI_SCRIPT', true);
+require '/var/www/moodle/config.php';
+
+const STORE = '/var/lib/moodle-course-operations';
+const MAX_REQUEST_BYTES = 16384;
+
+function now_utc(): string {
+    return gmdate('Y-m-d\\TH:i:s\\Z');
+}
+
+function valid_id(mixed $value): string {
+    if (!is_string($value) || preg_match('/^[0-9a-f]{32}$/D', $value) !== 1) {
+        throw new RuntimeException('invalid_identifier');
+    }
+    return $value;
+}
+
+function read_json(string $path): array {
+    if (is_link($path) || !is_file($path) || filesize($path) > MAX_REQUEST_BYTES) {
+        throw new RuntimeException('invalid_request_file');
+    }
+    $value = json_decode((string)file_get_contents($path), true, 32, JSON_THROW_ON_ERROR);
+    if (!is_array($value)) {
+        throw new RuntimeException('invalid_request');
+    }
+    return $value;
+}
+
+function write_json(string $path, array $value): void {
+    $temporary = $path . '.tmp-' . bin2hex(random_bytes(8));
+    $data = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES |
+        JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR) . "\n";
+    if (file_put_contents($temporary, $data, LOCK_EX) === false || !chmod($temporary, 0660) || !rename($temporary, $path)) {
+        @unlink($temporary);
+        throw new RuntimeException('write_failed');
+    }
+}
+
+function refresh_catalog(): void {
+    global $DB;
+    $courses = [];
+    foreach ($DB->get_records_sql('SELECT id, fullname, shortname, category FROM {course} WHERE id <> ? ORDER BY fullname', [SITEID]) as $row) {
+        $courses[] = ['id' => (int)$row->id, 'name' => (string)$row->fullname,
+            'shortname' => (string)$row->shortname, 'category_id' => (int)$row->category];
+    }
+    $categories = [];
+    foreach ($DB->get_records_sql('SELECT id, name FROM {course_categories} ORDER BY sortorder, id') as $row) {
+        $categories[] = ['id' => (int)$row->id, 'name' => (string)$row->name];
+    }
+    write_json(STORE . '/catalog.json', ['status' => 'available', 'generated_at' => now_utc(),
+        'courses' => $courses, 'categories' => $categories]);
+}
+
+function run_command(array $command): array {
+    $descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+    $command = array_merge(['/usr/bin/timeout', '900'], $command);
+    $process = proc_open($command, $descriptors, $pipes, '/var/www/moodle', null, ['bypass_shell' => true]);
+    if (!is_resource($process)) {
+        throw new RuntimeException('command_start_failed');
+    }
+    $stdout = stream_get_contents($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $status = proc_close($process);
+    return [$status, (string)$stdout, (string)$stderr];
+}
+
+function bounded_message(string $stdout, string $stderr): string {
+    $value = trim($stderr !== '' ? $stderr : $stdout);
+    $value = preg_replace('/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]/', '', $value) ?? '';
+    return substr($value, -1500);
+}
+
+function execute_backup(array &$operation): void {
+    global $DB;
+    $courseid = filter_var($operation['course_id'] ?? null, FILTER_VALIDATE_INT,
+        ['options' => ['min_range' => 2]]);
+    if ($courseid === false || !$DB->record_exists('course', ['id' => $courseid])) {
+        throw new RuntimeException('course_not_found');
+    }
+    [$status, $stdout, $stderr] = run_command([PHP_BINARY, '-d', 'memory_limit=512M',
+        '/var/www/moodle/admin/cli/backup.php',
+        '--courseid=' . $courseid, '--destination=' . STORE . '/backups']);
+    if ($status !== 0 || preg_match('/^Writing (.+\\.mbz)$/m', $stdout, $match) !== 1) {
+        throw new RuntimeException('moodle_backup_failed:' . bounded_message($stdout, $stderr));
+    }
+    $source = trim($match[1]);
+    $directory = realpath(STORE . '/backups');
+    $resolved = realpath($source);
+    if ($directory === false || $resolved === false || dirname($resolved) !== $directory || is_link($source)) {
+        throw new RuntimeException('backup_path_invalid');
+    }
+    $identifier = valid_id($operation['id'] ?? null);
+    $target = STORE . '/backups/' . $identifier . '.mbz';
+    if (file_exists($target) || !rename($source, $target) || !chmod($target, 0660)) {
+        throw new RuntimeException('backup_finalize_failed');
+    }
+    $operation['backup_id'] = $identifier;
+    $operation['backup'] = ['id' => $identifier,
+        'filename' => 'moodle-course-' . $courseid . '-' . substr($identifier, 0, 8) . '.mbz',
+        'size_bytes' => filesize($target), 'sha256' => hash_file('sha256', $target),
+        'download_url' => '/api/v1/course-operations/' . $identifier . '/download'];
+    $operation['message'] = 'Sauvegarde du cours terminee.';
+}
+
+function execute_restore(array &$operation): void {
+    global $DB;
+    $backupid = valid_id($operation['backup_id'] ?? null);
+    $categoryid = filter_var($operation['category_id'] ?? null, FILTER_VALIDATE_INT,
+        ['options' => ['min_range' => 1]]);
+    $file = STORE . '/backups/' . $backupid . '.mbz';
+    $backupoperation = read_json(STORE . '/operations/' . $backupid . '.json');
+    if (($backupoperation['id'] ?? null) !== $backupid || ($backupoperation['kind'] ?? null) !== 'backup'
+            || ($backupoperation['status'] ?? null) !== 'completed') {
+        throw new RuntimeException('backup_record_invalid');
+    }
+    $expected = $backupoperation['backup']['sha256'] ?? '';
+    if ($categoryid === false || !$DB->record_exists('course_categories', ['id' => $categoryid])) {
+        throw new RuntimeException('category_not_found');
+    }
+    if (is_link($file) || !is_file($file) || !preg_match('/^[0-9a-f]{64}$/D', $expected)
+            || !hash_equals($expected, (string)hash_file('sha256', $file))) {
+        throw new RuntimeException('backup_integrity_failed');
+    }
+    $before = (int)$DB->get_field_sql('SELECT COALESCE(MAX(id), 0) FROM {course}');
+    [$status, $stdout, $stderr] = run_command([PHP_BINARY, '-d', 'memory_limit=512M',
+        '/var/www/moodle/admin/cli/restore_backup.php',
+        '--file=' . $file, '--categoryid=' . $categoryid]);
+    if ($status !== 0) {
+        throw new RuntimeException('moodle_restore_failed:' . bounded_message($stdout, $stderr));
+    }
+    $course = $DB->get_record_sql('SELECT id, fullname, shortname, category FROM {course} WHERE id > ? ORDER BY id DESC LIMIT 1', [$before]);
+    if (!$course) {
+        throw new RuntimeException('restored_course_not_found');
+    }
+    $operation['restored_course'] = ['id' => (int)$course->id, 'name' => (string)$course->fullname,
+        'shortname' => (string)$course->shortname, 'category_id' => (int)$course->category,
+        'url' => '/course/view.php?id=' . (int)$course->id];
+    $operation['message'] = 'Cours restaure comme nouveau cours.';
+}
+
+function process_request(string $queued): void {
+    $identifier = valid_id(pathinfo($queued, PATHINFO_FILENAME));
+    $processing = STORE . '/processing/' . $identifier . '.json';
+    if (!rename($queued, $processing)) {
+        return;
+    }
+    $operationpath = STORE . '/operations/' . $identifier . '.json';
+    try {
+        $operation = read_json($processing);
+        if (($operation['id'] ?? null) !== $identifier || !in_array($operation['kind'] ?? null, ['backup', 'restore'], true)) {
+            throw new RuntimeException('invalid_request');
+        }
+        $operation['status'] = 'running';
+        $operation['started_at'] = now_utc();
+        $operation['updated_at'] = $operation['started_at'];
+        write_json($operationpath, $operation);
+        $started = microtime(true);
+        if ($operation['kind'] === 'backup') {
+            execute_backup($operation);
+        } else {
+            execute_restore($operation);
+        }
+        $operation['status'] = 'completed';
+        $operation['reason_code'] = null;
+        $operation['duration_seconds'] = round(microtime(true) - $started, 3);
+    } catch (Throwable $error) {
+        if (!isset($operation) || !is_array($operation)) {
+            $operation = ['id' => $identifier, 'kind' => 'backup', 'requested_by' => ['id' => 0, 'username' => 'unknown'],
+                'created_at' => now_utc(), 'started_at' => now_utc()];
+        }
+        $operation['status'] = 'failed';
+        $operation['reason_code'] = str_starts_with($error->getMessage(), 'moodle_restore_failed')
+            ? 'moodle_restore_failed' : (str_starts_with($error->getMessage(), 'moodle_backup_failed')
+                ? 'moodle_backup_failed' : 'course_operation_failed');
+        $operation['message'] = substr($error->getMessage(), 0, 1600);
+    }
+    $operation['finished_at'] = now_utc();
+    $operation['updated_at'] = $operation['finished_at'];
+    write_json($operationpath, $operation);
+    @unlink($processing);
+    refresh_catalog();
+}
+
+function recover_interrupted(): void {
+    foreach (glob(STORE . '/processing/*.json') ?: [] as $path) {
+        try {
+            $operation = read_json($path);
+            $identifier = valid_id($operation['id'] ?? null);
+            $operation['status'] = 'interrupted';
+            $operation['reason_code'] = 'worker_restarted';
+            $operation['message'] = 'Operation interrompue par un redemarrage du worker.';
+            $operation['finished_at'] = now_utc();
+            $operation['updated_at'] = $operation['finished_at'];
+            write_json(STORE . '/operations/' . $identifier . '.json', $operation);
+        } catch (Throwable $ignored) {
+        }
+        @unlink($path);
+    }
+}
+
+$mode = $argv[1] ?? '--loop';
+if ($mode === '--healthcheck') {
+    $catalog = STORE . '/catalog.json';
+    exit(is_file($catalog) && time() - filemtime($catalog) <= 60 && is_writable(STORE . '/requests') ? 0 : 1);
+}
+if ($mode !== '--loop') {
+    fwrite(STDERR, "Usage: worker.php --loop|--healthcheck\n");
+    exit(2);
+}
+
+umask(0007);
+recover_interrupted();
+$lastcatalog = 0;
+while (true) {
+    try {
+        if (time() - $lastcatalog >= 10) {
+            refresh_catalog();
+            $lastcatalog = time();
+        }
+        $requests = glob(STORE . '/requests/*.json') ?: [];
+        sort($requests, SORT_STRING);
+        if ($requests) {
+            process_request($requests[0]);
+            $lastcatalog = time();
+        }
+    } catch (Throwable $error) {
+        fwrite(STDERR, now_utc() . ' ' . $error->getMessage() . "\n");
+    }
+    sleep(2);
+}

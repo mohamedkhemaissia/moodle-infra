@@ -5,3 +5,8 @@ pilotage_database_port: 15432
 pilotage_database_image: 'postgres:16.15-bookworm@sha256:efedf3595f1d6f415c08568ba171029bf54052e754cc9f030e3f2412b21f3d67'
 pilotage_database_memory_limit: 256m
 pilotage_database_cpu_limit: '0.50'
+pilotage_database_migration_python: /opt/moodle-diagnostics/venv/bin/python
+pilotage_database_migration_code_dir: /opt/moodle-diagnostics/code
+pilotage_database_incident_source_dir: /var/lib/moodle-control-plane/incidents
+pilotage_database_diagnostics_source_dir: /var/lib/moodle-diagnostics
+pilotage_database_remediation_source_dir: /var/lib/moodle-remediation

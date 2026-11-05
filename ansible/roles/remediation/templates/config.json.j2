@@ -1,9 +1,12 @@
 {
   "api_url": {{ remediation_api_url | to_json }},
   "data_dir": {{ remediation_data_dir | to_json }},
-  "hostname": "moodle-pfe.test",
-  "https_port": 8443,
-  "ca_file": "/opt/moodle/tls/lab-ca.crt",
+  "hostname": {{ remediation_probe_hostname | to_json }},
+  "https_port": {{ remediation_probe_port | int }},
+  "ca_file": {{ remediation_probe_ca_file | to_json }},
+  "probe_scheme": {{ remediation_probe_scheme | to_json }},
+  "proxy_tls_terminated": {{ remediation_proxy_tls_terminated | bool | to_json }},
+  "operations_check_mode": {{ remediation_operations_check_mode | to_json }},
   "restoration_marker": "/opt/moodle/backups/restoration-active",
   "policy_required": {{ remediation_policy_activation.stat.exists | bool | to_json }},
   "php_profiles_enabled": {{ remediation_php_profiles_enabled | bool | to_json }}

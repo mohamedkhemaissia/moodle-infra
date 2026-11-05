@@ -12,6 +12,9 @@ from .models import MetricsSummary
 from .application_metrics import summary as application_metrics_summary, queries as application_queries
 from .container_metrics import summary as container_metrics_summary, parse_targets, DEFAULT_TARGETS
 from .auth import Settings as AuthSettings, install as install_auth
+from .diagnostic_requests import install as install_diagnostic_requests
+from .course_operations import CourseOperationError, CourseOperationStore, install as install_course_operations
+from .site_operations import SiteOperationError, SiteOperationStore, install as install_site_operations
 from .recovery_requests import install as install_recovery_requests
 from .operating_policy import install as install_operating_policy
 from .php_profiles import read_status as read_php_profiles
@@ -22,12 +25,12 @@ from pilotage.recovery import RecoveryStore, RecoveryStorageError
 from pilotage.recovery_execution import RecoveryExecutionStore
 from pilotage.operating_policy import PolicyStore, PolicyStorageError
 from pilotage.decision_journal import DecisionJournal
+from pilotage.diagnostic_requests import DiagnosticRequestStore, DiagnosticRequestStorageError
 from .diagnostics_store import DiagnosticStore, DiagnosticStorageError
 from .remediation_store import RemediationStore
 from .incidents import IncidentStore, IncidentStorageError
 from .decisions import policy_document, summarize as decision_summary
 from .anomalies import AnomalyBundle, AnomalyBundleError, AnomalyService
-from .forecasts import ForecastBundle, ForecastBundleError, ForecastService
 from .prometheus import (
     PrometheusClient,
     PrometheusInvalidResponse,
@@ -38,11 +41,12 @@ from .prometheus import (
 def create_app(
     prometheus_url: str | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
-    forecasts_dir: str | None = None,
     anomalies_dir: str | None = None,
     incidents_dir: str | None = None,
     decisions_enabled: bool | None = None,
     diagnostics_dir: str | None = None,
+    diagnostic_requests_enabled: bool | None = None,
+    diagnostic_request_store=None,
     remediation_dir: str | None = None,
     auth_enabled: bool | None = None,
     auth_store=None,
@@ -60,6 +64,10 @@ def create_app(
     policy_store=None,
     container_metrics_enabled: bool | None = None,
     decision_journal_enabled: bool | None = None,
+    course_operations_enabled: bool | None = None,
+    course_operations_dir: str | None = None,
+    site_operations_enabled: bool | None = None,
+    site_operations_dir: str | None = None,
 ) -> FastAPI:
     authentication = AuthSettings.load(auth_enabled, auth_origins, auth_secure_cookie, auth_worker_hash_file)
     backup_file = backup_status_file if backup_status_file is not None else os.getenv("BACKUP_STATUS_FILE", "")
@@ -100,8 +108,6 @@ def create_app(
     if type(container_metrics_enabled) is not bool:
         raise ValueError("Activation des mesures de conteneurs invalide.")
     container_targets = parse_targets(os.getenv("CONTAINER_METRICS_TARGETS", DEFAULT_TARGETS))
-    model_directory = forecasts_dir if forecasts_dir is not None else os.getenv("FORECASTS_DIR", "")
-
     anomaly_directory = anomalies_dir if anomalies_dir is not None else os.getenv("ANOMALIES_DIR", "")
 
     remediation_directory = remediation_dir if remediation_dir is not None else os.getenv("REMEDIATION_DIR", "")
@@ -115,6 +121,14 @@ def create_app(
         decisions_enabled = setting == "true"
     if type(decisions_enabled) is not bool:
         raise ValueError("Le mode des decisions doit etre booleen.")
+    if diagnostic_requests_enabled is None:
+        setting = os.getenv("DIAGNOSTIC_REQUESTS_ENABLED", "false")
+        if setting not in ("true", "false"):
+            raise ValueError("DIAGNOSTIC_REQUESTS_ENABLED doit valoir true ou false.")
+        diagnostic_requests_enabled = setting == "true"
+    if type(diagnostic_requests_enabled) is not bool or (diagnostic_requests_enabled and (
+            not authentication.enabled or not decisions_enabled or not incident_directory or not diagnostic_directory)):
+        raise ValueError("Les demandes de diagnostic exigent les comptes, les incidents, les decisions et le journal de diagnostics.")
     if decision_journal_enabled is None:
         setting = os.getenv("DECISION_JOURNAL_ENABLED", "false")
         if setting not in ("true", "false"):
@@ -129,6 +143,26 @@ def create_app(
         policies_enabled=setting == "true"
     if type(policies_enabled) is not bool or (policies_enabled and (not authentication.enabled or not decisions_enabled or not incident_directory)):
         raise ValueError("Les politiques exigent les comptes, les incidents et les decisions.")
+    if course_operations_enabled is None:
+        setting = os.getenv("COURSE_OPERATIONS_ENABLED", "false")
+        if setting not in ("true", "false"):
+            raise ValueError("COURSE_OPERATIONS_ENABLED doit valoir true ou false.")
+        course_operations_enabled = setting == "true"
+    course_operations_directory = (course_operations_dir if course_operations_dir is not None
+                                   else os.getenv("COURSE_OPERATIONS_DIR", ""))
+    if type(course_operations_enabled) is not bool or (course_operations_enabled and (
+            not authentication.enabled or not course_operations_directory)):
+        raise ValueError("Les sauvegardes de cours exigent les comptes et un stockage dedie.")
+    if site_operations_enabled is None:
+        setting = os.getenv("SITE_OPERATIONS_ENABLED", "false")
+        if setting not in ("true", "false"):
+            raise ValueError("SITE_OPERATIONS_ENABLED doit valoir true ou false.")
+        site_operations_enabled = setting == "true"
+    site_operations_directory = (site_operations_dir if site_operations_dir is not None
+                                 else os.getenv("SITE_OPERATIONS_DIR", ""))
+    if type(site_operations_enabled) is not bool or (site_operations_enabled and (
+            not authentication.enabled or not site_operations_directory)):
+        raise ValueError("La sauvegarde complete exige les comptes et un stockage dedie.")
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -136,9 +170,21 @@ def create_app(
         application.state.auth_password_slots = asyncio.Semaphore(2)
         if authentication.enabled:
             await asyncio.to_thread(application.state.auth_store.check)
+        application.state.diagnostic_requests = None
+        if diagnostic_requests_enabled:
+            application.state.diagnostic_requests = diagnostic_request_store or DiagnosticRequestStore()
+            await asyncio.to_thread(application.state.diagnostic_requests.check)
         application.state.operating_policy=(policy_store or PolicyStore()) if policies_enabled else None
         if application.state.operating_policy is not None:
             await asyncio.to_thread(application.state.operating_policy.check)
+        application.state.course_operations = None
+        if course_operations_enabled:
+            application.state.course_operations = CourseOperationStore(course_operations_directory)
+            await asyncio.to_thread(application.state.course_operations.check)
+        application.state.site_operations = None
+        if site_operations_enabled:
+            application.state.site_operations = SiteOperationStore(site_operations_directory)
+            await asyncio.to_thread(application.state.site_operations.check)
         application.state.recovery_execution_enabled = recovery_execution_enabled
         application.state.recovery_requests = None
         if recovery_requests_enabled:
@@ -152,13 +198,6 @@ def create_app(
             transport=transport,
         ) as client:
             application.state.prometheus = PrometheusClient(client, max_age)
-            application.state.forecasts = None
-            if model_directory:
-                try:
-                    application.state.forecasts = ForecastService(
-                        application.state.prometheus, ForecastBundle(model_directory))
-                except ForecastBundleError:
-                    logging.getLogger(__name__).error("Artefacts de previsions invalides ; endpoint indisponible.")
             application.state.anomalies = None
             if anomaly_directory:
                 try:
@@ -176,16 +215,19 @@ def create_app(
     application = FastAPI(
         title="Pilotage Moodle",
         description="Supervision, analyses experimentales et historique des incidents observes du pilote Moodle.",
-        version="0.16.0",
+        version="0.17.0",
         lifespan=lifespan,
     )
     install_auth(application, authentication)
+    install_diagnostic_requests(application)
     install_recovery_requests(application)
     install_operating_policy(application)
+    install_course_operations(application)
+    install_site_operations(application)
 
     @application.get("/api/v1/health", tags=["Sante"])
     async def health():
-        return {"status": "ok", "service": "moodle-control-plane", "version": "0.16.0"}
+        return {"status": "ok", "service": "moodle-control-plane", "version": "0.17.0"}
 
     @application.get("/api/v1/metrics/containers", tags=["Supervision"])
     async def container_metrics(request: Request, response: Response):
@@ -265,10 +307,24 @@ def create_app(
                 with request.app.state.incidents.connection() as connection:
                     request.app.state.decision_journal.check(connection)
                 result["decision_journal"]={"status":"available","schema_version":1,"backend":"postgresql"}
+            if request.app.state.diagnostic_requests is not None:
+                request.app.state.diagnostic_requests.check()
+                result["diagnostic_requests"] = {"status": "available", "schema_version": 1,
+                                                  "backend": "postgresql", "mode": "read_only"}
+            if request.app.state.course_operations is not None:
+                request.app.state.course_operations.check()
+                result["course_operations"] = {"status": "available", "schema_version": 1,
+                                                "backend": "filesystem", "mode": "course_only"}
+            if request.app.state.site_operations is not None:
+                request.app.state.site_operations.check()
+                result["site_operations"] = {"status": "available", "schema_version": 1,
+                                              "backend": "filesystem", "mode": "site_full"}
             return result
         try:
             stores = await asyncio.to_thread(inspect_storage)
-        except (IncidentStorageError, DiagnosticStorageError, AuthStorageError, RecoveryStorageError, PolicyStorageError) as exc:
+        except (IncidentStorageError, DiagnosticStorageError, DiagnosticRequestStorageError,
+                AuthStorageError, RecoveryStorageError, PolicyStorageError, CourseOperationError,
+                SiteOperationError) as exc:
             raise HTTPException(503, detail="Le stockage du pilotage est indisponible.") from exc
         if not stores:
             raise HTTPException(503, detail="Aucun historique du pilotage n'est configure.")
@@ -290,23 +346,6 @@ def create_app(
             raise HTTPException(503, detail="Prometheus est indisponible.") from exc
         except PrometheusInvalidResponse as exc:
             raise HTTPException(502, detail="La reponse de Prometheus est inexploitable.") from exc
-
-    @application.get("/api/v1/forecasts/summary", tags=["Previsions"], responses={
-        502: {"description": "Historique Prometheus inexploitable."},
-        503: {"description": "Prometheus ou artefacts des previsions indisponibles."},
-    })
-    async def forecasts_summary(request: Request):
-        service = request.app.state.forecasts
-        if service is None:
-            raise HTTPException(503, detail="Les previsions ne sont pas configurees ou leurs artefacts sont invalides.")
-        try:
-            return await service.summary(datetime.now(timezone.utc))
-        except PrometheusUnavailable as exc:
-            raise HTTPException(503, detail="Prometheus est indisponible.") from exc
-        except PrometheusInvalidResponse as exc:
-            raise HTTPException(502, detail="L'historique Prometheus est inexploitable.") from exc
-        except ForecastBundleError as exc:
-            raise HTTPException(503, detail="Le calcul des previsions est indisponible.") from exc
 
     @application.get("/api/v1/anomalies/model", tags=["Anomalies"], responses={
         503: {"description": "Artefacts des anomalies indisponibles."},

@@ -227,7 +227,7 @@ class IncidentAPITests(unittest.IsolatedAsyncioTestCase):
                 store.initialize()
                 for i in range(2):
                     store.apply(BASE+i*30,batch("triggered"),completed_at=BASE+i*30)
-            application=create_app(incidents_dir=directory if enabled else "",forecasts_dir="",anomalies_dir="")
+            application=create_app(incidents_dir=directory if enabled else "",anomalies_dir="")
             async with application.router.lifespan_context(application):
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application),base_url="http://testserver") as client:
                     yield client

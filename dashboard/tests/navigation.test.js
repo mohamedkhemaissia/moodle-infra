@@ -14,7 +14,7 @@ test('each operations view requests only its own information and preserves the s
   const options = { status: 'open', offset: 10, incidentId: 6, diagnosticOffset: 20,
     remediationOffset: 30, run: { kind: 'diagnostics', id: 'a'.repeat(32) } };
   assert.deepEqual(operationRequests('analysis', options).map((r) => [r.key, r.path]),
-    [['forecast', '/api/v1/forecasts/summary'], ['anomaly', '/api/v1/anomalies/summary']]);
+    [['anomaly', '/api/v1/anomalies/summary']]);
   const incidents = operationRequests('incidents', options);
   assert.deepEqual(incidents.map((r) => r.key), ['summary', 'incidents', 'decision']);
   assert.equal(incidents[2].path, '/api/v1/decisions/6');

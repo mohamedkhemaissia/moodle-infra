@@ -38,17 +38,30 @@ class RoutedTLS(HTTPConnection):
             raise
 
 
-def login_probe(hostname, port, ca_file):
+class RoutedHTTP(HTTPConnection):
+    """HTTP borne vers loopback en conservant le Host public du proxy."""
+    def connect(self):
+        self.sock = socket.create_connection(("127.0.0.1", self.port), timeout=self.timeout)
+
+
+def login_probe(hostname, port, ca_file, scheme="https"):
     start = time.monotonic()
-    result = {"success": False, "http_status": None, "tls_validated": False, "error": None}
+    result = {"success": False, "http_status": None, "tls_validated": False,
+              "loopback_validated": False, "scheme": scheme, "error": None}
     connection = None
     try:
-        context = ssl.create_default_context(cafile=str(ca_file))
-        connection = RoutedTLS(hostname, port, context, start + 5)
+        if scheme == "https":
+            context = ssl.create_default_context(cafile=str(ca_file))
+            connection = RoutedTLS(hostname, port, context, start + 5)
+        elif scheme == "http":
+            connection = RoutedHTTP(hostname, port, timeout=5)
+        else:
+            raise ValueError("schema invalide")
         connection.request("GET", "/login/index.php", headers={"Accept": "text/html", "Connection": "close", "Accept-Encoding": "identity"})
-        result["tls_validated"] = True
+        result["tls_validated"] = scheme == "https"
+        result["loopback_validated"] = True
         active_socket = connection.sock
-        active_socket.settimeout(connection.remaining())
+        active_socket.settimeout(connection.remaining() if scheme == "https" else 5)
         with connection.getresponse() as response:
             result["http_status"] = response.status
             if response.status != 200:
@@ -60,7 +73,7 @@ def login_probe(hostname, port, ca_file):
                 length = response.getheader("Content-Length")
                 expected = int(length) if length is not None and length.isdigit() else None
                 while not response.isclosed():
-                    active_socket.settimeout(connection.remaining())
+                    active_socket.settimeout(connection.remaining() if scheme == "https" else 5)
                     chunk = response.read1(min(65536, 524289 - size))
                     if not chunk:
                         break

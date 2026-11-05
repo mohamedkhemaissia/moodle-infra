@@ -1,8 +1,8 @@
 # Détection expérimentale des anomalies Moodle
 
-Cette étape ajoute un modèle Isolation Forest au travail de prévision déjà réalisé. Il analyse les 21 variables temporelles du CPU, de la mémoire et du disque. Le modèle et son seuil sont appris sur la partition train. Les partitions validation et test servent à observer les résultats.
+Cette étape entraîne le seul modèle IA retenu dans le périmètre final proposé : Isolation Forest. Il analyse les 21 variables temporelles du CPU, de la mémoire et du disque. Le modèle et son seuil sont appris sur la partition train. Les partitions validation et test servent à observer les résultats.
 
-Le script lit features.csv et metadata.json produits par ml.prepare_features. Il vérifie leurs empreintes, leur chronologie, leurs segments et la séparation des contextes temporels. Il utilise les variables passées ; les fichiers de cibles futures des prévisions ne sont pas nécessaires.
+Le script lit `features.csv` et `metadata.json` produits par `ml.prepare_features`. Il vérifie leurs empreintes, leur chronologie, leurs segments et la séparation des contextes temporels. Il utilise uniquement les variables passées. Les éventuelles tables de cibles futures produites par l'étape historique de préparation ne sont ni entraînées, ni déployées, ni exposées par l'application finale.
 
 ## Lancer l'expérience
 

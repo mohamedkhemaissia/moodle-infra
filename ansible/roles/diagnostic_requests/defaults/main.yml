@@ -1,0 +1,7 @@
+---
+diagnostic_requests_base_dir: "{{ diagnostics_base_dir | default('/opt/moodle-diagnostics') }}"
+diagnostic_requests_python: "{{ diagnostic_requests_base_dir }}/venv/bin/python"
+diagnostic_requests_scheduler: systemd
+diagnostic_requests_supervisor_program: moodle-diagnostic-requests
+diagnostic_requests_poll_seconds: 2
+pilotage_database_config_dir: /etc/moodle-pilotage

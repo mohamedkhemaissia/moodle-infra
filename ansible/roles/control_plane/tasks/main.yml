@@ -5,11 +5,14 @@
       - not (control_plane_decisions_enabled | bool) or (control_plane_incidents_enabled | bool)
       - not (control_plane_decision_journal_enabled | bool) or (control_plane_decisions_enabled | bool)
       - not (control_plane_diagnostics_enabled | bool) or (control_plane_decisions_enabled | bool)
+      - not (control_plane_diagnostic_requests_enabled | bool) or (control_plane_diagnostics_enabled | bool)
+      - not (control_plane_diagnostic_requests_enabled | bool) or (control_plane_incidents_enabled | bool)
       - not (control_plane_remediation_enabled | bool) or (control_plane_decisions_enabled | bool)
       - not (control_plane_pilotage_backup_status_enabled | bool) or (control_plane_backup_status_enabled | bool)
       - not (control_plane_backup_catalog_enabled | bool) or (control_plane_backup_status_enabled | bool)
       - not (control_plane_recovery_requests_enabled | bool) or (control_plane_backup_catalog_enabled | bool)
       - not (control_plane_recovery_execution_enabled | bool) or (control_plane_recovery_requests_enabled | bool)
+      - not (control_plane_course_operations_enabled | bool) or (moodle_course_operations_enabled | bool)
     fail_msg: "Activer les incidents avant le moteur de decision."
 
 - name: Creer les repertoires de l API
@@ -26,6 +29,26 @@
     - "{{ control_plane_base_dir }}/build/pilotage"
     - "{{ control_plane_base_dir }}/build/tests"
 
+- name: Inventorier les anciennes sources du contexte Docker
+  ansible.builtin.find:
+    paths: "{{ control_plane_base_dir }}/build"
+    recurse: true
+    file_type: file
+    hidden: true
+  register: control_plane_build_files
+  changed_when: false
+
+- name: Retirer les sources qui ne font plus partie de l image
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ control_plane_build_files.files }}"
+  loop_control:
+    label: "{{ item.path | relpath(control_plane_base_dir ~ '/build') }}"
+  when: >-
+    (item.path | relpath(control_plane_base_dir ~ '/build'))
+    not in control_plane_source_files
+
 - name: Copier les sources necessaires a l image
   ansible.builtin.copy:
     src: "{{ control_plane_source_dir }}/{{ item }}"
@@ -33,7 +56,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'pilotage/recovery.py', 'pilotage/recovery_cli.py', 'pilotage/recovery_execution.py', 'pilotage/operating_policy.py', 'pilotage/decision_journal.py', 'app/backup_status.py', 'app/pilotage_backup_status.py', 'app/backup_catalog_status.py']) }}"
+  loop: "{{ control_plane_source_files | difference(['app/isolation_model.py', 'app/diagnostics_store.py', 'app/remediation_store.py', 'pilotage/__init__.py', 'pilotage/db.py', 'pilotage/schemas.py', 'pilotage/migrate.py', 'pilotage/auth.py', 'pilotage/auth_cli.py', 'pilotage/passwords.py', 'pilotage/worker_auth.py', 'pilotage/recovery.py', 'pilotage/recovery_cli.py', 'pilotage/recovery_execution.py', 'pilotage/operating_policy.py', 'pilotage/decision_journal.py', 'pilotage/diagnostic_requests.py', 'app/backup_status.py', 'app/pilotage_backup_status.py', 'app/backup_catalog_status.py']) }}"
 
 - name: Copier le lecteur partage du suivi des sauvegardes
   ansible.builtin.copy:
@@ -132,7 +155,7 @@
     owner: root
     group: root
     mode: '0644'
-  loop: [__init__.py, db.py, schemas.py, migrate.py, auth.py, auth_cli.py, passwords.py, worker_auth.py, recovery.py, recovery_cli.py, recovery_execution.py, operating_policy.py, decision_journal.py]
+  loop: [__init__.py, db.py, schemas.py, migrate.py, auth.py, auth_cli.py, passwords.py, worker_auth.py, recovery.py, recovery_cli.py, recovery_execution.py, operating_policy.py, decision_journal.py, diagnostic_requests.py]
 
 - name: Verifier si PostgreSQL a ete active pour le pilotage
   ansible.builtin.stat:
@@ -161,6 +184,23 @@
       - not pilotage_policy_activation.stat.exists or pilotage_auth_activation.stat.exists
       - not pilotage_policy_activation.stat.exists or (control_plane_decisions_enabled | bool)
       - not pilotage_policy_activation.stat.exists or (control_plane_incidents_enabled | bool)
+
+- name: Verifier l activation de la file des diagnostics guides
+  ansible.builtin.stat:
+    path: "{{ pilotage_database_config_dir }}/diagnostic-requests-active"
+    follow: false
+  register: control_plane_diagnostic_requests_activation
+  when: control_plane_diagnostic_requests_enabled | bool
+
+- name: Exiger la file et ses dependances avant de publier ses routes
+  ansible.builtin.assert:
+    that:
+      - pilotage_database_activation.stat.exists
+      - pilotage_auth_activation.stat.exists
+      - control_plane_diagnostic_requests_activation.stat.isreg | default(false)
+      - not (control_plane_diagnostic_requests_activation.stat.islnk | default(false))
+    fail_msg: "Deployer diagnostic_requests avant d activer ce parcours dans l API."
+  when: control_plane_diagnostic_requests_enabled | bool
 
 - name: Exiger PostgreSQL quand les comptes sont actifs
   ansible.builtin.assert:
@@ -233,10 +273,6 @@
   when: control_plane_image_lookup.stdout | trim | length == 0
   changed_when: true
 
-- name: Deployer les artefacts des previsions
-  ansible.builtin.include_tasks: forecasts.yml
-  when: control_plane_forecasts_enabled | bool
-
 - name: Deployer les artefacts des anomalies
   ansible.builtin.include_tasks: anomalies.yml
   when: control_plane_anomalies_enabled | bool
@@ -257,6 +293,25 @@
     group: "10001"
     mode: "0750"
   when: control_plane_incidents_enabled | bool
+
+- name: Verifier le stockage partage des sauvegardes de cours
+  ansible.builtin.stat:
+    path: "{{ control_plane_course_operations_dir }}/catalog.json"
+    follow: false
+  register: control_plane_course_operations_catalog
+  when:
+    - control_plane_course_operations_enabled | bool
+    - pilotage_auth_activation.stat.exists
+
+- name: Exiger le worker Moodle avant de publier les operations de cours
+  ansible.builtin.assert:
+    that:
+      - control_plane_course_operations_catalog.stat.isreg | default(false)
+      - not (control_plane_course_operations_catalog.stat.islnk | default(false))
+    fail_msg: "Le worker de sauvegarde des cours n a pas publie son catalogue."
+  when:
+    - control_plane_course_operations_enabled | bool
+    - pilotage_auth_activation.stat.exists
 
 - name: Installer la configuration Docker Compose de l API
   ansible.builtin.template:
@@ -305,20 +360,6 @@
     wait: true
     wait_timeout: 120
   register: control_plane_deployment
-
-- name: Recharger les modeles modifies dans une API deja demarree
-  community.docker.docker_compose_v2:
-    project_src: "{{ control_plane_base_dir }}"
-    project_name: "{{ control_plane_project_name }}"
-    state: restarted
-    services:
-      - api
-    wait: true
-    wait_timeout: 120
-  when:
-    - control_plane_forecasts_enabled | bool
-    - control_plane_forecast_artifacts.changed
-    - not control_plane_deployment.changed
 
 - name: Verifier la sante de l API
   ansible.builtin.uri:
@@ -386,31 +427,6 @@
   failed_when: >-
     not (control_plane_auth_status.json.enabled | default(false) | bool) or
     (pilotage_storage_health.json.stores.accounts.backend | default('')) != 'postgresql'
-
-- name: Verifier l endpoint des previsions
-  ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ control_plane_port }}/api/v1/forecasts/summary"
-    return_content: true
-    status_code: 200
-    timeout: 10
-    use_proxy: false
-    headers: "{{ control_plane_read_headers }}"
-  no_log: "{{ pilotage_auth_activation.stat.exists }}"
-  register: control_plane_forecasts_response
-  retries: 6
-  delay: 5
-  until: >-
-    control_plane_forecasts_response.status | default(0) == 200 and
-    control_plane_forecasts_response.json is defined and
-    control_plane_forecasts_response.json.status | default('') in ['available', 'unavailable']
-  when: control_plane_forecasts_enabled | bool
-
-- name: Afficher l etat des previsions
-  ansible.builtin.debug:
-    msg: >-
-      Etat={{ control_plane_forecasts_response.json.status }},
-      raison={{ control_plane_forecasts_response.json.reason | default('historique complet') }}
-  when: control_plane_forecasts_enabled | bool
 
 - name: Verifier la configuration du modele d anomalies
   ansible.builtin.uri:

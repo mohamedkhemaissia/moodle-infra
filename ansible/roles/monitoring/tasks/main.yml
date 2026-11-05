@@ -8,7 +8,11 @@
       - monitoring_alert_scope is match('^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$')
       - not monitoring_alert_email_enabled | bool or monitoring_alert_smtp_smarthost | length > 0
       - not monitoring_alert_email_enabled | bool or monitoring_alert_smtp_from | length > 0
+      - not monitoring_alert_email_enabled | bool or monitoring_alert_smtp_username | length > 0
       - not monitoring_alert_email_enabled | bool or monitoring_alert_email_to | length > 0
+      - not monitoring_alert_email_enabled | bool or monitoring_alert_smtp_smarthost is match('^[A-Za-z0-9][A-Za-z0-9.-]*:[1-9][0-9]{0,4}$')
+      - not monitoring_alert_email_enabled | bool or monitoring_alert_smtp_from is match('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+      - not monitoring_alert_email_enabled | bool or monitoring_alert_email_to is match('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
   when: monitoring_alertmanager_enabled | bool
 
 - name: Verifier le fichier SMTP gere localement par l operateur

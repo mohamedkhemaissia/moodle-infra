@@ -260,7 +260,7 @@ class PostgreSQLTests(unittest.TestCase):
         async def check():
             with patch.dict(os.environ, environment):
                 app = create_app(incidents_dir=environment['INCIDENTS_DIR'], decisions_enabled=True,
-                                 forecasts_dir='', anomalies_dir='', diagnostics_dir='', remediation_dir='')
+                                 anomalies_dir='', diagnostics_dir='', remediation_dir='')
                 async with app.router.lifespan_context(app):
                     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
                         response = await client.get('/api/v1/incidents/summary')

@@ -1,0 +1,7 @@
+---
+site_backup_enabled: false
+site_backup_operations_dir: /var/lib/moodle-site-operations
+site_backup_store_dir: /opt/moodle-pfe-backup
+site_backup_config_dir: /etc/moodle-pfe-backup
+site_backup_interval_seconds: 86400
+site_backup_supervisor_program: moodle-site-operations

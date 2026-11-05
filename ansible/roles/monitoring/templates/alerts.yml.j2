@@ -49,8 +49,8 @@ groups:
           (absent(max(node_cpu_seconds_total{job="linux",mode="idle"}))
           or absent(max(node_memory_MemAvailable_bytes{job="linux"}))
           or absent(max(node_memory_MemTotal_bytes{job="linux"}))
-          or absent(max(node_filesystem_avail_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"}))
-          or absent(max(node_filesystem_size_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"})))
+          or absent(max(node_filesystem_avail_bytes{job="linux",mountpoint={{ monitoring_linux_filesystem_mountpoint | to_json }},fstype!~"tmpfs|overlay"}))
+          or absent(max(node_filesystem_size_bytes{job="linux",mountpoint={{ monitoring_linux_filesystem_mountpoint | to_json }},fstype!~"tmpfs|overlay"})))
           and on() ({{ fresh('linux') | indent(10) }})
         for: 1m
         labels:
@@ -130,15 +130,15 @@ groups:
           description: "Au moins 90 pour cent de la memoire utilisee pendant trois minutes."
       - alert: MoodleDiskLow
         expr: >-
-          (100 * min(node_filesystem_avail_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"}
-          / node_filesystem_size_bytes{job="linux",mountpoint="/",fstype!~"tmpfs|overlay"}) <= 10)
+          (100 * min(node_filesystem_avail_bytes{job="linux",mountpoint={{ monitoring_linux_filesystem_mountpoint | to_json }},fstype!~"tmpfs|overlay"}
+          / node_filesystem_size_bytes{job="linux",mountpoint={{ monitoring_linux_filesystem_mountpoint | to_json }},fstype!~"tmpfs|overlay"}) <= 10)
           and on() ({{ fresh('linux') | indent(10) }})
         for: 5m
         labels:
 {{ labels('resource', 'critical', 'linux') }}
         annotations:
-          summary: "Espace disque racine Moodle faible"
-          description: "Au plus 10 pour cent libres pendant cinq minutes ; verifier les volumes et la retention."
+          summary: "Espace disque du pilote Moodle faible"
+          description: "Au plus 10 pour cent libres sur le point de montage surveille pendant cinq minutes."
 {% if monitoring_container_metrics_enabled | bool %}
 {% set targets = container_monitoring_targets | default([{'project':'moodle-pilote','service':'apache'}, {'project':'moodle-pilote','service':'php'}, {'project':'moodle-pilote','service':'postgres'}]) %}
 {% macro inventory_fresh() -%}

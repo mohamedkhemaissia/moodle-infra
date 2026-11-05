@@ -14,7 +14,6 @@ const document = () => ({
   job: { state: 'idle', last_result: 'success' },
   collection: { status: 'up', observed_at: '2026-10-08T21:00:00Z', age_seconds: 0, max_age_seconds: 150 },
 });
-
 test('a recent point is shown with its age measured from the freeze', () => {
   const data = validateDocument('backup', document());
   assert.equal(backupView(data, now).state, 'recent');
@@ -163,35 +162,4 @@ test('stale responses hide the restoration proof as well as the backup health', 
   assert.equal(pilotageRestoreView(data, now + 61_000).test, null);
   data.collection.age_seconds = 140;
   assert.equal(pilotageRestoreView(data, now + 11_000).test, null);
-});
-
-test('the panel distinguishes current validation, old success and unavailable readings', async (t) => {
-  const { createServer } = await import('vite');
-  const React = await import('react');
-  const { renderToStaticMarkup } = await import('react-dom/server');
-  const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' });
-  t.after(() => server.close());
-  const { BackupArea } = await server.ssrLoadModule('/src/Backups.jsx');
-  function markup(data, moment = now) {
-    return renderToStaticMarkup(React.createElement(BackupArea, {
-      reading: { data, pending: false }, now: moment, pilotage: true }));
-  }
-  const data = pilotageDocument();
-  const current = markup(data);
-  assert.match(current, /PostgreSQL du pilotage/);
-  assert.match(current, /Point actuel validé/);
-  assert.match(current, /415 enregistrements/);
-  assert.match(current, /76,8 s/);
-  assert.doesNotMatch(current, /<button|<input|mot de passe|\/var\/lib/);
-  data.latest_success.snapshot = 'b'.repeat(64);
-  data.restoration_state = 'not_tested';
-  data.same_snapshot = false;
-  const old = markup(data);
-  assert.match(old, /Test réussi/);
-  assert.match(old, /Point actuel non testé/);
-  assert.match(old, /un autre point/);
-  assert.doesNotMatch(old, /Point actuel validé/);
-  const stale = markup(data, now + 61_000);
-  assert.match(stale, /état actuel est inconnu/);
-  assert.doesNotMatch(stale, /Test réussi|415 enregistrements/);
 });

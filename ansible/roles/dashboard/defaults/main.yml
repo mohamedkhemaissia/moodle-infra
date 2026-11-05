@@ -31,6 +31,10 @@ dashboard_source_files:
   - src/decisionHistory.css
   - tests/decisionHistory.test.js
   - src/Backups.jsx
+  - src/SiteOperations.jsx
+  - src/siteOperations.js
+  - src/CourseOperations.jsx
+  - src/courseOperations.js
   - src/BackupCatalog.jsx
   - src/backupCatalog.js
   - src/RecoveryRequests.jsx
@@ -59,6 +63,8 @@ dashboard_source_files:
   - src/reports.js
   - src/reports.css
   - src/Operations.jsx
+  - src/DiagnosticRequestPanel.jsx
+  - src/diagnosticRequests.js
   - src/AIAnalysis.jsx
   - src/ReadableDetails.jsx
   - src/operations.js
@@ -70,8 +76,11 @@ dashboard_source_files:
   - src/corona.css
   - tests/snapshot.test.js
   - tests/operations.test.js
+  - tests/diagnosticRequests.test.js
   - tests/auth.test.js
   - tests/backups.test.js
+  - tests/siteOperations.test.js
+  - tests/courseOperations.test.js
   - tests/backupCatalog.test.js
   - tests/recoveryRequests.test.js
   - tests/applications.test.js

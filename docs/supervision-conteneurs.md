@@ -61,8 +61,8 @@ Chaque menu du tableau de bord ouvre sa propre vue. Le lien `#reports` affiche
 uniquement les rapports, `#containers` uniquement les conteneurs et `#main` les
 ressources actuelles de l'hote. Les liens directs, le rechargement et les boutons
 precedent/suivant du navigateur conservent la vue. Les composants des autres vues
-ne sont pas montes et leurs lectures periodiques sont arretees. Les previsions,
-incidents et journaux ne demandent que leurs propres endpoints.
+ne sont pas montes et leurs lectures periodiques sont arretees. L'analyse
+d'anomalies, les incidents et les journaux ne demandent que leurs propres endpoints.
 
 ## Deploiement sur la VM
 

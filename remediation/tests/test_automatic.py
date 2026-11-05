@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock
 from pilotage.operating_policy import PolicyBlocked,PolicyStorageError
-from remediation.automatic import once
+from remediation.automatic import healthcheck, once
 
 
 class WorkerTests(unittest.TestCase):
@@ -51,3 +51,13 @@ class WorkerTests(unittest.TestCase):
         self.config['php_profiles_enabled'] = True
         self.assertEqual(self.run_once()[0]['status'],'completed')
         self.assertEqual(self.executor.call_args.args[2],7)
+
+    def test_healthcheck_never_reads_incidents_or_reserves_an_action(self):
+        result,code=healthcheck(self.config,store=self.store)
+        self.assertEqual((result["status"],code),("available",0))
+        self.assertEqual(result["action_scope"],["start_php_stopped"])
+        self.config["php_profiles_enabled"]=True
+        result,code=healthcheck(self.config,store=self.store)
+        self.assertEqual((result["status"],code),("available",0))
+        self.assertEqual(result["action_scope"],["start_php_stopped","apply_php_fpm_profile"])
+        self.reader.assert_not_called();self.store.reserve_worker.assert_not_called();self.executor.assert_not_called()

@@ -39,7 +39,7 @@ http {
             return 200 "ok\n";
         }
 
-        location ~ "^/api/v1/(health|storage/health|metrics/(summary|applications|containers)|backups/((pilotage/)?summary|catalog)|auth/(status|session|events)|(forecasts|anomalies)/summary|anomalies/model|incidents(/summary|/[1-9][0-9]*(/events)?)?|decisions/(summary|policies|history(/[1-9][0-9]*)?|[1-9][0-9]*)|(diagnostics|remediations)(/summary|/[0-9a-f]{32})?)$" {
+        location ~ "^/api/v1/(health|storage/health|metrics/(summary|applications|containers)|backups/((pilotage/)?summary|catalog)|auth/(status|session|events)|anomalies/(summary|model)|incidents(/summary|/[1-9][0-9]*(/events)?)?|decisions/(summary|policies|history(/[1-9][0-9]*)?|[1-9][0-9]*)|(diagnostics|remediations)(/summary|/[0-9a-f]{32})?)$" {
             limit_except GET { deny all; }
             proxy_pass ${API_ORIGIN};
             add_header Cache-Control no-store always;
@@ -83,6 +83,62 @@ http {
 
         location = /api/v1/policies/approvals {
             limit_except POST { deny all; }
+            proxy_pass ${API_ORIGIN};
+            add_header Cache-Control no-store always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
+        location = /api/v1/diagnostic-requests {
+            limit_except GET POST { deny all; }
+            proxy_pass ${API_ORIGIN};
+            add_header Cache-Control no-store always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
+        location = /api/v1/course-operations {
+            limit_except GET { deny all; }
+            proxy_pass ${API_ORIGIN};
+            add_header Cache-Control no-store always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
+        location = /api/v1/course-operations/catalog {
+            limit_except GET { deny all; }
+            proxy_pass ${API_ORIGIN};
+            add_header Cache-Control no-store always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
+        location ~ "^/api/v1/course-operations/(backups|restores)$" {
+            limit_except POST { deny all; }
+            proxy_pass ${API_ORIGIN};
+            add_header Cache-Control no-store always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
+        location = /api/v1/site-operations {
+            limit_except GET { deny all; }
+            proxy_pass ${API_ORIGIN};
+            add_header Cache-Control no-store always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
+        location ~ "^/api/v1/site-operations/(backups|restores)$" {
+            limit_except POST { deny all; }
+            proxy_pass ${API_ORIGIN};
+            add_header Cache-Control no-store always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
+        location ~ "^/api/v1/course-operations/[0-9a-f]{32}(/download)?$" {
+            limit_except GET { deny all; }
+            proxy_pass ${API_ORIGIN};
+            add_header Cache-Control no-store always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
+        location ~ "^/api/v1/diagnostic-requests/[0-9a-f]{32}$" {
+            limit_except GET { deny all; }
             proxy_pass ${API_ORIGIN};
             add_header Cache-Control no-store always;
             add_header X-Content-Type-Options nosniff always;

@@ -72,11 +72,9 @@ def change_table(directory, change, update_summary=False):
 
 
 class InputTests(unittest.TestCase):
-    def test_valid_inputs_use_only_features_not_future_target_files(self):
+    def test_valid_inputs_use_only_feature_file(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = make_features(Path(temporary))
-            for file in directory.glob("forecast_*.csv"):
-                file.unlink()
             inputs = training.read_inputs(directory)
             self.assertGreater(len(inputs.rows), 300)
             self.assertEqual(list(inputs.rows[0])[3:], list(features.FEATURE_NAMES))

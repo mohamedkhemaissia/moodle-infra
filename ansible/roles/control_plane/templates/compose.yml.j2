@@ -46,8 +46,14 @@ services:
 {% endif %}
       DECISIONS_ENABLED: {{ (control_plane_decisions_enabled | bool | ternary('true', 'false')) | to_json }}
       DECISION_JOURNAL_ENABLED: {{ (control_plane_decision_journal_enabled | bool | ternary('true', 'false')) | to_json }}
-{% if control_plane_forecasts_enabled | bool %}
-      FORECASTS_DIR: /opt/forecasts
+      DIAGNOSTIC_REQUESTS_ENABLED: {{ (control_plane_diagnostic_requests_enabled | bool | ternary('true', 'false')) | to_json }}
+      COURSE_OPERATIONS_ENABLED: {{ (((control_plane_course_operations_enabled | bool) and pilotage_auth_activation.stat.exists) | ternary('true', 'false')) | to_json }}
+{% if (control_plane_course_operations_enabled | bool) and pilotage_auth_activation.stat.exists %}
+      COURSE_OPERATIONS_DIR: /var/lib/moodle-course-operations
+{% endif %}
+      SITE_OPERATIONS_ENABLED: {{ (((control_plane_site_operations_enabled | bool) and pilotage_auth_activation.stat.exists) | ternary('true', 'false')) | to_json }}
+{% if (control_plane_site_operations_enabled | bool) and pilotage_auth_activation.stat.exists %}
+      SITE_OPERATIONS_DIR: /var/lib/moodle-site-operations
 {% endif %}
 {% if control_plane_anomalies_enabled | bool %}
       ANOMALIES_DIR: /opt/anomalies
@@ -61,7 +67,7 @@ services:
 {% if control_plane_remediation_enabled | bool %}
       REMEDIATION_DIR: /var/lib/moodle-remediation
 {% endif %}
-{% if pilotage_database_activation.stat.exists or control_plane_forecasts_enabled | bool or control_plane_anomalies_enabled | bool or control_plane_incidents_enabled | bool or control_plane_diagnostics_enabled | bool or control_plane_remediation_enabled | bool or control_plane_backup_status_enabled | bool %}
+{% if pilotage_database_activation.stat.exists or control_plane_anomalies_enabled | bool or control_plane_incidents_enabled | bool or control_plane_diagnostics_enabled | bool or control_plane_remediation_enabled | bool or control_plane_backup_status_enabled | bool or ((control_plane_course_operations_enabled | bool) and pilotage_auth_activation.stat.exists) or ((control_plane_site_operations_enabled | bool) and pilotage_auth_activation.stat.exists) %}
     volumes:
 {% if control_plane_backup_status_enabled | bool %}
       - type: bind
@@ -73,12 +79,6 @@ services:
       - type: bind
         source: {{ pilotage_database_config_dir | to_json }}
         target: {{ pilotage_database_config_dir | to_json }}
-        read_only: true
-{% endif %}
-{% if control_plane_forecasts_enabled | bool %}
-      - type: bind
-        source: {{ control_plane_forecast_runtime_dir | to_json }}
-        target: /opt/forecasts
         read_only: true
 {% endif %}
 {% if control_plane_anomalies_enabled | bool %}
@@ -104,6 +104,18 @@ services:
         source: {{ control_plane_remediation_data_dir | to_json }}
         target: /var/lib/moodle-remediation
         read_only: true
+{% endif %}
+{% if (control_plane_course_operations_enabled | bool) and pilotage_auth_activation.stat.exists %}
+      - type: bind
+        source: {{ control_plane_course_operations_dir | to_json }}
+        target: /var/lib/moodle-course-operations
+        read_only: false
+{% endif %}
+{% if (control_plane_site_operations_enabled | bool) and pilotage_auth_activation.stat.exists %}
+      - type: bind
+        source: {{ control_plane_site_operations_dir | to_json }}
+        target: /var/lib/moodle-site-operations
+        read_only: false
 {% endif %}
 {% endif %}
     read_only: true

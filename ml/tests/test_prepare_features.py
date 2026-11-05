@@ -76,7 +76,7 @@ class CalculationTests(unittest.TestCase):
         self.assertEqual(features.window_statistics([0.0] * 11, 30)["std"], 0)
         self.assertEqual(features.window_statistics([20.0, 10.0, 0.0], 30)["slope_per_minute"], -20)
 
-    def test_future_change_does_not_change_past_features_but_changes_exact_target(self):
+    def test_future_change_does_not_change_past_features(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             first = features.read_dataset(make_dataset(root / "first"))
@@ -88,28 +88,17 @@ class CalculationTests(unittest.TestCase):
             changed_at = exporter.utc_iso(BASE + 200 * 30)
             before = lambda rows: [row for row in rows if row["evaluated_at"] < changed_at]
             self.assertEqual(before(first_tables["features.csv"]), before(second_tables["features.csv"]))
-            origin = exporter.utc_iso(BASE + 190 * 30)
-            original = next(row for row in first_tables["forecast_5m.csv"] if row["evaluated_at"] == origin)
-            modified = next(row for row in second_tables["forecast_5m.csv"] if row["evaluated_at"] == origin)
-            self.assertEqual(original["target_evaluated_at"], changed_at)
-            self.assertEqual(original["target__cpu_usage_percent"], 4)
-            self.assertEqual(modified["target__cpu_usage_percent"], 95)
-            self.assertTrue(all(original[name] == modified[name] for name in features.FEATURE_NAMES))
 
-    def test_all_horizons_are_exact_and_persistence_baseline_is_available(self):
+    def test_output_contains_only_isolation_forest_features(self):
         with tempfile.TemporaryDirectory() as temporary:
             dataset = features.read_dataset(make_dataset(Path(temporary)))
             tables, metadata = features.build_tables(dataset)
+            self.assertEqual(set(tables), {"features.csv"})
             self.assertEqual(metadata["summary"]["feature_count"], 21)
             self.assertEqual(metadata["window_points_including_endpoints"], 11)
-            for minutes in features.HORIZONS_MINUTES:
-                rows = tables[f"forecast_{minutes}m.csv"]
-                self.assertTrue(rows)
-                for row in rows:
-                    timestamp = preparation.parse_utc(row["evaluated_at"])
-                    self.assertEqual(preparation.parse_utc(row["target_evaluated_at"]) - timestamp, minutes * 60)
-                    self.assertAlmostEqual(row["target__cpu_usage_percent"] - row["cpu_usage_percent__current"], minutes * 0.04)
-                    self.assertEqual(row["target__memory_usage_percent"], row["memory_usage_percent__current"])
+            self.assertNotIn("horizons_minutes", metadata)
+            self.assertNotIn("target_names", metadata)
+            self.assertNotIn("forecast_rows", metadata["summary"])
 
     def test_zero_resources_and_a_failed_known_probe_remain_valid_resource_inputs(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -125,7 +114,7 @@ class CalculationTests(unittest.TestCase):
 
 
 class ChronologyTests(unittest.TestCase):
-    def test_partitions_have_disjoint_input_contexts_and_future_targets(self):
+    def test_partitions_have_disjoint_input_contexts(self):
         with tempfile.TemporaryDirectory() as temporary:
             dataset = features.read_dataset(make_dataset(Path(temporary)))
             tables, metadata = features.build_tables(dataset)
@@ -135,7 +124,7 @@ class ChronologyTests(unittest.TestCase):
                 for row in rows:
                     period = periods[row["split"]]
                     start = preparation.parse_utc(row["input_context_start"])
-                    end = preparation.parse_utc(row.get("target_evaluated_at", row["evaluated_at"]))
+                    end = preparation.parse_utc(row["evaluated_at"])
                     self.assertGreaterEqual(start, preparation.parse_utc(period["start"]))
                     self.assertLess(end, preparation.parse_utc(period["end_exclusive"]))
                     self.assertEqual(preparation.parse_utc(row["window_start"]) - start, 120)
@@ -143,22 +132,20 @@ class ChronologyTests(unittest.TestCase):
                     earlier_rows = [row for row in rows if row["split"] == earlier]
                     later_rows = [row for row in rows if row["split"] == later]
                     self.assertTrue(earlier_rows and later_rows, filename)
-                    last_target = max(preparation.parse_utc(row.get("target_evaluated_at", row["evaluated_at"]))
-                                      for row in earlier_rows)
+                    last_target = max(preparation.parse_utc(row["evaluated_at"]) for row in earlier_rows)
                     first_context = min(preparation.parse_utc(row["input_context_start"]) for row in later_rows)
                     self.assertLess(last_target, first_context)
 
-    def test_resource_hole_breaks_history_context_and_all_forecast_horizons(self):
+    def test_resource_hole_breaks_history_context(self):
         with tempfile.TemporaryDirectory() as temporary:
             cpu = {index: 25.0 for index in range(401) if index != 100}
             dataset = features.read_dataset(make_dataset(Path(temporary), overrides={"cpu_usage_percent": cpu}))
             tables, metadata = features.build_tables(dataset)
             hole = BASE + 100 * 30
-            self.assertGreater(metadata["summary"]["skipped_forecast_rows"]["15"]["missing_future_or_gap"], 0)
             for rows in tables.values():
                 for row in rows:
                     start = preparation.parse_utc(row["input_context_start"])
-                    end = preparation.parse_utc(row.get("target_evaluated_at", row["evaluated_at"]))
+                    end = preparation.parse_utc(row["evaluated_at"])
                     self.assertFalse(start <= hole <= end)
             after = next(row for row in tables["features.csv"] if preparation.parse_utc(row["evaluated_at"]) > hole)
             self.assertGreaterEqual(preparation.parse_utc(after["evaluated_at"]) - hole, 450)
@@ -174,14 +161,13 @@ class ChronologyTests(unittest.TestCase):
             self.assertEqual(first_tables, second_tables)
             self.assertEqual(second.metadata["summary"]["all_metrics_segments"], 2)
 
-    def test_short_partitions_are_reported_without_inventing_forecast_targets(self):
+    def test_short_partitions_do_not_invent_other_outputs(self):
         with tempfile.TemporaryDirectory() as temporary:
             dataset = features.read_dataset(make_dataset(Path(temporary), count=50))
             tables, metadata = features.build_tables(dataset)
             self.assertTrue(tables["features.csv"])
-            self.assertFalse(metadata["summary"]["splits_available_for_each_horizon"]["15"])
-            self.assertEqual(metadata["summary"]["forecast_rows"]["15"]["validation"], 0)
-            self.assertEqual(metadata["summary"]["forecast_rows"]["15"]["test"], 0)
+            self.assertEqual(set(tables), {"features.csv"})
+            self.assertEqual(set(metadata["summary"]["rows_by_split"]), set(features.SPLITS))
 
     def test_steps_and_lookback_have_explicit_compatible_units(self):
         self.assertEqual(features.validate_settings(30, 5), 11)
@@ -255,7 +241,7 @@ class PublicationTests(unittest.TestCase):
                 self.assertEqual(published["files"][filename]["sha256"], exporter.file_sha256(directory / filename))
                 with (directory / filename).open(newline="") as stream:
                     reader = csv.DictReader(stream)
-                    self.assertEqual(reader.fieldnames, list(features.FEATURE_FIELDS if filename == "features.csv" else features.FORECAST_FIELDS))
+                    self.assertEqual(reader.fieldnames, list(features.FEATURE_FIELDS))
                     rows = list(reader)
                 self.assertEqual(len(rows), len(records))
                 self.assertEqual({row["split"] for row in rows}, set(features.SPLITS))
@@ -281,7 +267,7 @@ class PublicationTests(unittest.TestCase):
             dataset = features.read_dataset(make_dataset(root))
             tables, metadata = features.build_tables(dataset)
             _, directory, _ = features.publish_features(tables, metadata, root / "features")
-            path = directory / "forecast_15m.csv"
+            path = directory / "features.csv"
             with path.open("a") as stream:
                 stream.write("corrompu\n")
             previous = path.read_bytes()

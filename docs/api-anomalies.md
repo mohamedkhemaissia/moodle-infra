@@ -1,6 +1,6 @@
 # Détection des anomalies dans l’API Moodle
 
-La version 0.3.0 de l’API expose le modèle Isolation Forest en mode observation. Son intégration ne nécessite pas d’entraîner à nouveau les modèles existants.
+L’API finale expose le modèle Isolation Forest en mode observation. Il est le seul modèle IA entraîné et déployé par le parcours principal.
 
 ## Deux endpoints
 
@@ -11,7 +11,7 @@ La version 0.3.0 de l’API expose le modèle Isolation Forest en mode observati
 
 ## Qualité des données
 
-Les prévisions et les anomalies partagent la lecture de l’historique et le calcul des 21 variables temporelles. Une fenêtre de cinq minutes, complétée par les deux minutes de contexte nécessaires à la mesure CPU, exige 420 secondes d’historique continu. Les ressources sont arrondies comme dans l’export d’entraînement. Les variables sont calculées uniquement sur la fenêtre passée.
+Le calcul d'anomalie relit l'historique nécessaire aux 21 variables temporelles. Une fenêtre de cinq minutes, complétée par les deux minutes de contexte nécessaires à la mesure CPU, exige 420 secondes d’historique continu. Les ressources sont arrondies comme dans l’export d’entraînement. Les variables sont calculées uniquement sur la fenêtre passée.
 
 Si la collecte est absente, arrêtée, trop ancienne ou incomplète, l’endpoint renvoie HTTP 200, `status = unavailable`, une raison et `anomaly = null`. Une donnée manquante n’est pas remplacée par zéro. Une mesure CPU réellement égale à zéro reste valide.
 

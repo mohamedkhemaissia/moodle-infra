@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildView, validateSnapshot } from '../src/snapshot.js';
 import { validateDocument } from '../src/operations.js';
-import { OVERVIEW_REQUESTS, currentRecommendations, importantIncidents, moodleBackupStatus, moodleStatus, observerCurrent } from '../src/navigation.js';
+import { OVERVIEW_REQUESTS, currentRecommendations, importantIncidents, moodleStatus, observerCurrent } from '../src/navigation.js';
 import { dashboardFixtures } from './fixtures.js';
 
 const now = Date.parse('2026-10-11T21:30:00Z');
@@ -13,12 +13,10 @@ function inputs() {
   return { fixture, readings, decisions, view: buildView(validateSnapshot(fixture.snapshot), now) };
 }
 
-test('the overview reuses only existing reads and does not request pilotage backups', () => {
+test('the overview requests only live platform information and no backup data', () => {
   const paths = OVERVIEW_REQUESTS.map(({ path }) => path);
-  assert.ok(paths.includes('/api/v1/backups/summary'));
-  assert.ok(paths.includes('/api/v1/backups/catalog?scope=moodle&limit=10&offset=0'));
   assert.ok(paths.includes('/api/v1/incidents?limit=10&offset=0&status=open'));
-  assert.ok(paths.every((path) => !/pilotage|execute|restore|policies/.test(path)));
+  assert.ok(paths.every((path) => !/backups|catalog|pilotage|execute|restore|policies/.test(path)));
 });
 
 test('Moodle unavailability is distinct from an interrupted or old HTTPS collection', () => {
@@ -40,33 +38,6 @@ test('a current dependency failure degrades an accessible Moodle without inventi
   assert.equal(moodleStatus(view, readings, now), 'operational');
   readings.applications.data.services.postgresql.service_reachable = false;
   assert.equal(moodleStatus(view, readings, now), 'degraded');
-});
-
-test('a recent backup needs a matching point present in a current repository catalogue', () => {
-  const { readings } = inputs();
-  assert.equal(moodleBackupStatus(readings, now).status, 'operational');
-  assert.equal(moodleBackupStatus(readings, now).ageHours, 12);
-  readings.catalog.data.latest_success_id = 'e'.repeat(64);
-  assert.equal(moodleBackupStatus(readings, now).presence, 'unknown');
-  assert.equal(moodleBackupStatus(readings, now).status, 'unknown');
-  readings.catalog.data.latest_success_id = readings.backup.data.latest_success.snapshot;
-  readings.catalog.data.latest_success_presence = 'absent';
-  assert.equal(moodleBackupStatus(readings, now).status, 'warning');
-  readings.catalog.data.latest_success_presence = 'present';
-  readings.backup.data.job.last_result = 'failed';
-  assert.equal(moodleBackupStatus(readings, now).status, 'warning');
-  assert.equal(moodleBackupStatus(readings, now + 61000).status, 'stale');
-});
-
-test('missing backups and an unreadable catalogue do not become confirmed availability', () => {
-  const { readings } = inputs();
-  readings.backup.data.latest_success = null;
-  readings.backup.data.backup_state = 'missing';
-  assert.equal(moodleBackupStatus(readings, now).status, 'warning');
-  assert.equal(moodleBackupStatus(readings, now).presence, 'unknown');
-  readings.catalog = { data: null, error: 'Dépôt inaccessible' };
-  readings.backup = { data: null, error: 'Lecture indisponible' };
-  assert.equal(moodleBackupStatus(readings, now).status, 'unknown');
 });
 
 test('recommendations require a current observer, matching incident and unexpired decision', () => {
@@ -94,10 +65,9 @@ test('the operational homepage hides PostgreSQL, isolated restore summaries and 
   const props = inputs();
   const render = (value) => renderToStaticMarkup(React.createElement(OverviewView, { ...value, now }));
   const html = render(props);
-  for (const label of ['Moodle est accessible', 'Alertes et incidents', 'Sauvegardes Moodle', 'Ressources principales', 'Services utiles', 'Actions recommandées', 'Diagnostic CPU']) assert.match(html, new RegExp(label));
-  assert.doesNotMatch(html, /PostgreSQL|Dernier test de restauration isolée|Test isolé|Lancer le test|>Exécuter|>Approuver|<pre/);
-  assert.match(html, /12 h|12,0 h/);
+  for (const label of ['Plateforme Moodle', 'Accessible', 'Incidents ouverts', 'Ressources', 'Alertes et incidents', 'Ressources principales', 'Services utiles', 'Actions recommandées', 'Diagnostic CPU']) assert.match(html, new RegExp(label));
+  assert.doesNotMatch(html, /Sauvegardes Moodle|Consulter les sauvegardes|PostgreSQL|Dernier test de restauration isolée|Test isolé|Lancer le test|>Exécuter|>Approuver|<pre/);
   const unknown = render({ ...props, readings: {}, decisions: {}, view: buildView(null, now) });
-  assert.match(unknown, /Disponibilité à confirmer/);
+  assert.match(unknown, /À confirmer/);
   assert.doesNotMatch(unknown, /Aucun incident ouvert enregistré|Aucune action recommandée pour les incidents ouverts|Diagnostic CPU|Opérationnel/);
 });

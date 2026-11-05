@@ -93,6 +93,19 @@ class GuardTests(unittest.TestCase):
             output = SimpleNamespace(returncode=0, stdout='[{"unit":"moodle-backup.service"}]')
             with patch("remediation.action.command", return_value=output):
                 with self.assertRaises(Blocked): operations_clear(config)
+            operations_clear({"restoration_marker": str(marker), "operations_check_mode": "marker_only"})
+
+    def test_codespaces_http_configuration_requires_explicit_proxy_termination(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"config.json"
+            value={"api_url":"http://127.0.0.1:8000","data_dir":tmp,
+                   "hostname":"pilot-8443.app.github.dev","https_port":8443,"ca_file":"",
+                   "restoration_marker":str(Path(tmp)/"restore"),"probe_scheme":"http",
+                   "proxy_tls_terminated":True,"operations_check_mode":"marker_only"}
+            path.write_text(json.dumps(value))
+            self.assertEqual(config_read(path)["probe_scheme"],"http")
+            value["proxy_tls_terminated"]=False;path.write_text(json.dumps(value))
+            with self.assertRaises(ValueError):config_read(path)
 
 
 class ActionTests(unittest.TestCase):
@@ -129,6 +142,15 @@ class ActionTests(unittest.TestCase):
         self.assertTrue(result["recovered"])
         self.assertEqual(self.calls, ["a" * 64])
         self.assertEqual(len(result["checks"]["recovery_samples"]), 3)
+
+    def test_codespaces_loopback_http_is_accepted_only_with_proxy_tls_termination(self):
+        self.config.update(probe_scheme="http",proxy_tls_terminated=True)
+        def probe():
+            return {"success":self.started,"tls_validated":False,"loopback_validated":True,
+                    "scheme":"http","http_status":200 if self.started else 503}
+        result=self.run_action(probe_fn=probe)
+        self.assertEqual(result["status"],"completed")
+        self.assertEqual(self.calls,["a"*64])
     def test_a_tls_error_never_dispatches_the_action(self):
         result = self.run_action(probe_fn=lambda: {"success": False, "tls_validated": False, "http_status": None})
         self.assertEqual(result["status"], "blocked"); self.assertEqual(self.calls, [])
@@ -279,6 +301,24 @@ class TLSTests(TLSFixture, unittest.TestCase):
         self.assertFalse(login_probe("moodle-pfe.test", server.server_port, self.cert)["success"])
         state.update(status=200, body=b"<h1>Not Moodle</h1>")
         self.assertEqual(login_probe("moodle-pfe.test", server.server_port, self.cert)["error"], "login_form_missing")
+
+    def test_codespaces_http_probe_is_bounded_to_loopback_and_preserves_host(self):
+        state={}
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self,*args):pass
+            def do_GET(self):
+                state["host"]=self.headers.get("Host")
+                body=b'<input name="username"><input name="password">'
+                self.send_response(200);self.send_header("Content-Type","text/html")
+                self.send_header("Content-Length",str(len(body)));self.end_headers();self.wfile.write(body)
+        server=ThreadingHTTPServer(("127.0.0.1",0),Handler)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        try:
+            result=login_probe("pilot-8443.app.github.dev",server.server_port,"",scheme="http")
+            self.assertTrue(result["success"]);self.assertTrue(result["loopback_validated"])
+            self.assertFalse(result["tls_validated"]);self.assertTrue(state["host"].startswith("pilot-8443.app.github.dev:"))
+        finally:
+            server.shutdown();server.server_close();thread.join(3)
 
 
 class RealRunnerTests(TLSFixture, unittest.TestCase):

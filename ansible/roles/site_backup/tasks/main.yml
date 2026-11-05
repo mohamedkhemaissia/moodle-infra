@@ -1,0 +1,142 @@
+---
+- name: Verifier le perimetre de la sauvegarde complete simplifiee
+  ansible.builtin.assert:
+    that:
+      - site_backup_operations_dir is match('^/var/lib/[a-z0-9-]+$')
+      - site_backup_store_dir == '/opt/moodle-pfe-backup'
+      - site_backup_config_dir == '/etc/moodle-pfe-backup'
+      - site_backup_interval_seconds | int >= 3600
+    fail_msg: "Configuration de sauvegarde complete invalide."
+  when: site_backup_enabled | bool
+
+- name: Installer Restic
+  ansible.builtin.apt:
+    name: restic
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: site_backup_enabled | bool
+
+- name: Creer les repertoires prives de sauvegarde
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - "{{ site_backup_store_dir }}"
+    - "{{ site_backup_store_dir }}/repository"
+    - "{{ site_backup_store_dir }}/staging"
+    - "{{ site_backup_store_dir }}/rollback"
+    - "{{ site_backup_config_dir }}"
+    - /usr/local/lib/moodle-site-backup
+  when: site_backup_enabled | bool
+
+- name: Creer la file partagee des operations du site
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "10001"
+    group: "10001"
+    mode: "2770"
+  loop:
+    - "{{ site_backup_operations_dir }}"
+    - "{{ site_backup_operations_dir }}/requests"
+    - "{{ site_backup_operations_dir }}/processing"
+    - "{{ site_backup_operations_dir }}/operations"
+  when: site_backup_enabled | bool
+
+- name: Generer le mot de passe Restic sans remplacer l existant
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -c
+      - "import secrets; open({{ (site_backup_config_dir ~ '/restic-password') | to_json }}, 'x', encoding='utf-8').write(secrets.token_urlsafe(48))"
+    creates: "{{ site_backup_config_dir }}/restic-password"
+  no_log: true
+  when: site_backup_enabled | bool
+
+- name: Proteger le mot de passe Restic
+  ansible.builtin.file:
+    path: "{{ site_backup_config_dir }}/restic-password"
+    owner: root
+    group: root
+    mode: "0600"
+  when: site_backup_enabled | bool
+
+- name: Installer les commandes de sauvegarde et restauration
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/codespaces/{{ item.source }}"
+    dest: "{{ item.destination }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {source: restic.sh, destination: /usr/local/sbin/moodle-site-restic, mode: '0750'}
+    - {source: backup.sh, destination: /usr/local/sbin/moodle-site-backup, mode: '0750'}
+    - {source: restore.sh, destination: /usr/local/sbin/moodle-site-restore, mode: '0750'}
+    - {source: site-operations-worker.py, destination: /usr/local/sbin/moodle-site-operations-worker, mode: '0750'}
+    - {source: record-success.py, destination: /usr/local/lib/moodle-site-backup/record-success.py, mode: '0750'}
+  register: site_backup_commands
+  when: site_backup_enabled | bool
+
+- name: Initialiser le depot Restic sans remplacer le depot existant
+  ansible.builtin.command:
+    argv: [/usr/local/sbin/moodle-site-restic, init]
+    creates: "{{ site_backup_store_dir }}/repository/config"
+  register: site_backup_restic_init
+  changed_when: site_backup_restic_init.rc == 0
+  when: site_backup_enabled | bool
+
+- name: Publier un premier catalogue de points de reprise
+  ansible.builtin.command:
+    argv: [/usr/local/sbin/moodle-site-restic, snapshots, --json, --tag, moodle-pilote-full]
+  register: site_backup_initial_catalog
+  changed_when: false
+  when: site_backup_enabled | bool
+
+- name: Installer le worker Supervisor de sauvegarde complete
+  ansible.builtin.template:
+    src: moodle-site-operations.supervisor.j2
+    dest: "/etc/supervisor/conf.d/{{ site_backup_supervisor_program }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  register: site_backup_supervisor_config
+  when: site_backup_enabled | bool
+
+- name: Recharger Supervisor
+  ansible.builtin.command:
+    argv: [/usr/bin/supervisorctl, reread]
+  register: site_backup_supervisor_reread
+  changed_when: "site_backup_supervisor_program in site_backup_supervisor_reread.stdout"
+  when: site_backup_enabled | bool
+
+- name: Appliquer le worker Supervisor
+  ansible.builtin.command:
+    argv: [/usr/bin/supervisorctl, update, "{{ site_backup_supervisor_program }}"]
+  register: site_backup_supervisor_update
+  changed_when: >-
+    'added process group' in site_backup_supervisor_update.stdout or
+    'stopped:' in site_backup_supervisor_update.stdout
+  when: site_backup_enabled | bool
+
+- name: Redemarrer le worker lorsque son code change
+  ansible.builtin.command:
+    argv: [/usr/bin/supervisorctl, restart, "{{ site_backup_supervisor_program }}"]
+  changed_when: true
+  when:
+    - site_backup_enabled | bool
+    - (site_backup_supervisor_config.changed | default(false)) or (site_backup_commands.changed | default(false))
+
+- name: Verifier le worker de sauvegarde complete
+  ansible.builtin.command:
+    argv: [/usr/bin/supervisorctl, status, "{{ site_backup_supervisor_program }}"]
+  register: site_backup_supervisor_status
+  changed_when: false
+  retries: 5
+  delay: 2
+  until: "'RUNNING' in site_backup_supervisor_status.stdout"
+  failed_when: "'RUNNING' not in site_backup_supervisor_status.stdout"
+  when: site_backup_enabled | bool

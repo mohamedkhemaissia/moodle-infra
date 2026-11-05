@@ -1,19 +1,17 @@
 import { applicationView } from './applicationMetrics.js';
-import { backupView } from './backups.js';
-import { catalogCurrent, catalogPath } from './backupCatalog.js';
 import { containerView } from './containerMetrics.js';
 import { decisionCurrent, requestPath } from './operations.js';
 
 export const NAVIGATION = [
-  { id: 'main', title: 'Vue d’ensemble', description: 'Disponibilité Moodle, incidents, ressources et sauvegardes.', icon: 'grid', color: '#0090e7' },
+  { id: 'main', title: 'Vue d’ensemble', description: 'Disponibilité Moodle, incidents et ressources.', icon: 'grid', color: '#0090e7' },
   { id: 'applications', title: 'Services Moodle', description: 'Disponibilité de Moodle, de PHP-FPM et de PostgreSQL.', icon: 'server', color: '#0090e7' },
   { id: 'resources', title: 'Ressources', description: 'Mesures actuelles et état de la collecte de l’hôte Moodle.', icon: 'cpu', color: '#0090e7' },
   { id: 'containers', title: 'Conteneurs', description: 'État et consommation des conteneurs Moodle essentiels.', icon: 'cpu', color: '#8f5fe8' },
-  { id: 'analysis', title: 'Analyse IA', description: 'Détection d’anomalies et prévisions des ressources.', icon: 'chart', color: '#00d25b' },
+  { id: 'analysis', title: 'Analyse des anomalies', description: 'Observations inhabituelles détectées par Isolation Forest.', icon: 'chart', color: '#00d25b' },
   { id: 'incidents', title: 'Incidents', description: 'Épisodes détectés et recommandations de correction.', icon: 'alert', color: '#0090e7' },
   { id: 'audits', title: 'Historique des exécutions', description: 'Journaux des diagnostics et des remédiations.', icon: 'clock', color: '#0090e7' },
   { id: 'decision-history', title: 'Décisions et recommandations', description: 'Historique des décisions, mesures et justifications.', icon: 'clock', color: '#0090e7' },
-  { id: 'backups', title: 'Sauvegardes', description: 'Suivi des sauvegardes et des points de reprise.', icon: 'disk', color: '#8f5fe8' },
+  { id: 'backups', title: 'Sauvegarde du site', description: 'Sauvegarde complète et restauration du pilote.', icon: 'disk', color: '#8f5fe8' },
   { id: 'policies', title: 'Politiques', description: 'Règles qui encadrent les corrections.', icon: 'server', color: '#0090e7' },
   { id: 'php-profiles', title: 'Profils PHP-FPM', description: 'Configuration des profils de capacité PHP-FPM.', icon: 'server', color: '#00d25b' },
   { id: 'reports', title: 'Rapports', description: 'Consultation et export des opérations enregistrées.', icon: 'chart', color: '#0090e7' },
@@ -29,7 +27,6 @@ export function sectionFromHash(hash, accountsEnabled = false) {
   const id = typeof hash === 'string' ? hash.replace(/^#/, '') : '';
   return NAVIGATION.some((item) => item.id === id) || (id === 'accounts' && accountsEnabled) ? id : 'main';
 }
-
 // Shared labels and operational summaries used by navigation destinations.
 const dates = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
 
@@ -39,7 +36,7 @@ export const STATUS = {
   unavailable: ['Indisponible', 'bad'], stale: ['Données anciennes', 'warning'], unknown: ['Inconnu', 'neutral'],
   open: ['Ouvert', 'warning'], resolved: ['Résolu', 'good'], info: ['Information', 'neutral'],
   completed: ['Terminé', 'neutral'], blocked: ['Bloqué', 'warning'], failed: ['Échec', 'bad'],
-  running: ['En cours', 'neutral'], timeout: ['Délai dépassé', 'bad'], canceled: ['Annulé', 'neutral'],
+  queued: ['En attente', 'neutral'], running: ['En cours', 'neutral'], timeout: ['Délai dépassé', 'bad'], canceled: ['Annulé', 'neutral'],
   interrupted: ['Interrompu', 'warning'], recommendation: ['Recommandation', 'warning'],
   monitoring: ['Sous observation', 'neutral'], closed: ['Incident résolu', 'good'],
 };
@@ -59,8 +56,6 @@ export const OVERVIEW_REQUESTS = [
   { key: 'incidents', kind: 'incidents', path: requestPath('incidents', { status: 'open' }) },
   { key: 'applications', kind: 'applications', path: '/api/v1/metrics/applications' },
   { key: 'containers', kind: 'containers', path: '/api/v1/metrics/containers' },
-  { key: 'backup', kind: 'backup', path: '/api/v1/backups/summary' },
-  { key: 'catalog', kind: 'backup_catalog', path: catalogPath('moodle') },
 ];
 
 export function observerCurrent(document, now) {
@@ -95,17 +90,4 @@ export function moodleStatus(view, readings, now) {
   return php.reachable === false || database.reachable === false || containers.rows.some((row) =>
     ['apache', 'php', 'postgres'].includes(row.service) && (['missing', 'paused', 'not_running'].includes(row.state) || row.health === 'unhealthy'))
     ? 'degraded' : 'operational';
-}
-
-export function moodleBackupStatus(readings, now) {
-  const backup = backupView(readings.backup?.data, now);
-  const catalog = readings.catalog?.data;
-  const current = catalogCurrent(catalog, now);
-  const presence = current ? catalog.latest_success_presence : 'unknown';
-  // A repository presence does not prove integrity or restoration.
-  const associated = current && catalog.latest_success_id === readings.backup?.data?.latest_success?.snapshot;
-  const status = backup.reason === 'collection_stale' || readings.backup?.stale || readings.catalog?.stale ? 'stale' :
-    backup.state === 'missing' || backup.state === 'overdue' || (associated && presence === 'absent') || readings.backup?.data?.job?.last_result === 'failed'
-      ? 'warning' : backup.state === 'recent' && associated && presence === 'present' ? 'operational' : 'unknown';
-  return { ...backup, status, presence: associated ? presence : 'unknown' };
 }

@@ -1,4 +1,10 @@
 ---
+- name: Valider le planificateur du suivi des conteneurs
+  ansible.builtin.assert:
+    that:
+      - container_monitoring_scheduler in ['systemd', 'supervisor']
+      - container_monitoring_supervisor_program is match('^[a-z][a-z0-9-]{2,63}$')
+
 - name: Creer les repertoires du suivi des conteneurs
   ansible.builtin.file:
     path: "{{ item }}"
@@ -45,11 +51,14 @@
     mode: "0644"
   loop: [moodle-container-metrics.service, moodle-container-metrics.timer]
   register: container_monitoring_units
+  when: container_monitoring_scheduler == 'systemd'
 
 - name: Recharger les unites systemd modifiees
   ansible.builtin.systemd_service:
     daemon_reload: true
-  when: container_monitoring_units.changed
+  when:
+    - container_monitoring_scheduler == 'systemd'
+    - container_monitoring_units.changed
 
 - name: Verifier si une premiere collecte est necessaire
   ansible.builtin.stat:
@@ -61,11 +70,49 @@
     name: moodle-container-metrics.service
     state: started
   when: >-
-    not container_monitoring_initial.stat.exists or container_monitoring_script.changed or
-    container_monitoring_config.changed
+    container_monitoring_scheduler == 'systemd' and
+    (not container_monitoring_initial.stat.exists or container_monitoring_script.changed or
+    container_monitoring_config.changed)
 
 - name: Activer le timer du suivi des conteneurs
   ansible.builtin.systemd_service:
     name: moodle-container-metrics.timer
     enabled: true
     state: started
+  when: container_monitoring_scheduler == 'systemd'
+
+- name: Installer la collecte Codespaces geree par Supervisor
+  ansible.builtin.template:
+    src: moodle-container-metrics.supervisor.j2
+    dest: "/etc/supervisor/conf.d/{{ container_monitoring_supervisor_program }}.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  when: container_monitoring_scheduler == 'supervisor'
+
+- name: Recharger la collecte Supervisor sans toucher aux autres programmes
+  ansible.builtin.command:
+    argv: [/usr/bin/supervisorctl, reread]
+  register: container_monitoring_supervisor_reread
+  changed_when: "container_monitoring_supervisor_program in container_monitoring_supervisor_reread.stdout"
+  when: container_monitoring_scheduler == 'supervisor'
+
+- name: Appliquer la collecte Supervisor
+  ansible.builtin.command:
+    argv: [/usr/bin/supervisorctl, update, "{{ container_monitoring_supervisor_program }}"]
+  register: container_monitoring_supervisor_update
+  changed_when: >-
+    'added process group' in container_monitoring_supervisor_update.stdout or
+    'stopped:' in container_monitoring_supervisor_update.stdout
+  when: container_monitoring_scheduler == 'supervisor'
+
+- name: Verifier le processus de collecte Supervisor
+  ansible.builtin.command:
+    argv: [/usr/bin/supervisorctl, status, "{{ container_monitoring_supervisor_program }}"]
+  register: container_monitoring_supervisor_status
+  changed_when: false
+  failed_when: "'RUNNING' not in container_monitoring_supervisor_status.stdout"
+  retries: 5
+  delay: 1
+  until: "'RUNNING' in container_monitoring_supervisor_status.stdout"
+  when: container_monitoring_scheduler == 'supervisor'

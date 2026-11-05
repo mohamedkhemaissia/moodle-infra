@@ -49,6 +49,22 @@ class AlertmanagerConfigurationTests(unittest.TestCase):
         self.assertNotIn('MoodleContainerUnavailable', names)
         self.assertIn('MoodleHTTPSUnavailable', names)
 
+    def test_blackbox_can_reproduce_https_proxy_headers(self):
+        headers = {
+            'X-Forwarded-Proto': 'https',
+            'X-Forwarded-Host': 'codespace.example',
+            'X-Forwarded-Port': '443',
+        }
+        blackbox = render('blackbox', values(monitoring_moodle_probe_headers=headers))
+        self.assertEqual(blackbox['modules']['moodle_https']['http']['headers'], headers)
+
+    def test_codespaces_disk_alerts_use_the_storage_mount_that_really_exists(self):
+        document = render('alerts', values(monitoring_linux_filesystem_mountpoint='/workspaces'))
+        expressions = {rule['alert']: rule['expr'] for group in document['groups'] for rule in group['rules']}
+        self.assertIn('mountpoint="/workspaces"', expressions['MoodleHostMetricsUnavailable'])
+        self.assertIn('mountpoint="/workspaces"', expressions['MoodleDiskLow'])
+        self.assertNotIn('mountpoint="/"', expressions['MoodleHostMetricsUnavailable'])
+
 
 if __name__ == '__main__':
     unittest.main()
